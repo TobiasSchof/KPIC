@@ -1,0 +1,78 @@
+#!python3
+
+from configparser import ConfigParser
+from time import sleep
+import sys, io
+
+from sce_shmlib import shm
+
+config=ConfigParser()
+config.read("/tmp/TobiasTest/TTM.ini")
+
+#shared memory creation is noisy so we silence it
+_ = io.StringIO()
+sys.stdout = _
+
+#shm data is a list so we populate a dictionary with which
+#information is at what index.
+str_d={}
+for name in config.options("Shm_D_Content"):
+    str_d[name]=np.int(config.getfloat("Shm_D_Content", name))
+
+Shm_D=shm(config.get("Shm_path", "Shm_D"))
+
+#shm p is command shared memory
+
+str_p={}
+for name in config.options("Shm_P_Content"):
+    str_p[name]=np.int(config.getfloat("Shm_P_Content", name))
+
+Shm_P=shm(config.get("Shm_path", "Shm_P"))
+
+sys.stdout = sys.__stdout__
+
+
+
+while True:
+    dataD=Shm_D.get_data()
+    dataP=Shm_P.get_data()
+
+    #Note, the script off statuses in state shm will never appear so we don't deal with them.
+    dpos=[dataD[str_d["pos_1"]].item(), dataD[str_d["pos_2"]].item()]
+       
+    ppos=[dataP[str_p["pos_1"]].item(), dataP[str_p["pos_2"]].item()]
+        
+    dstatus={2:"Device moving", 1:"Script: on | Device: on", 0:"Script: on | Device: off"}
+    dstatus=dstatus[dataD[str_d["status"]].item()]
+
+    pstatus={1:"Device on", 0:"Device off", -1:"Kill script"}
+    pstatus=pstatus[dataP[str_p["status"]].item()]
+
+    derror={0:"No error", 1:"Move requested beyond limits", \
+                2:"Loop Open"}
+    derror=derror[dataD[str_d["error"]].item()]
+
+    servostat="on" if dataP[str_p["svos"]]==1 else "off"
+
+    update_t=ctime(dataD[str_d["cur_t"]].item())
+
+    os.system("clear")
+    print(u"\u250F""{:<77}"u"\u2513".format(u"\u2501"*77))
+    print(u"\u2503""{:^77}"u"\u2503".format("TTM Controller"))
+    print(u"\u2523""{:<38}"u"\u2533""{:<38}"u"\u252B".format(u"\u2501"*38, u"\u2501"*38))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Device state:", "Requests:"))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Position: ", "Position:"))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(str(dpos), str(ppos)))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Time of last update:", "Servo status:"))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(update_t, str(servostat)))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Status:", "Status:"))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(dstatus, pstatus))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Error message:", ""))
+    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(derror, ""))
+    print(u"\u2517"+u"\u2501"*38+u"\u253B"+u"\u2501"*38+u"\u251B")
+
+    sleep(5)
