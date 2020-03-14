@@ -6,20 +6,16 @@ from subprocess import Popen as bash
 from logging import info
 from time import sleep
 from functools import wraps
-import sys, io
+import sys, io, os
 
 #installed libraries
 import numpy as np
 
-#location of command scripts
-sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/dev/lib")
-
+#our libraries (in $LIB)
 from sce_shmlib import shm
-
-sys.path.insert(1, "/tmp/TobiasTest")
 from Exceptions import *
 
-CONFIG_PATH = "/tmp/TobiasTest/"
+CONFIG_PATH = os.environ.get("CONFIG")
 
 class General_cmds():
     """Class for user control of a generic device via shared memory"""
@@ -32,9 +28,11 @@ class General_cmds():
             name = the name of the device (e.g. TTM or TCP) 
         """
 
+        self.dev_name = name
+
         self.config=ConfigParser()
         info("Reading config file")
-        self.config.read(CONFIG_PATH+name+".ini")
+        self.config.read(CONFIG_PATH+"/"+name+".ini")
         info("Config file read successfully.")
 
         #shm d is state shared memory.
@@ -270,7 +268,7 @@ class General_cmds():
          
         if not self.is_Active(): 
             info("Command was attempted when script was off.")
-            raise ScriptOff("Use XXX enable")
+            raise ScriptOff("Use {} enable".format(self.dev_name))
 
 
     def _checkOnAndAlive(self):
@@ -279,7 +277,7 @@ class General_cmds():
         self._checkAlive()
         if not self.is_On():
             info("Command was attempted when device was off.")
-            raise StageOff("Use XXX_cmds.on()")
+            raise StageOff("Use {}_cmds.on()".format(self.dev_name))
 
     def getOldPos(name:str, T=False):
         """Static method to get the position when the script is off

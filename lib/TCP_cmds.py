@@ -11,9 +11,7 @@ import sys, io
 #installed libraries
 import numpy as np
 
-#location of command scripts
-sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/lib")
-
+#our scripts (in $LIB)
 from sce_shmlib import shm
 from General_cmds import General_cmds
 from Exceptions import *
