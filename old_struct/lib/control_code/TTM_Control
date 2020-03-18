@@ -5,8 +5,7 @@ from logging import info, basicConfig, INFO, DEBUG
 from configparser import ConfigParser
 from atexit import register
 from time import time, ctime, sleep
-from signal import signal, SIGHUP, SIGALRM, ITIMER_REAL, setitimer
-from functools import partial
+from signal import signal, SIGHUP
 from subprocess import Popen as bash
 from argparse import ArgumentParser
 import sys, io, os, asyncio
@@ -31,8 +30,6 @@ See TTM_cmds.py or type TTM in terminal to control the TTM
 
 """
 
-timer=partial(setitimer, ITIMER_REAL)
-
 CONFIG_PATH = "/tmp/TobiasTest/" #path to config file
 CAN_MOVE = False #whether this device can move on startup
 NPS_PORT = 7 #The NPS port that this device is on
@@ -42,7 +39,7 @@ class AlreadyAlive(Exception):
     """An exception to be thrown if control code is initialized twice"""
     pass
 
-class TTM:
+class __TTM:
     """Class to control the tip tilt mirror. NOT FOR USE BY GENERAL SCRIPTS
 
     Note: this class interacts directly with the TTM. If you want to use the 
@@ -173,7 +170,8 @@ class TTM:
         #continuously check device info
         while True:
             #we need an await so asyncio knows where it can interupt the loop
-            old = await self.Shm_D.get_data()
+            await asyncio.sleep(0)
+            old = self.Shm_D.get_data()
             cur_t=time()
             try:
                 qMOV=self.pidevice.IsMoving()
@@ -204,7 +202,7 @@ class TTM:
 
         #asyncio will let other processes run while we wait for new data in 
         #the command shared memory.
-        data = await self.Shm_P.get_data(check=True)
+        data = await self.Shm_P.await_data()
         info("command shared memory updated")
         
         error=0
@@ -265,7 +263,6 @@ class TTM:
             elif curpos[idx] != target:
                 info("Moving axis {} to {}.".format(idx, target))
                 self.pidevice.MOV(idx, target)
-                timer(1/QSPEED)
 
         return 0
 
@@ -381,7 +378,7 @@ class TTM:
             info("Turning on TTM.")
             self.NPS.turnOn(NPS_PORT + 1)
             #Wait for device to turn on
-            while not self.NPS.getStatusAll()[NPS_PORT]: sleep(1)
+            while not self.NPS.getStatusAll()[NPS_PORT]: sleep(.5)
 
         info("Opening connection to TTM.")
         self.connect_device()
@@ -471,4 +468,4 @@ if __name__ == "__main__":
 
 
     #start the TTM listener 
-    TTM()
+    __TTM()

@@ -25,6 +25,7 @@ import astropy.io.fits as pf
 import time
 #import pdb
 import posix_ipc
+import asyncio
 
 # ------------------------------------------------------
 #          list of available data types
@@ -495,9 +496,9 @@ class shm:
         self.mtdata['cnt0'] = cntr                   # update object mtdata
         return(cntr)
 
-    def get_data(self, check=False, reform=True, semNb=0):
+    def get_data(self, check=False, reform=False, semNb=0):
         ''' --------------------------------------------------------------
-        Reads and returns the data part of the SHM file
+        Returns the data part of the shared memory 
 
         Parameters:
         ----------
@@ -515,6 +516,29 @@ class shm:
 #                pass#time.sleep(0.001)
 
             #sys.stdout.write('---\n')
+
+        data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
+
+        if reform:
+            rsz = self.mtdata['size'][:self.mtdata['naxis']]
+            data = np.reshape(data, rsz)
+        return(data)
+
+    async def await_data(self, reform=False, semNb=0):
+        ''' --------------------------------------------------------------
+        Like get_data above but an awaitable version. Always waits for 
+        update
+
+        Parameters:
+        ----------
+        - reform: boolean, if True, reshapes the array in a 2-3D format
+        -------------------------------------------------------------- '''
+        i0 = self.im_offset                                  # image offset
+        i1 = i0 + self.img_len                               # image end
+
+        while True:
+            try: self.semaphores[semNb].acquire(0); break
+            except posix_ipc.BusyError: await asyncio.sleep(0)
 
         data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
 
