@@ -26,6 +26,9 @@ import time
 #import pdb
 import posix_ipc
 import asyncio
+from logging import info #replacing print statements with info 
+from atexit import register
+from signal import signal, SIGHUP
 
 # ------------------------------------------------------
 #          list of available data types
@@ -142,7 +145,7 @@ class shm:
 
         # ---------------
         if fname is None:
-            print("No SHM file name provided")
+            info("No SHM file name provided")
             return(None)
 
         self.fname = fname
@@ -152,18 +155,18 @@ class shm:
         self.semaphores = []
         for k in range(nbSems):
             semName = '/'+singleName+'_sem'+'0'+str(k)
-            #print('creating semaphore '+semName)
+            #info('creating semaphore '+semName)
             self.semaphores.append(posix_ipc.Semaphore(semName, flags=posix_ipc.O_CREAT))
-        print(str(k)+' semaphores created or re-used')
+        info(str(k)+' semaphores created or re-used')
 
         # ---------------
         if ((not os.path.exists(fname)) or (data is not None)):
-            print("%s will be created or overwritten" % (fname,))
+            info("%s will be created or overwritten" % (fname,))
             self.create(fname, data, nbkw)
 
         # ---------------
         else:
-            print("reading from existing %s" % (fname,))
+            info("reading from existing %s" % (fname,))
             self.fd      = os.open(fname, os.O_RDWR)
             self.stats   = os.fstat(self.fd)
             self.buf_len = self.stats.st_size
@@ -173,7 +176,11 @@ class shm:
             self.get_data()            # read the main data
             self.create_keyword_list() # create empty list of keywords
             self.read_keywords()       # populate the keywords with data
-            
+        
+        #automatically perform cleanup
+        register(self.close) #handles ctrl-c and exceptions
+        signal(SIGHUP, self.close) #handles tmux kill-ses
+
     def create(self, fname, data, nbkw=0):
         ''' --------------------------------------------------------------
         Create a shared memory data structure
@@ -189,14 +196,14 @@ class shm:
         -------------------------------------------------------------- '''
         
         if data is None:
-            print("No data (ndarray) provided! Nothing happens here")
+            info("No data (ndarray) provided! Nothing happens here")
             return
 
         # ---------------------------------------------------------
         # feed the relevant dictionary entries with available data
         # ---------------------------------------------------------
         self.npdtype          = data.dtype
-        print(fname.split('/')[2].split('.')[0])
+        info(fname.split('/')[2].split('.')[0])
         self.mtdata['imname'] = fname.split('/')[2].split('.')[0]#fname.ljust(80, ' ')
         self.mtdata['naxis']  = data.ndim
         self.mtdata['size']   = data.shape
@@ -379,7 +386,7 @@ class shm:
         -------------------------------------------------------------- '''
 
         if (ii >= self.mtdata['nbkw']):
-            print("Keyword index %d is not allocated and cannot be written")
+            info("Keyword index %d is not allocated and cannot be written")
             return
 
         # ------------------------------------------
@@ -388,7 +395,7 @@ class shm:
         try:
             self.kwds[ii]['name'] = str(name).ljust(16, ' ')
         except:
-            print('Keyword name not compatible (< 16 char)')
+            info('Keyword name not compatible (< 16 char)')
 
         if isinstance(value, (long, int)):
             self.kwds[ii]['type'] = 'L'
@@ -408,7 +415,7 @@ class shm:
         try:
             self.kwds[ii]['comment'] = str(comment).ljust(80, ' ')
         except:
-            print('Keyword comment not compatible (< 80 char)')
+            info('Keyword comment not compatible (< 80 char)')
 
         # ------------------------------------------
         #          write keyword to SHM
@@ -425,7 +432,7 @@ class shm:
         -------------------------------------------------------------- '''
 
         if (ii >= self.mtdata['nbkw']):
-            print("Keyword index %d is not allocated and cannot be written")
+            info("Keyword index %d is not allocated and cannot be written")
             return
 
         kwsz = self.kwsz
@@ -456,7 +463,7 @@ class shm:
         -------------------------------------------------------------- '''
         fmts = self.hdr_fmt.split(' ')
         for i, fmt in enumerate(fmts):
-            print(mtkeys[i], self.mtdata[mtkeys[i]])
+            info(mtkeys[i], self.mtdata[mtkeys[i]])
 
     def select_dtype(self):
         ''' --------------------------------------------------------------
@@ -571,7 +578,7 @@ class shm:
             try:
                 self.buf[i0:i1] = data.tostring()
             except:
-                print("Warning: writing wrong data-type to shared memory")
+                info("Warning: writing wrong data-type to shared memory")
                 return
         self.increment_counter()
         for k in range(self.nbSems):
