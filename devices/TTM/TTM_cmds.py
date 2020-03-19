@@ -1,13 +1,13 @@
-#out of the box libraries
+#inherent python libraries
 from configparser import ConfigParser
 from subprocess import Popen as bash
 import sys
 
-#installed libraries
+#installs
 import numpy as np
 
-#location of command scripts
-from sce_shmlib import shm
+#nfiuserver libraries
+from shmlib import shm
 from General_cmds import General_cmds
 from Exceptions import *
 
@@ -35,6 +35,9 @@ class TTM_cmds(General_cmds):
         update
     with change:
         set_status
+
+    new methods:
+        center
     """
 
 	def __init__(self):
@@ -47,8 +50,10 @@ class TTM_cmds(General_cmds):
 
 		info("Requesting TTM to move to center.")
 
-		mid_1=float(self.config.get("TTM_Limits", "min_1")+self.config.get("TTM_Limits", "max_1"))/2
-		mid_2=float(self.config.get("TTM_Limits", "min_2")+self.config.get("TTM_Limits", "max_2"))/2
+		mid_1=float(self.config.get("TTM_Limits", "min_1") +\
+            self.config.get("TTM_Limits", "max_1"))/2
+		mid_2=float(self.config.get("TTM_Limits", "min_2") +\
+            self.config.get("TTM_Limits", "max_2"))/2
 		self.set_pos(axis_1=mid_1, axis_2=mid_2)
 
     def set_status(self, status:int):
