@@ -94,16 +94,19 @@ def send(vals:dict):
 
     dev_stat=getStatusAll()
 
-    #throw out any ports that have the same requested value as current state
-    vals = {port:vals[port] for port in vals if vals[port] != dev_stat[port]}  
+    #format message for any ports that should be turned on
+    ons = ["N{:02d}\r\n".format(port) for port in vals\
+         if vals[port] != dev_stat[port] and vals[port]==1]
+    #format message for any ports that should be turned off  
+    offs = ["F{:02d}\r\n".format(port) for port in vals\
+         if vals[port] != dev_stat[port] and vals[port]==0]
 
-    for port in vals:
-        #get on or off part of message from value
-        msg = "N" if vals[port] == 1 else "F"
-        #port needs to be 2 digits and append return character
-        msg = "{}{:02d}\r\n".format(msg, int(port))
-        #send message to NPS
-        telnet.write(msg.encode("ascii"))
+    #send on messages
+    for msg in ons: telnet.write(msg.encode("ascii"))
+
+    #give devices time to do shutdown procedures before sending off messages
+    sleep(1)
+    for msg in offs: telnet.write(msg.encode("ascii"))
 
 def startListening(ports):
     """Appends the devices registered at ports to the listening list and checks
@@ -122,16 +125,12 @@ def startListening(ports):
 
     dev_stat = getStatusAll()
     for port in ports:
-        #silence stdout for shm creation
-        _ = io.StringIO()
-        sys.stdout = _
         try: 
             listening[port] = [shm(devs[port][0]),\
                 lambda: int(listening[port][1].get_data()[devs[port][1]])
             added[port] = listening[port][1]()
         #if port isn't in devs, go to next device
         except KeyError: continue
-        finally: sys.stdout = sys.__stdout__
 
     if len(added) > 0: send(added)
 
@@ -316,11 +315,7 @@ shm_idx={config.getint("Ports", name):config.getint("Shm_indices", name) for\
 dev_stat = getStatusAll()
 #make a list with the current status of all the devices
 data = [dev_stat(port) for port in shm_idx]
-#silence stdout to make shm
-_ = io.StringIO()
-sys.stdout = _
 Shm_D = shm(config.get("Shm_path", "Shm_D"), np.array(data, np.bool, ndmin=2))
-sys.stdout = sys.__stdout__
 
 #open communication with NPS
 connect()
@@ -335,11 +330,7 @@ data = [-1]*config.getint("Shm_dim", "Shm_P_dim")
 for port in devs: shm_p_data[shm_idx[port]] = 0
 #change any devices with active command shared memory to 1
 for port in listening: shm_p_data[shm_idx[port]] = 1
-#silence stdout to make shm
-_ = io.StringIO()
-sys.stdout = _
 Shm_P = shm(config.get("Shm_path", "Shm_P"), np.array(data, np.int8, ndmin=2))
-sys.stdout = sys.__stdout__
 
 #start asyncio loop
 while True: asyncio.run(loop)
