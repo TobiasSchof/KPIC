@@ -1,12 +1,11 @@
 #inherent python libraries
-from logging import info, basicConfig, INFO, DEBUG
 from configparser import ConfigParser
 from atexit import register
 from time import time, ctime, sleep
 from signal import signal, SIGHUP
 from subprocess import Popen as bash
 from argparse import ArgumentParser
-import sys, io, os, asyncio
+import sys, io, os, asyncio, logging
 
 #installs
 from pipython import GCSDevice
@@ -29,17 +28,14 @@ See TTM_cmds.py or type TTM in terminal to control the TTM
 #This script is not an import
 if __name__ != "__main__": sys.exit()
 
-CAN_MOVE = False #whether this device can move on startup
-QCONST = False #Whether this device should update shm constantly or only when moving
+info=logging.info
 
 class AlreadyAlive(Exception):
     """An exception to be thrown if control code is initialized twice"""
 
     pass
 
-def makeShm(path:str, data=None):
-    """Convenience method to make a shared memory structure silently"""
-async def update(self, error:int=0):
+async def update(error:int=0):
     """A method to be used with asyncio that continuously checks the
     state of the TTM and updates the shm if necessary.
 
@@ -51,28 +47,28 @@ async def update(self, error:int=0):
     while True:
         #we need an await so asyncio knows where it can interupt the loop
         await asyncio.sleep(0)
-        old = self.Shm_D.get_data()
+        old = Shm_D.get_data()
         cur_t=time()
         try:
-            qMOV=self.pidevice.IsMoving()
+            qMOV=pidev.IsMoving()
         #GCSError means that the TTM is not connected
         except GCSError:
-            if old[self.str_d["status"]] != 0 or QCONST:
-                old[self.str_d["cur_t"]] = cur_t
-                old[self.str_d["status"]] = 0
-                old[self.str_d["error"]] = error
-                self.Shm_D.set_data(old)
+            if old[str_d["status"]] != 0 or QCONST:
+                old[str_d["cur_t"]] = cur_t
+                old[str_d["status"]] = 0
+                old[str_d["error"]] = error
+                Shm_D.set_data(old)
             
         #if we are moving, just finished moving, or QCONST, update shm
         if qMOV or QCONST or old[self.str_d["status"]] == 2:
-            curpos=dev.qPOS()
-            old[self.str_d["cur_t"]] = cur_t
-            old[self.str_d["pos_1"]] = curpos["1"]
-            old[self.str_d["pos_2"]] = curpos["2"]
-            old[self.str_d["status"]] = 2 if qMOV else 1
-            old[self.str_d["error"]] = error
+            curpos=pidev.qPOS()
+            old[str_d["cur_t"]] = cur_t
+            old[str_d["pos_1"]] = curpos["1"]
+            old[str_d["pos_2"]] = curpos["2"]
+            old[str_d["status"]] = 2 if qMOV else 1
+            old[str_d["error"]] = error
 
-async def listener(self) -> int:
+async def listener() -> int:
     """A method to be used with asyncio that performs commands from 
     the command shared memory when updated.
 
@@ -87,36 +83,37 @@ async def listener(self) -> int:
         
     error=0
 
-    req_status=data[self.str_p["status"]]
+    req_status=data[str_p["status"]]
     if req_status == 1:
         info("On status requested. Checking connection to TTM.")
         #See if the last device state was off
-        dataD = self.Shm_D.get_data()
-        dev_status = dataD[self.str_d["status"]]
+        dataD = Shm_D.get_data()
+        dev_status = dataD[str_d["status"]]
         #status == 0 corresponds to device off
         if dev_status == 0:
             info("Turning on device")
-            self.device_on()
+            device_on()
             #in case turning on the device changed the command shared
             #memory, we grab it again
-            data = self.Shm_P.get_data()
+            data = Shm_P.get_data()
 
         #perform any requested actions
-        self.svo_check(data)
-        error = self.move_check(data)
+        svo_check(data)
+        error = move_check(data)
     elif req_status == -1:
         info("Killing control script.")
-        self.close()
+        close()
     elif req_status == 0:
         info("Turning off device.")
-        self.device_off()
+        device_off()
      info("Commands processed.")
      #we only want update writing to shm_d so we return the error to pass
      #it to update rather than updating directly.
      return error
 
-def move_check(self, data:list) -> int:
-    """Checks whether a move command should be sent to the device and sends it if so
+def move_check(data:list) -> int:
+    """Checks whether a move command should be sent to the device
+    and sends it if so.
 
     Inputs:
         data = the result of Shm_P.get_data
@@ -126,26 +123,27 @@ def move_check(self, data:list) -> int:
 
     info("Checking whether move is needed.")
 
+    #TODO: add open love movement
     #The loop is open. Movement has to be done differently
-    if not all(self.pidevice.qSVO().values()):
+    if not all(pidev.qSVO().values()):
         info("Loop open")
         return 2
 
     #If the loop is closed, continue
-    curpos=self.pidevice.qPOS()
-    for idx in self.axes:
-        target=data[self.str_p["pos_"+idx]].item()
-        if target < self.limits["min_"+idx] or target > self.limits["max_"+idx]:
+    curpos=pidev.qPOS()
+    for idx in axes:
+        target=data[str_p["pos_"+idx]].item()
+        if target < limits["min_"+idx] or target > limits["max_"+idx]:
             info("Movement requested outside of motion range.")
             return 1
-            elif curpos[idx] != target:
-                info("Moving axis {} to {}.".format(idx, target))
-                self.pidevice.MOV(idx, target)
+        elif curpos[idx] != target:
+            info("Moving axis {} to {}.".format(idx, target))
+            pidev.MOV(idx, target)
 
     return 0
 
 
-def svo_check(self, data:list):
+def svo_check(data:list):
     """Checks whether servo states should be changed and changes them if so
 
     Inputs:
@@ -153,17 +151,17 @@ def svo_check(self, data:list):
     """
 
     info("Checking whether servo values should change.")
-    servo_state = self.pidevice.qSVO()
+    servo_state = pidev.qSVO()
     #populate a dictionary so we can make all servo changes at once
     svo_set={}
-    for axis in self.axes:
+    for axis in axes:
         #if the current servo state is different than what's in shm_p,
         #add the change to svo_set
-        req_state = int(data[self.str_p["svo_{}".format(axis)]].item())
-        if servo_state != req_state: svo_set[axis] = req_state
+        req_state = int(data[str_p["svo_{}".format(axis)]].item())
+        if servo_state[axis] != req_state: svo_set[axis] = req_state
 
     #only send a command to the device if a change has to be made.
-    if len(svo_set > 0) : self.pidevice.SVO(svo_set)
+    if len(svo_set > 0) : pidev.SVO(svo_set)
 
 def connect_device(self):
     """Connects the TTM. If device is already connected, does nothing.
@@ -173,128 +171,116 @@ def connect_device(self):
         the config file will be rewrwitten
     """
 
-    if self.NPS.getStatusAll()[NPS_PORT] and not self.pidevice.IsConnected():
+    if qon() and not pidev.IsConnected():
         info("Connecting TTM PI controller.")
-        self.pidevice.ConnectTCPIP(ipaddress = self.config.get('Communication','IP_Address'))
+        pidev.ConnectTCPIP(ipaddress=config.get('Communication','IP_Address'))
         info("TTM connected.")
 
         info("Extracting limits from config file.")
-        self.limits = {}
-        for name in self.config.options('TTM_Limits'):
-            self.limits[name] = self.config.getfloat('TTM_Limits', name)
+        global limits
+        limits = {name:config.getfloat("TTM_Limits", name) for name in \
+            config.options("TTM_Limits")}
         info("Config limits: {}".format(self.limits))
 
         info("Checking that config limits are within software limits.")
-        #keep track if config file should be rewritten
+        #keep track of whether config file should be rewritten
         change=False
         #get software limits
-        softmin=self.pidevice.qTMN()
-        softmax=self.pidevice.qTMX()
-        for axis in self.axes:
-            if self.limits["min_{}".format(axis)] < softmin[axis]:
-                info("Changing min_{}".format(axis))
-                self.limits["min_{}".format(axis)] = softmin[axis]
-                self.config.set("TTM_Limits", "min_{}".format(axis), str(softmin[axis]))
+        softmin=pidev.qTMN()
+        softmax=pidev.qTMX()
+        for axis in axes:
+            min_="min_{}".format(axis)
+            max_="max_{}".format(axis)
+            if limits[min_] < softmin[axis]:
+                info("Changing {}".format(min_))
+                limits[min_] = softmin[axis]
+                config.set("TTM_Limits", min_, str(softmin[axis]))
                 change=True 
-            if self.limits["max_{}".format(axis)] < softmax[axis]:
-                info("Changing max_{}".format(axis))
-                self.limits["max_{}".format(axis)] = softmax[axis]
-                self.config.set("TTM_Limits", "max_{}".format(axis), str(softmax[axis]))
+            if limits[max_] < softmax[axis]:
+                info("Changing {}".format(max_))
+                limits[max_] = softmax[axis]
+                config.set("TTM_Limits", max_, str(softmax[axis]))
                 change=True 
+        #if a change is necessary, rewrite the config file
         if change:
             with open("TTM.ini", "w") as file:
                 info("Changing limits in config file.")
                 self.config.write(file)
 
-        data=self.Shm_P.get_data()
+        info("Getting command shared memory")
+        data=Shm_P.get_data()
 
         if CAN_MOVE:
             info("Setting servos to initial values.")
             #load the starting servo values into a dict
-            svo_set = {x:int(data[self.str_p["svo_{}".format(x)]].item()) for x in self.axes}
-            self.pidevice.SVO(svo_set)
+            svo_set = {axis:int(data[str_p["svo_{}".format(axis)]].item()) for\
+                axis in axes}
+            pidev.SVO(svo_set)
             info("Moving to initial positions.")
             #load the starting position values into a dict
-            pos_i = {x:data[self.str_p["pos_".format(x)]].item() for x in self.axes}
-            self.pidevice.MOV(pos_i)
+            pos_i = {axis:data[str_p["pos_".format(axis)]].item() for\
+                 axis in axes}
+            pidev.MOV(pos_i)
         else:
             info("Cannot move to initial positions. Changing command shared memory values.")
-            pos=self.pidevice.qPOS()
+            pos=pidev.qPOS()
             #get values for each axis
-            for axis in self.axes:
-                data[self.str_p["pos_{}".format(axis)]] = pos[axis]
-                data[self.str_p["svo_{}".format(axis)]] = self.pidevice.qSVO()[axis]
-            self.Shm_P.set_data(data)
+            for axis in axes:
+                data[str_p["pos_{}".format(axis)]] = pos[axis]
+                data[str_p["svo_{}".format(axis)]] = pidev.qSVO()[axis]
+            Shm_P.set_data(data)
             #decrement the semaphore value since we just wrote to shm_p
-            self.Shm_P.get_data(check=True)
+            Shm_P.get_data(check=True)
 
-def device_off(self):
+def device_off():
     """Turns off the TTM using the NPS"""
 
     info("Checking if TTM is connected.")
-    if self.pidevice is not None and self.pidevice.IsConnected():
+    if pidev is not None and pidev.IsConnected():
         #Standard procedure for turning off TTM
         info("Turning off servos.")
-        self.pidevice.SVO({x:0 for x in self.axes})
+        pidev.SVO({axis:0 for axis in axes})
         info("Zeroing voltage.")
-        self.pidevice.SVA({x:0 for x in self.axes})
+        pidev.SVA({axis:0 for axis in axes})
         info("Closing connection to TTM.")
-        self.pidevice.CloseConnection()
+        pidev.CloseConnection()
 
-    info("Checking if TTM is off.")
-    if self.NPS.getStatusAll()[NPS_PORT]:
-        info("Turning TTM off.")
-        self.NPS.turnOff(NPS_PORT)
-        #Wait for device to power off completely before continuing
-        while self.NPS.getStatusAll()[NPS_PORT]: sleep(.5)
+    info("Waiting for TTM to turn off.")
+    while qon(): sleep(.5)
 
-def device_on(self):
-    """Turns on the TTM using the NPS"""
+def device_on():
+    """Waits for NPS to turn on device and then connects"""
 
-    info("Checking if TTM is on.")
-    if not self.NPS.getStatusAll()[NPS_PORT]:
-        info("Turning on TTM.")
-        self.NPS.turnOn(NPS_PORT + 1)
-        #Wait for device to turn on
-        while not self.NPS.getStatusAll()[NPS_PORT]: sleep(.5)
+    info("Waiting for NPS to turn on device.")
+    while not qon(): sleep(.1)
 
     info("Opening connection to TTM.")
-    self.connect_device()
+    connect_device()
 
-def close(self):
+def close():
     """A cleanup method.
 
     Closes all communication with the TTM, deletes command shared memory,
     and closes tmux session.
     """
 
-    info("Checking whether this instance is alive.")
-    try:
-        #if constructor didn't get to shm_p, this will raise an error
-        self.Shm_P
-        info("Command shared memory initialized, instance alive.")
-        info("Continuing with cleanup.")
-    except AttributeError:
-        info("No command shared memory initialized. Doing nothing.")
-        return
-
     info("Deleting command shared memory file.")
     #We want to delete shm_p so scripts can't think the control script
     #is alive.
     try:
-        os.remove(self.p_shm_name)
+        os.remove(p_shm_name)
     except FileNotFoundError:
         info("No command shared memory found.")
 
     info("Updating state shared memory file.")
     try:
-        data=self.Shm_D.get_data()
-        stat=data[self.str_d["status"]].item()
+        data=Shm_D.get_data()
+        stat=data[str_d["status"]].item()
         if stat == 2: stat = 1
         if stat in [1, 0]:
-            data[self.str_d["status"]] = stat-2
-            data[self.str_d["cur_t"]] = time()
-            self.Shm_D.set_data(data)
+            data[str_d["status"]] = stat-2
+            data[str_d["cur_t"]] = time()
+            Shm_D.set_data(data)
     #This shouldn't ever happen but in a cleanup method we don't want
     #exceptions.
     except AttributeError:
@@ -302,9 +288,9 @@ def close(self):
 
     info("Checking if TTM is connected.")
     try:    
-        if self.pidevice.IsConnected():
+        if pidev.IsConnected():
             info("Closing connection to TTM.")
-            self.pidevice.CloseConnection()
+            pidev.CloseConnection()
     except OSError:
         info("PIPython not loaded properly.")
     except AttributeError:
@@ -332,41 +318,30 @@ parser.add_argument("-c", action="store_true")
 
 args = parser.parse_args()
 
-CAN_MOVE = args.m
-QCONST = args.c
+CAN_MOVE = args.m #whether this device can move on startup
+QCONST = args.c #whether to update constantly or only when moving
 
 if args.dd != -1:
     if not args.dd is None: log_path=args.dd
-    basicConfig(format=debug_format, datefmt="%H:%M:%S",\
-        filename=log_path, level=INFO, filemode="w")
+    logging.basicConfig(format=debug_format, datefmt="%H:%M:%S",\
+        filename=log_path)
+    logging.root.setLevel(logging.DEBUG)
 elif args.d != -1:
     if not args.d is None: log_path=args.d
     basicConfig(format=debug_format, datefmt="%H:%M:%S", \
-        filename=log_path, level=DEBUG, filemode="w")
-
-#register handles keyboard interupts and exceptions
-#signal handles tmux kill-ses
-info("Registering cleanup.")
-register(self.close)
-signal(SIGHUP, self.close)
+        filename=log_path)
+    logging.root.setLevel(logging.INFO)
 
 #shm d is state shared memory.
 d_shm_name=config.get("Shm_path", "Shm_D")
 info("Reading state shared memory.")
 
 #load the indices for the shared memory
-str_d={}
-for name in config.options("Shm_D_Content"):
-    str_d[name]=config.getint("Shm_D_Content", name)
+str_d={name:config.getint("Shm_D_Content", name) for name in \
+    config.options("Shm_D_Content")}
 
-#silence std out for shm creation
-_ = io.StringIO()
-sys.stdout = _
-
+#for now we just want to connect to shm to see if there's already a script
 Shm_D=shm(d_shm_name)
-
-#return std out to normal
-sys.stdout=sys.__stdout__
 
 try:
     info("Checking whether there is already an active control script.")
@@ -379,67 +354,82 @@ try:
 #This means that shm_d doesn't exist, so make it
 except AttributeError:
     info("No state shared memory file. Creating file.")
-    data = [] 
-    for name in config.options("Shm_D_Content"):
-        data.append(config.getfloat("Shm_D_Init", name))
-
-    _ = io.StringIO()
-    sys.stdout = _
-
-    self.Shm_D  = shm(d_shm_name, data = data)
-    sys.stdout=sys.__stdout__
+    #load initial values from config
+    data = [config.getfloat("Shm_D_Init", name) for name in \
+        config.options("Shm_D_Content")] 
+    #we need float to hold the position 
+    #NOTE: might be able to get away with float16 but can't find 
+        #precision of stage to find out. 
+    Shm_D  = shm(d_shm_name, data=np.array(data, np.float32, ndmin=2)
     info("State shared memory file created.")
 
-info("No duplicate control scripts, continuing with initialization.")
+info("No duplicate control script, continuing with initialization.")
+
+#NOTE: we want to register cleanup after Shm_D is initalized so we can edit it
+#register handles keyboard interrupts and exceptions
+#signal handles tmux kill-ses
+info("Registering cleanup.")
+register(self.close)
+signal(SIGHUP, self.close)
+
 #shm p is command shared memory, 
-self.p_shm_name=self.config.get("Shm_path", "Shm_P")
+p_shm_name=config.get("Shm_path", "Shm_P")
 info("Initializing command shared memory from config file.")
-data=np.zeros([np.int(self.config.getfloat("Shm_dim", "Shm_P_dim")), 1])
-#here we load indices for the shared memory and populate data
-self.str_p = {}
-for name in self.config.options("Shm_P_Content"):
-    self.str_p[name]=np.int(self.config.getfloat("Shm_P_Content", name))
-    data[self.str_p[name],0]=self.config.getfloat("Shm_P_Init", name)
+#get the names of the values to be stored in shm_p
+names = self.config.options("Shm_P_Content")
+#get shm indices for each value
+str_p = {name:config.getint("Shm_P_Content", name) for name in names}
+#get initial value for each
+data=[config.getfloat("Shm_P_Init", name) for name in names]
 
-_ = io.StringIO()
-sys.stdout = _
+#use float32 for position as above
+Shm_P=shm(p_shm_name, data=np.array(data, np.float32, ndmin=2))
 
-self.Shm_P=shm(self.p_shm_name, data=data)
-
-sys.stdout=sys.__stdout__
-        
-#creating the shm incrememnts the semaphore, so we zero it
+#creating the shm incremements the semaphore, so we decrement it
 self.Shm_P.get_data(check=True)
 info("Command shared memory successfully created.")
 
-info("Initializing NPS.")
-self.NPS=NPS()
+info("Finding NPS shared memories")
+_=ConfigParser()
+_.read("NPS.ini")
+#TODO: in executable, check if NPS shm exists and warn user if not
+#set nps to listen for TTM
+nps_shm_p = _.get("Shm_path", "Shm_P")
+if not os.path.isfile(nps_shm_p):
+    tmp = shm(nps_shm_p)
+    tmp_data = tmp.get_data()
+    tmp_data[_.getint("Shm_indices", "TTM")] = 1
+    tmp.set_data(tmp_data)
+
+#initialize NPS shm_d and store index of TTM (use qon defined below)
+NPS_Shm_D = [shm(_.get("Shm_path", "Shm_D"), _.getint("Shm_indices", "TTM")]
+#create lambda method to easily fetch TTM on status
+qon = lambda: bool(NPS_Shm_D[0].get_data()[NPS_Shm_D[1]])
 
 #set up PI device.
-self.pidevice=GCSDevice()
+pidev=GCSDevice()
 #the controller actually has 4 axis but the latter 2 are for calibration,
 #etc so should never be touched. Therefore, we limit our axes to 1 and 2.
-self.axes=["1", "2"]
-if self.NPS.getStatusAll()[NPS_PORT] == True: self.connect_device()
+axes=["1", "2"]
+if qon(): connect_device()
     
 info("Starting display drawer")        
 #we use popen to start the drawing scrip separately to prevent blocking
-display_cmd = "kpython3 TTM_draw"
+display_cmd = "kpython3 TTM_draw.py"
 bash(display_cmd.split(" "))
 
-info("Beginning loop.")
-self.loop()
-
-async def manager(self, error:int=0) -> int:
+async def manager(error:int=0) -> int:
     """A manager to start the asyncio tasks"""
 
     #We start both methods as tasks, passing the error to update
-    task1 = asyncio.create_task(self.update(error))
-    task2 = asynvio.create_task(self.listener())
+    task1 = asyncio.create_task(update(error))
+    task2 = asynvio.create_task(listener())
 
     #We only wait for task 2 to finish because task1 will continuously
     #check but we need to update the error if listener runs.
     return await task2
 
 error = 0
-while True: error = asyncio.run(self.manager(error))
+
+info("Beginning loop.")
+while True: error = asyncio.run(manager(error))
