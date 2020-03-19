@@ -12,9 +12,8 @@ from pipython import GCSDevice
 from pipython.gcserror import GCSError
 import numpy as np
 
-#telescope libraries
-from sce_shmlib import shm
-from NPS_lib import NPS
+#nfiuserver libraries
+from shmlib import shm
 
 """
 

@@ -1,38 +1,29 @@
+#inherent python libraries
 from configparser import ConfigParser
 from time import sleepi, gmtime
 import sys, io
 
-from sce_shmlib import shm
+#nfiuserver libraries
+from shmlib import shm
 
 DATA = os.environ.get("DATA") #the path to the data directory
 LOG_FILE = "FIU_TTM.log" #the name of the log file (appended to DATA/YYYMMDD/)
-#the values to write into the log if they change
+#the previous log values (so we know if the new ones need to be logged)
 OLD_VALS = {"pos":None, "servos":None, "status":None, "error":None}
 
 config=ConfigParser()
 config.read("TTM.ini")
 
-#shared memory creation is noisy so we silence it
-_ = io.StringIO()
-sys.stdout = _
-
 #shm data is a list so we populate a dictionary with which
 #information is at what index.
-str_d={}
-for name in config.options("Shm_D_Content"):
-    str_d[name]=np.int(config.getfloat("Shm_D_Content", name))
-
+str_d={name:config.getint("Shm_D_Content", name) for name in \
+    config.options("Shm_D_Content")}
 Shm_D=shm(config.get("Shm_path", "Shm_D"))
 
 #shm p is command shared memory
-
-str_p={}
-for name in config.options("Shm_P_Content"):
-    str_p[name]=np.int(config.getfloat("Shm_P_Content", name))
-
+str_p={name:config.getint("Shm_P_Content", name) for name in \
+    config.options("Shm_P_Content")}
 Shm_P=shm(config.get("Shm_path", "Shm_P"))
-
-sys.stdout = sys.__stdout__
 
 async def main():
     """A method that enables asyncio use.
@@ -62,22 +53,24 @@ async def draw(dataD, dataP):
         dataP = the result of Shm_P.get_data()
     """
 
-    #Note, the script off statuses in state shm will never appear so we don't deal with them.
+    #Note, the script off statuses in state shm will never appear
     dpos=[dataD[str_d["pos_1"]].item(), dataD[str_d["pos_2"]].item()]
        
     ppos=[dataP[str_p["pos_1"]].item(), dataP[str_p["pos_2"]].item()]
         
-    dstatus={2:"Device moving", 1:"Script: on | Device: on", 0:"Script: on | Device: off"}
+    dstatus={2:"Device moving", 1:"Script: on | Device: on", \
+        0:"Script: on | Device: off"}
     dstatus=dstatus[dataD[str_d["status"]].item()]
 
     pstatus={1:"Device on", 0:"Device off", -1:"Kill script"}
     pstatus=pstatus[dataP[str_p["status"]].item()]
 
-    derror={0:"No error", 1:"Move requested beyond limits", \
-                2:"Loop Open"}
+    derror={0:"No error", 1:"Move requested beyond limits", 2:"Loop Open"}
     derror=derror[dataD[str_d["error"]].item()]
 
-    servostat="on" if dataP[str_p["svos"]]==1 else "off"
+    _ = {1:"on", 0:"off"}
+    servostat=[_[dataP[str_p["svo_{}".format(axis)]].item()]\
+        for axis in ["1","2"]]
 
     update_t=ctime(dataD[str_d["cur_t"]].item())
 
@@ -115,17 +108,17 @@ async def update(dataD, dataP):
 
     cur_path = "{}{}".format(DATA, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
-    if not os.path.isdir(cur_path): 
-        os.mkdir(cur_path)
+    if not os.path.isdir(cur_path): os.mkdir(cur_path)
 
     log_format = "%(message)s"
 
     #start logger
     logging.basicConfig(format=log_format,\
-        filename="{}/{}".format(cur_path, LOG_PATH), level=60)
+        filename="{}/{}".format(cur_path, LOG_FILE))
+    logging.root.setLevel(60)
     
     new_vals={}
-    new_vals["pos"]=[dataD[str_d["pos_{}".format(axis)]].item()\
+    new_vals["pos"] = [dataD[str_d["pos_{}".format(axis)]].item()\
         for axis in [1, 2]] 
     new_vals["servos"] = [dataP[str_p["svo_{}".format(axis)]].item()\
         for axis in [1, 2]]
@@ -133,13 +126,17 @@ async def update(dataD, dataP):
     new_vals["error"] = dataD[str_d["error"]].item()
 
     log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+    #start log message with date and time
     msg="{:<11}{:<10}update:".format(date, log_t)
+    #have next part variable
     msg=msg+"{b:1}{name:>6} = {val}"
+    #we will be updating this so make sure we have the global parameter
+    global OLD_VALS
     for item in OLD_VALS:
         if OLD_VALS[item] != new_vals[item]:
             #log a change if there's a new value
-            logging.log(60, msg.format(b="", name=item, val=new_vals[item])
-            #update msg (this way we change after the first
+            logging.log(60, msg.format(b="", name=item, val=new_vals[item]))
+            #update msg (this way we don't add date and time after first log)
             msg="{b:<29}{name:<6} = {val}"
 
     #update the last values in the log
