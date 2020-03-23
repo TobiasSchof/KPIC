@@ -17,10 +17,10 @@ from shmlib import shm
 
 """
 
-THIS IS A CONTROL SCRIPT FOR THE TIP TILT MIRROR
+THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT's TIP TILT MIRROR
 AND NOT FOR USE BY USER
 
-See TTM_cmds.py or type TTM in terminal to control the TTM 
+See FIU_TTM_cmds.py or type FIU_TTM in terminal to control the TTM 
 
 """
 
@@ -46,15 +46,14 @@ async def update(error:int=0):
     while True:
         #we need an await so asyncio knows where it can interupt the loop
         await asyncio.sleep(0)
-        old = Shm_D.get_data()
-        cur_t=time()
+        old = Pos_D.get_data().item()
+        cur_t = time()
         try:
             qMOV=pidev.IsMoving()
         #GCSError means that the TTM is not connected
         except GCSError:
-            if old[str_d["status"]] != 0 or QCONST:
-                old[str_d["cur_t"]] = cur_t
-                old[str_d["status"]] = 0
+            if Stat_D.get_data().item() != 0 or QCONST:
+                Stat_D.set_data() = 0
                 old[str_d["error"]] = error
                 Shm_D.set_data(old)
             
