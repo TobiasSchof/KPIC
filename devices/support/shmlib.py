@@ -86,7 +86,7 @@ Table taken from Python 2 documentation, section 7.3.2.2.
 '''
 
 class shm:
-    def __init__(self, fname=None, data=None, verbose=False, packed=False, nbkw=1, nbSems:int=1):
+    def __init__(self, fname=None, data=None, verbose=False, packed=False, nbkw=0, nbSems:int=1):
         ''' --------------------------------------------------------------
         Constructor for a SHM (shared memory) object.
 
@@ -181,7 +181,7 @@ class shm:
         register(self.close) #handles ctrl-c and exceptions
         signal(SIGHUP, self.close) #handles tmux kill-ses
 
-    def create(self, fname, data, nbkw=1):
+    def create(self, fname, data, nbkw=0):
         ''' --------------------------------------------------------------
         Create a shared memory data structure
 
@@ -206,18 +206,13 @@ class shm:
         info(fname.split('/')[2].split('.')[0])
         self.mtdata['imname'] = fname.split('/')[2].split('.')[0]#fname.ljust(80, ' ')
         self.mtdata['naxis']  = data.ndim
-        self.mtdata['size']   = data.shape
+        self.mtdata['size']   = data.shape+((0,)*(3-len(data.shape)))
         self.mtdata['nel']    = data.size
         self.mtdata['atype']  = self.select_atype()
         self.mtdata['shared'] = 1
         self.mtdata['nbkw']   = nbkw
         self.mtdata['sem']    = self.nbSems
         
-        if data.ndim == 2:
-            self.mtdata['size'] = self.mtdata['size'] + (0,)
-        if data.ndim == 1:
-            self.mtdata['size'] = self.mtdata['size'] + (0, 0,)
-
         self.select_dtype()
 
         # ---------------------------------------------------------
@@ -225,8 +220,6 @@ class shm:
         # ---------------------------------------------------------
         fmts = self.hdr_fmt.split(' ')
         minibuf = ''.encode()
-        print(fmts)
-        print("So there.")
         for i, fmt in enumerate(fmts):
             if i != 2:
                 if isinstance(self.mtdata[mtkeys[i]],str):
@@ -235,7 +228,6 @@ class shm:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]])
             else:
                 tpl = self.mtdata[mtkeys[i]]
-                print(tpl)
                 minibuf += struct.pack(fmt, tpl[0], tpl[1], tpl[2])
             if mtkeys[i] == "sem": # the mkey before "cnt0" !
                 self.c0_offset = len(minibuf)
@@ -279,10 +271,17 @@ class shm:
 
         Clean close of buffer, release the file descriptor.
         -------------------------------------------------------------- '''
-        self.buf.close()
-        os.close(self.fd)
-        self.fd = 0
-        return(0)
+        #try closing the buffer 
+        try: self.buf.close()
+        #OSError means the buffer doesn't exist
+        except OSError: pass
+
+        #as the try block above
+        try:
+            os.close(self.fd)
+            self.fd = 0
+            return(0)
+        except OSError: pass
 
     def read_meta_data(self, verbose=True):
         ''' --------------------------------------------------------------
