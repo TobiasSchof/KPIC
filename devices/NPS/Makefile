@@ -1,13 +1,13 @@
-# NIRSPEC fiber injection unit. Build network power switch
+# NIRSPEC fiber injection unit. Build tip-tilt mirror
 
-override SYSNAM = kss/nirspec/nsfiu/devices/NPS
+override SYSNAM = kss/nirspec/nsfiu/devices/TTM
 override VERNUM = 1.0
 
 # If I knew that code would not work with Python 2 I would:
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-RELLIB = NPS_Control.py
+RELLIB = NPS_cmds.py
 RELDAT = NPS.ini
 LIBSUB = python
 ##FILES = $(RELBIN)
