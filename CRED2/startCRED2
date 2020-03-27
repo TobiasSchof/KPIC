@@ -1,0 +1,25 @@
+#!/bin/csh
+
+/opt/EDTpdv/initcam -c 0 -f /kroot/src/kss/nirspec/nsfiu/dev/config/cred2_FGSetup_14bit.cfg 
+
+tmux new-session -d -s ircam0ctrl
+sleep 0.1
+tmux new-session -d -s ircam0run
+
+tmux send-keys -t ircam0ctrl "" C-c
+tmux send-keys -t ircam0ctrl "" C-c
+tmux send-keys -t ircam0run "" C-c
+tmux send-keys -t ircam0run "" C-c
+
+tmux send-keys -t ircam0ctrl "cd /kroot/src/kss/nirspec/nsfiu/dev" C-m
+tmux send-keys -t ircam0run "cd /kroot/src/kss/nirspec/nsfiu/dev" C-m
+sleep 1.0
+
+tmux send-keys -t ircam0ctrl "./ircam0server" C-m
+
+
+#tmux send-keys -t ircam0ctrl "setcrop 0" C-m
+tmux send-keys -t ircam0ctrl "start" C-m
+
+
+
