@@ -150,14 +150,20 @@ class shm:
 
         self.fname = fname
         # ---------------
-        # Creating semaphore, x9
-        singleName=self.fname.split('/')[2].split('.')[0]
+        # Creating semaphore, *nbSems
+        singleName=self.fname.split('/')[-1].split('.')[0]
         self.semaphores = []
         for k in range(nbSems):
             semName = '/'+singleName+'_sem'+'0'+str(k)
             #info('creating semaphore '+semName)
-            self.semaphores.append(posix_ipc.Semaphore(semName, flags=posix_ipc.O_CREAT))
+            self.semaphores.append(posix_ipc.Semaphore(semName, \
+                flags=posix_ipc.O_CREAT))
         info(str(k)+' semaphores created or re-used')
+
+
+        #Create lock semaphore
+        self.lock = posix_ipc.Semaphore("/"+singleName+"_lock", \
+            flags=posix_ipc.O_CREAT, initial_value=1)
 
         # ---------------
         if ((not os.path.exists(fname)) or (data is not None)):
@@ -271,17 +277,28 @@ class shm:
 
         Clean close of buffer, release the file descriptor.
         -------------------------------------------------------------- '''
-        #try closing the buffer 
+        #try closing the buffer (the shared memory itself) 
         try: self.buf.close()
-        #OSError means the buffer doesn't exist
-        except OSError: pass
+        #do nothing if buffer doesn't exist or is already closed
+        except (OSError, ValueError): pass
 
-        #as the try block above
+        #as before for semaphores
+        try:
+            for sem in self.semaphores:
+                try: sem.close()
+                except OSError: pass
+        except ValueError: pass
+
+        #as before for lock
+        try: self.lock.close()
+        except (OSError, ValueError): pass
+
+        #as before for the underlying file
         try:
             os.close(self.fd)
             self.fd = 0
             return(0)
-        except OSError: pass
+        except (OSError, ValueError): pass
 
     def read_meta_data(self, verbose=True):
         ''' --------------------------------------------------------------
@@ -521,15 +538,13 @@ class shm:
 
         if check is not False:
             self.semaphores[semNb].acquire()
-#            while self.get_counter() <= check:
-                #sys.stdout.write('\rcounter = %d' % (c0,))
-                #sys.stdout.flush()
-#                pass#time.sleep(0.001)
-
-            #sys.stdout.write('---\n')
-
+        
+        #Acquire the lock
+        self.lock.acquire()
         data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
-
+        #Release the lock
+        self.lock.release()
+        
         if reform:
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
             data = np.reshape(data, rsz)
@@ -547,11 +562,13 @@ class shm:
         i0 = self.im_offset                                  # image offset
         i1 = i0 + self.img_len                               # image end
 
-        while True:
-            try: self.semaphores[semNb].acquire(0); break
-            except posix_ipc.BusyError: await asyncio.sleep(0)
+        Future = asyncio.ensure_future(self.semaphores[semNb].acquire())
 
+        #Acquire the lock
+        self.lock.acquire()
         data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
+        #Release the lock
+        self.lock.release()
 
         if reform:
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
@@ -577,10 +594,18 @@ class shm:
         i0 = self.im_offset                                      # image offset
         i1 = i0 + self.img_len                                   # image end
         if check_dt is True:
+            #Acquire the lock
+            self.lock.acquire()
             self.buf[i0:i1] = data.astype(self.npdtype()).tostring()
+            #Release the lock
+            self.lock.release()
         else:
             try:
+                #Acquire the lock
+                self.lock.acquire()
                 self.buf[i0:i1] = data.tostring()
+                #Release the lock
+                self.lock.release()
             except:
                 info("Warning: writing wrong data-type to shared memory")
                 return
