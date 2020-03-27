@@ -1,29 +1,45 @@
 #inherent python libraries
 from configparser import ConfigParser
-from time import sleepi, gmtime
+from time import sleep, gmtime, time
 import sys, io
 
 #nfiuserver libraries
 from shmlib import shm
 
+"""
+A script to continuously maintain a display of shm values in the TTM tmux 
+session and log any changes to the state shared memory. Does not run faster
+than once per 5 seconds
+"""
+
 DATA = os.environ.get("DATA") #the path to the data directory
 LOG_FILE = "FIU_TTM.log" #the name of the log file (appended to DATA/YYYMMDD/)
-#the previous log values (so we know if the new ones need to be logged)
-OLD_VALS = {"pos":None, "servos":None, "status":None, "error":None}
+
 
 config=ConfigParser()
 config.read("TTM.ini")
 
-#shm data is a list so we populate a dictionary with which
-#information is at what index.
-str_d={name:config.getint("Shm_D_Content", name) for name in \
-    config.options("Shm_D_Content")}
-Shm_D=shm(config.get("Shm_path", "Shm_D"))
+#all the info we need to connect to a shm is in Shm_Info
+Stat_D = config.get("Shm_Info", "Stat_D").split(",")
+Stat_D = shm(Stat_D[0], nbSems=int(Stat_D[1]))
 
-#shm p is command shared memory
-str_p={name:config.getint("Shm_P_Content", name) for name in \
-    config.options("Shm_P_Content")}
-Shm_P=shm(config.get("Shm_path", "Shm_P"))
+Pos_D = config.get("Shm_Info", "Pos_D").split(",")
+Pos_D = shm(Pos_D[0], nbSems=int(Pos_D[1]))
+
+Error = config.get("Shm_Info", "Error").split(",")
+Error = shm(Error[0], nbSems=int(Error[1]))
+
+Stat_P = config.get("Shm_Info", "Stat_P").split(",")
+Stat_P = shm(Stat_P[0], nbSems=int(Stat_P[1]))
+
+Pos_P = config.get("Shm_Info", "Pos_P").split(",")
+Pos_P = shm(Pos_P[0], nbSems=int(Pos_P[1]))
+
+Svos = config.get("Shm_Info", "Svos").split(",")
+Svos = shm(Svos[0], nbSems=int(Svos[1]))
+
+#for convenience, we lump all shms together
+SHMS=[Stat_D, Pos_D, Error, Stat_P, Pos_P, Svos]
 
 async def main():
     """A method that enables asyncio use.
@@ -31,21 +47,22 @@ async def main():
     Waits 5 seconds between iterations.
     """
 
-    #listens for updates on both shared memories
-    listenD = asyncio.create_task(Shm_D.await_data())
-    listenP = asyncio.create_task(Shm_P.await_data())
+    #listens for updates on all shared memories
+    listeners = [asyncio.create_task(SHM.await_data()) for SHM in SHM]
 
-    await asyncio.wait([listenD, listenP], return_when=asyncio.FIRST_COMPLETED)
+    done, _ = await asyncio.wait(listeners, return_when=asyncio.FIRST_COMPLETED)
 
-    dataD=Shm_D.get_data()
-    dataP=Shm_P.get_data()
+    updates=[]
+    if listeners[SHMS.index(Stat_D)] in done: updates.append(1)
+    if listeners[SHMS.index(Pos_D)] in done: updates.append(2)
+    if listeners[SHMS.index(Error)] in done: updates.append(3)
 
-    update(dataD, dataP)
-    draw(dataD, dataP)
+    update(updates)
+    draw()
 
     sleep(5)
 
-async def draw(dataD, dataP):
+async def draw():
     """Draws a display with shared memory values.
 
     Inputs:
@@ -53,57 +70,66 @@ async def draw(dataD, dataP):
         dataP = the result of Shm_P.get_data()
     """
 
-    #Note, the script off statuses in state shm will never appear
-    dpos=[dataD[str_d["pos_1"]].item(), dataD[str_d["pos_2"]].item()]
+    #need to take data out of numpy array for proper string conversion
+    #we store time here too so we get time and position at same isntance
+    dpos = [pos for pos in Pos_D.get_data()]
        
-    ppos=[dataP[str_p["pos_1"]].item(), dataP[str_p["pos_2"]].item()]
+    #need to take data out of numpy array for proper string conversion
+    ppos = [pos for pos in Pos_P.get_data()]
         
+    #translate the state status for user
     dstatus={2:"Device moving", 1:"Script: on | Device: on", \
         0:"Script: on | Device: off"}
-    dstatus=dstatus[dataD[str_d["status"]].item()]
+    dstatus=dstatus[Stat_D.get_data()[0]]
 
-    pstatus={1:"Device on", 0:"Device off", -1:"Kill script"}
-    pstatus=pstatus[dataP[str_p["status"]].item()]
+    #translate the command status for user
+    pstatus={True:"Device on", False:"Device off"}
+    pstatus=pstatus[Stat_P.get_data()[0]]
 
+    #translate the error for user
     derror={0:"No error", 1:"Move requested beyond limits", 2:"Loop Open"}
-    derror=derror[dataD[str_d["error"]].item()]
+    derror=derror[Error.get_data()[0]]
 
-    _ = {1:"on", 0:"off"}
-    servostat=[_[dataP[str_p["svo_{}".format(axis)]].item()]\
-        for axis in ["1","2"]]
+    #translate servo status for user
+    servostat = {True:"on", False:"off"}
+    servostat = [servostat(svo) for svo in Svos.get_data()]
 
-    update_t=ctime(dataD[str_d["cur_t"]].item())
+    #get time from dpos
+    update_t = ctime(dpos[-1])
+
+    #remove time from dpos
+    dpos = dpos[:-1]
 
     print("\033c", end="")
     print(u"\u250F""{:<77}"u"\u2513".format(u"\u2501"*77))
     print(u"\u2503""{:^77}"u"\u2503".format("TTM Controller"))
-    print(u"\u2523""{:<38}"u"\u2533""{:<38}"u"\u252B".format(u"\u2501"*38, u"\u2501"*38))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Device state:", "Requests:"))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Position: ", "Position:"))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(str(dpos), str(ppos)))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Time of last update:", "Servo status:"))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(update_t, str(servostat)))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Status:", "Status:"))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(dstatus, pstatus))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format("Error message:", ""))
-    print(u"\u2503"" {:<37}"u"\u2503"" {:<37}"u"\u2503".format(derror, ""))
+    print(u"\u2523""{0:<38}"u"\u2533""{0:<38}"u"\u252B".format(u"\u2501"*38))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Device state:", "Requests:"))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Position: ", "Position:"))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format(str(dpos), str(ppos)))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Time of last update:", "Servo status:"))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format(update_t, str(servostat)))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Status:", "Status:"))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format(dstatus, pstatus))
+    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
+    print(u"\u2503"" {:<37}"u*2+"\u2503".format("Error message:", ""))
+    print(u"\u2503"" {:<37}"u"*2+\u2503".format(derror, ""))
     print(u"\u2517"+u"\u2501"*38+u"\u253B"+u"\u2501"*38+u"\u251B")
 
-async def update(dataD, dataP):
+async def update(update:list):
     """Updates the log.
 
-    TODO: update KTL keywords (Do I want to do this here or add another 
-    listener?)
     Inputs:
-        dataD = the result of Shm_D.get_data()
-        dataP = the result of Shm_P.get_data()
+        update = the list of state shms that have been updated:
+            1 = Stat_D
+            2 = Pos_D
+            3 = Error
     """
 
-    gmt = gmtime(dataD[str_d["cur_t"]].item())
+    gmt = gmtime(time())
     date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
 
     cur_path = "{}{}".format(DATA, date.replace("/", ""))
@@ -115,15 +141,14 @@ async def update(dataD, dataP):
     #start logger
     logging.basicConfig(format=log_format,\
         filename="{}/{}".format(cur_path, LOG_FILE))
+    #logging seems to be fickle and not log if level is set in basicconfig
+    #not as the first command in a script, so set the level separately
     logging.root.setLevel(60)
     
-    new_vals={}
-    new_vals["pos"] = [dataD[str_d["pos_{}".format(axis)]].item()\
-        for axis in [1, 2]] 
-    new_vals["servos"] = [dataP[str_p["svo_{}".format(axis)]].item()\
-        for axis in [1, 2]]
-    new_vals["status"] = dataD[str_d["status"]].item()
-    new_vals["error"] = dataD[str_d["error"]].item()
+    #translate the update list to names and values
+    names = {1:"status", 2:"position", 3:"error"}
+    vals = {"status":Stat_D.get_data()[0], "error":Error.get_data()[0],\
+        "position":[pos for pos in Pos_D.get_data()[:-1]]}
 
     log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
     #start log message with date and time
@@ -131,18 +156,13 @@ async def update(dataD, dataP):
     #have next part variable
     msg=msg+"{b:1}{name:>6} = {val}"
     #we will be updating this so make sure we have the global parameter
-    global OLD_VALS
-    for item in OLD_VALS:
-        if OLD_VALS[item] != new_vals[item]:
-            #log a change if there's a new value
-            logging.log(60, msg.format(b="", name=item, val=new_vals[item]))
-            #update msg (this way we don't add date and time after first log)
-            msg="{b:<29}{name:<6} = {val}"
-
-    #update the last values in the log
-    OLD_VALS=new_vals
-
-    #TODO: add KTL writer dispatch writer (Do I want to do this here?)
+    for item in update:
+        #log a change if there's a new value
+        name = names[item]
+        val = vals[name]
+        logging.log(60, msg.format(b="", name=name, val=val))
+        #update msg (this way we don't add date and time after first log)
+        msg="{b:<29}{name:<6} = {val}"
 
 #continuously run the asyncio processes
 while True: asyncio.run(main())
