@@ -562,7 +562,9 @@ class shm:
         i0 = self.im_offset                                  # image offset
         i1 = i0 + self.img_len                               # image end
 
-        Future = asyncio.ensure_future(self.semaphores[semNb].acquire())
+        while True:
+            try: self.semaphores[semNb].acquire(0); break
+            except posix_ipc.BusyError: await asyncio.sleep(0)
 
         #Acquire the lock
         self.lock.acquire()
