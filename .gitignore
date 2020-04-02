@@ -6,3 +6,7 @@
 *.swp
 
 tmp/*
+
+*.swo
+
+*.swn
