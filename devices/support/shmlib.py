@@ -102,19 +102,15 @@ class shm:
         -------------------------------------------------------------- '''
         #self.hdr_fmt   = hdr_fmt  # in case the user is interested
         #self.c0_offset = 144      # fast-offset for counter #0
-        #self.kwsz      = 113      # size of a keyword SHM data structure
         self.packed = packed
         self.nbSems = nbSems
         
         if self.packed:
             self.hdr_fmt = hdr_fmt_pck # packed shm structure
-            self.kwfmt0 = "16s s"      # packed keyword structure
         else:
             self.hdr_fmt = hdr_fmt_aln # aligned shm structure
-            self.kwfmt0 = "16s s7x"    # aligned keyword structure
 
         self.c0_offset = 152        # fast-offset for counter #0 (updated later)
-        self.kwsz      = 96 + struct.calcsize(self.kwfmt0) # keyword SHM size
 
         # --------------------------------------------------------------------
         #                dictionary containing the metadata
@@ -137,11 +133,6 @@ class shm:
                        'cnt2': 0,
                        'write' : 0,
                        'nbkw'  : 0}
-
-        # --------------------------------------------------------------------
-        #          dictionary describing the content of a keyword
-        # --------------------------------------------------------------------
-        self.kwd = {'name': '', 'type': 'N', 'value': '', 'comment': ''}
 
         # ---------------
         if fname is None:
@@ -168,7 +159,8 @@ class shm:
         # ---------------
         if ((not os.path.exists(fname)) or (data is not None)):
             info("%s will be created or overwritten" % (fname,))
-            self.create(fname, data, nbkw)
+            # the last param is number of keywords
+            self.create(fname, data, 0)
 
         # ---------------
         else:
@@ -180,8 +172,6 @@ class shm:
             self.read_meta_data(verbose=verbose)
             self.select_dtype()        # identify main data-type
             self.get_data()            # read the main data
-            self.create_keyword_list() # create empty list of keywords
-            self.read_keywords()       # populate the keywords with data
         
         #automatically perform cleanup
         register(self.close) #handles ctrl-c and exceptions
@@ -216,7 +206,7 @@ class shm:
         self.mtdata['nel']    = data.size
         self.mtdata['atype']  = self.select_atype()
         self.mtdata['shared'] = 1
-        self.mtdata['nbkw']   = nbkw
+        self.mtdata['nbkw']   = 0
         self.mtdata['sem']    = self.nbSems
         
         self.select_dtype()
@@ -242,8 +232,7 @@ class shm:
         # ---------------------------------------------------------
         #             allocate the file and mmap it
         # ---------------------------------------------------------
-        kwspace = self.kwsz * nbkw                    # kword space
-        fsz = self.im_offset + self.img_len + kwspace # file size
+        fsz = self.im_offset + self.img_len # file size
         npg = int(fsz / mmap.PAGESIZE) + 1                 # nb pages
         self.fd = os.open(fname, os.O_CREAT | os.O_TRUNC | os.O_RDWR)
         os.write(self.fd, ('\x00' * npg * mmap.PAGESIZE).encode())
@@ -255,8 +244,6 @@ class shm:
         # ---------------------------------------------------------
         self.buf[:self.im_offset] = minibuf # the metadata
         self.set_data(data)
-        self.create_keyword_list()
-        self.write_keywords()
         return(0)
 
     def rename_img(self, newname):
@@ -280,25 +267,25 @@ class shm:
         #try closing the buffer (the shared memory itself) 
         try: self.buf.close()
         #do nothing if buffer doesn't exist or is already closed
-        except (OSError, ValueError): pass
+        except (OSError, AttributeError): pass
 
         #as before for semaphores
         try:
             for sem in self.semaphores:
                 try: sem.close()
                 except OSError: pass
-        except ValueError: pass
+        except AttributeError: pass
 
         #as before for lock
         try: self.lock.close()
-        except (OSError, ValueError): pass
+        except (OSError, AttributeError): pass
 
         #as before for the underlying file
         try:
             os.close(self.fd)
             self.fd = 0
             return(0)
-        except (OSError, ValueError): pass
+        except (OSError, AttributeError): pass
 
     def read_meta_data(self, verbose=True):
         ''' --------------------------------------------------------------
@@ -325,158 +312,6 @@ class shm:
 
         if verbose:
             self.print_meta_data()
-
-    def create_keyword_list(self):
-        ''' --------------------------------------------------------------
-        Place-holder. The name should be sufficiently explicit.
-        -------------------------------------------------------------- '''
-        nbkw = self.mtdata['nbkw']     # how many keywords
-        self.kwds = []                 # prepare an empty list 
-        for ii in range(nbkw):         # fill with empty dictionaries
-            self.kwds.append(self.kwd.copy())
-            
-    def read_keywords(self):
-        ''' --------------------------------------------------------------
-        Read all keywords from SHM file
-        -------------------------------------------------------------- '''        
-        for ii in range(self.mtdata['nbkw']):
-            self.read_keyword(ii)
-
-    def write_keywords(self):
-        ''' --------------------------------------------------------------
-        Writes all keyword data to SHM file
-        -------------------------------------------------------------- '''
-        for ii in range(self.mtdata['nbkw']):
-            self.write_keyword(ii)
-
-    def read_keyword(self, ii):
-        ''' --------------------------------------------------------------
-        Read the content of keyword of given index.
-
-        Parameters:
-        ----------
-        - ii: index of the keyword to read
-        -------------------------------------------------------------- '''
-        kwsz = self.kwsz              # keyword SHM data structure size
-        k0   = self.im_offset + self.img_len + ii * kwsz # kword offset
-
-        # ------------------------------------------
-        #             read from SHM
-        # ------------------------------------------
-        kwlen = struct.calcsize(self.kwfmt0)
-        kname, ktype = struct.unpack(self.kwfmt0, self.buf[k0:k0+kwlen]) 
-        kname = kname.decode("utf-8")   #DEFLAG: decode to string from byte
-        ktype = ktype.decode("utf-8")   #DEFLAG: decode to string from byte
-
-        # ------------------------------------------
-        # depending on type, select parsing strategy
-        # ------------------------------------------
-        kwfmt = '16s 80s'
-        
-        if ktype == 'L':   # keyword value is int64
-            kwfmt = 'q 8x 80s'
-        elif ktype == 'D': # keyword value is double
-            kwfmt = 'd 8x 80s'
-        elif ktype == 'S': # keyword value is string
-            kwfmt = '16s 80s'
-        elif ktype == 'N': # keyword is unused
-            kwfmt = '16s 80s'
-        
-        kval, kcomm = struct.unpack(kwfmt, self.buf[k0+kwlen:k0+kwsz])
-        kcomm = kcomm.decode("utf-8")   #DEFLAG: decode to string from byte
-
-        if kwfmt == '16s 80s':
-            kval = str(kval).strip('\x00')
-
-        # ------------------------------------------
-        #    fill in the dictionary of keywords
-        # ------------------------------------------
-        self.kwds[ii]['name']    = str(kname).strip('\x00')
-        self.kwds[ii]['type']    = ktype
-        self.kwds[ii]['value']   = kval
-        self.kwds[ii]['comment'] = str(kcomm).strip('\x00')
-
-    def update_keyword(self, ii, name, value, comment):
-        ''' --------------------------------------------------------------
-        Update keyword data in dictionary and writes it to SHM file
-
-        Parameters:
-        ----------
-        - ii      : index of the keyword to write (integer)
-        - name    : the new keyword name 
-        -------------------------------------------------------------- '''
-
-        if (ii >= self.mtdata['nbkw']):
-            info("Keyword index %d is not allocated and cannot be written")
-            return
-
-        # ------------------------------------------
-        #    update relevant keyword dictionary
-        # ------------------------------------------
-        try:
-            self.kwds[ii]['name'] = str(name).ljust(16, ' ')
-        except:
-            info('Keyword name not compatible (< 16 char)')
-
-        if isinstance(value, (long, int)):
-            self.kwds[ii]['type'] = 'L'
-            self.kwds[ii]['value'] = long(value)
-            
-        elif isinstance(value, float):
-            self.kwds[ii]['type'] = 'D'
-            self.kwds[ii]['value'] = np.double(value)
-            
-        elif isinstance(value, str):
-            self.kwds[ii]['type'] = 'S'
-            self.kwds[ii]['value'] = str(value)
-        else:
-            self.kwds[ii]['type'] = 'N'
-            self.kwds[ii]['value'] = str(value)
-
-        try:
-            self.kwds[ii]['comment'] = str(comment).ljust(80, ' ')
-        except:
-            info('Keyword comment not compatible (< 80 char)')
-
-        # ------------------------------------------
-        #          write keyword to SHM
-        # ------------------------------------------
-        self.write_keyword(ii)
-        
-    def write_keyword(self, ii):
-        ''' --------------------------------------------------------------
-        Write keyword data to shared memory.
-
-        Parameters:
-        ----------
-        - ii      : index of the keyword to write (integer)
-        -------------------------------------------------------------- '''
-
-        if (ii >= self.mtdata['nbkw']):
-            info("Keyword index %d is not allocated and cannot be written")
-            return
-
-        kwsz = self.kwsz
-        k0   = self.im_offset + self.img_len + ii * kwsz # kword offset
-        
-        # ------------------------------------------
-        #    read the keyword dictionary
-        # ------------------------------------------
-        kname = self.kwds[ii]['name']
-        ktype = self.kwds[ii]['type']
-        kval  = self.kwds[ii]['value']
-        kcomm = self.kwds[ii]['comment']
-
-        if ktype == 'L':
-            kwfmt = '=16s s q 8x 80s'
-        elif ktype == 'D':
-            kwfmt = '=16s s d 8x 80s'
-        elif ktype == 'S':
-            kwfmt = '=16s s 16s 80s'
-        elif ktype == 'N':
-            kwfmt = '=16s s 16s 80s'
-
-        self.buf[k0:k0+kwsz] = struct.pack(kwfmt, kname, ktype, kval, kcomm) 
 
     def print_meta_data(self):
         ''' --------------------------------------------------------------
@@ -628,15 +463,6 @@ class shm:
         -------------------------------------------------------------- '''
 #        pf.writeto(fitsname, self.get_data(), clobber=True)
         return(0)
-
-    def get_expt(self,):
-        ''' --------------------------------------------------------------
-        SCExAO specific: returns the exposure time (from keyword)
-        -------------------------------------------------------------- '''
-        ii0 = 3 # index of exposure time in keywords
-        self.read_keyword(ii0)
-        self.expt = self.kwds[ii0]['value']
-        return self.expt
 
 # =================================================================
 # =================================================================
