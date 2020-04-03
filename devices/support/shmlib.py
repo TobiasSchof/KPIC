@@ -40,19 +40,20 @@ all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16,
 # ------------------------------------------------------
 # list of metadata keys for the shm structure (global)
 # ------------------------------------------------------
-mtkeys = ['imname', 'naxis',  'size',    'nel',   'atype',
-          'crtime', 'latime', 'tvsec',   'tvnsec', 
-          'shared', 'status', 'logflag', 'sem',
-          'cnt0',   'cnt1',   'cnt2',
-          'write',  'nbkw']
+mtkeys = ['imname', 'naxis', 'nel', 'atype', 'size',    
+          'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
+          'atime_sec', 'atime_nsec', 'cnt0', 'cnt1']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
+hdr_fmt = '80s B B B 3I l l l l l l Q B'
+hdr_fmt_aln = '80s B B B 3I l l l l l l Q B' # aligned style
+"""
 hdr_fmt = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'
 hdr_fmt_pck = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'           # packed style
 hdr_fmt_aln = '80s B3x 3I Q B7x d d q q B B B1x H2x Q Q Q B1x H4x' # aligned style
-
+"""
 
 
 
@@ -110,29 +111,24 @@ class shm:
         else:
             self.hdr_fmt = hdr_fmt_aln # aligned shm structure
 
-        self.c0_offset = 152        # fast-offset for counter #0 (updated later)
+        self.c0_offset = 120        # fast-offset for counter #0 (updated later)
 
         # --------------------------------------------------------------------
         #                dictionary containing the metadata
         # --------------------------------------------------------------------
         self.mtdata = {'imname': '',
                        'naxis' : 0,
-                       'size'  : (0,0,0),
                        'nel': 0,
                        'atype': 0,
-                       'crtime': 0.0,
-                       'latime': 0.0, 
-                       'tvsec' : 0,
-                       'tvnsec': 0,
-                       'shared': 0,
-                       'status': 0,
-                       'logflag': 0,
-                       'sem': 0,
+                       'size'  : (0,0,0),
+                       'crtime_sec': 0.0,
+                       'crtime_nsec': 0.0,
+                       'latime_sec': 0.0, 
+                       'latime_nsec': 0.0,
+                       'atime_sec' : 0,
+                       'atime_nsec': 0.0,
                        'cnt0'  : 0,
-                       'cnt1'  : 0,
-                       'cnt2': 0,
-                       'write' : 0,
-                       'nbkw'  : 0}
+                       'cnt1'  : 0}
 
         # ---------------
         if fname is None:
@@ -200,14 +196,11 @@ class shm:
         # ---------------------------------------------------------
         self.npdtype          = data.dtype
         info(fname.split('/')[2].split('.')[0])
-        self.mtdata['imname'] = fname.split('/')[2].split('.')[0]#fname.ljust(80, ' ')
+        self.mtdata['imname'] = fname.split('/')[2].split('.')[0]
         self.mtdata['naxis']  = data.ndim
         self.mtdata['size']   = data.shape+((0,)*(3-len(data.shape)))
         self.mtdata['nel']    = data.size
         self.mtdata['atype']  = self.select_atype()
-        self.mtdata['shared'] = 1
-        self.mtdata['nbkw']   = 0
-        self.mtdata['sem']    = self.nbSems
         
         self.select_dtype()
 
@@ -217,14 +210,18 @@ class shm:
         fmts = self.hdr_fmt.split(' ')
         minibuf = ''.encode()
         for i, fmt in enumerate(fmts):
-            if i != 2:
-                if isinstance(self.mtdata[mtkeys[i]],str):
+            #check whether the fmt indicates array (i.e. for size)
+            try:
+                assert i != 0
+                dim = int(fmt[0])
+                tpl = self.mtdata[mtkeys[i]]
+                minibuf += struct.pack(fmt, *tpl)
+            except (ValueError, AssertionError):
+                if isinstance(self.mtdata[mtkeys[i]], str):
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]].encode())
                 else:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]])
-            else:
-                tpl = self.mtdata[mtkeys[i]]
-                minibuf += struct.pack(fmt, tpl[0], tpl[1], tpl[2])
+                
             if mtkeys[i] == "sem": # the mkey before "cnt0" !
                 self.c0_offset = len(minibuf)
         self.im_offset = len(minibuf)
