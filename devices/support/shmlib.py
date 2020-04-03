@@ -40,15 +40,15 @@ all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16,
 # ------------------------------------------------------
 # list of metadata keys for the shm structure (global)
 # ------------------------------------------------------
-mtkeys = ['imname', 'naxis', 'nel', 'atype', 'size',    
-          'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
-          'atime_sec', 'atime_nsec', 'cnt0', 'cnt1']
+mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
+            'atime_sec', 'atime_nsec', 'size', 'cnt0', 'naxis', 'nel', 'atype', 
+            'cnt1']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
-hdr_fmt = '80s B B B 3I l l l l l l Q B'
-hdr_fmt_aln = '80s B B B 3I l l l l l l Q B' # aligned style
+hdr_fmt = '80s q q q q q q 3I Q B B B B'
+hdr_fmt_aln = '80s q q q q q q 3I Q B B B B8x' # aligned style
 """
 hdr_fmt = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'
 hdr_fmt_pck = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'           # packed style
@@ -117,17 +117,17 @@ class shm:
         #                dictionary containing the metadata
         # --------------------------------------------------------------------
         self.mtdata = {'imname': '',
+                       'crtime_sec': 0,
+                       'crtime_nsec': 0,
+                       'latime_sec': 0, 
+                       'latime_nsec': 0,
+                       'atime_sec' : 0,
+                       'atime_nsec': 0,
+                       'size'  : (0,0,0),
+                       'cnt0'  : 0,
                        'naxis' : 0,
                        'nel': 0,
                        'atype': 0,
-                       'size'  : (0,0,0),
-                       'crtime_sec': 0.0,
-                       'crtime_nsec': 0.0,
-                       'latime_sec': 0.0, 
-                       'latime_nsec': 0.0,
-                       'atime_sec' : 0,
-                       'atime_nsec': 0.0,
-                       'cnt0'  : 0,
                        'cnt1'  : 0}
 
         # ---------------
@@ -222,7 +222,7 @@ class shm:
                 else:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]])
                 
-            if mtkeys[i] == "sem": # the mkey before "cnt0" !
+            if i+1 < len(mtkeys) and mtkeys[i+1] == "cnt0": # the mkey before "cnt0" !
                 self.c0_offset = len(minibuf)
         self.im_offset = len(minibuf)
 
@@ -298,10 +298,14 @@ class shm:
         for i, fmt in enumerate(fmts):
             hlen = struct.calcsize(fmt)
             mdata_bit = struct.unpack(fmt, self.buf[offset:offset+hlen])
-            if i != 2:
-                self.mtdata[mtkeys[i]] = mdata_bit[0]
-            else:
+            #check if data is an array (e.g. size)
+            try:
+                assert i != 0
+                int(fmt[0])
                 self.mtdata[mtkeys[i]] = mdata_bit
+            except (ValueError, AssertionError):
+                self.mtdata[mtkeys[i]] = mdata_bit[0]
+            
             offset += hlen
 
 #        self.mtdata['imname'] = self.mtdata['imname'].strip('\x00')
