@@ -41,14 +41,14 @@ all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16,
 # list of metadata keys for the shm structure (global)
 # ------------------------------------------------------
 mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
-            'atime_sec', 'atime_nsec', 'size', 'cnt0', 'naxis', 'nel', 'atype', 
+            'atime_sec', 'atime_nsec', 'cnt0', 'size', 'naxis', 'nel', 'atype', 
             'cnt1']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
-hdr_fmt = '80s q q q q q q 3I Q B B B B'
-hdr_fmt_aln = '80s q q q q q q 3I Q B B B B8x' # aligned style
+hdr_fmt = '80s q q q q q q Q 3I B B B B'
+hdr_fmt_aln = '80s q q q q q q Q 3I B B B B' # aligned style
 """
 hdr_fmt = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'
 hdr_fmt_pck = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'           # packed style
@@ -111,7 +111,7 @@ class shm:
         else:
             self.hdr_fmt = hdr_fmt_aln # aligned shm structure
 
-        self.c0_offset = 120        # fast-offset for counter #0 (updated later)
+        self.c0_offset = 128        # fast-offset for counter #0 (updated later)
 
         # --------------------------------------------------------------------
         #                dictionary containing the metadata
@@ -123,8 +123,8 @@ class shm:
                        'latime_nsec': 0,
                        'atime_sec' : 0,
                        'atime_nsec': 0,
-                       'size'  : (0,0,0),
                        'cnt0'  : 0,
+                       'size'  : (0,0,0),
                        'naxis' : 0,
                        'nel': 0,
                        'atype': 0,
