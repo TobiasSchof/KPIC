@@ -41,14 +41,14 @@ all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16,
 # list of metadata keys for the shm structure (global)
 # ------------------------------------------------------
 mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
-            'atime_sec', 'atime_nsec', 'cnt0', 'size', 'naxis', 'nel', 'atype', 
-            'cnt1']
+            'atime_sec', 'atime_nsec', 'cnt0', 'nel', 'size', 'naxis', 'atype', 
+            'cnt1', 'semNb']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
-hdr_fmt = '80s q q q q q q Q 3I B B B B'
-hdr_fmt_aln = '80s q q q q q q Q 3I B B B B' # aligned style
+hdr_fmt = '80s q q q q q q Q I 3H B B B B'
+hdr_fmt_aln = '80s q q q q q q Q I 3H B B B B2x' # aligned style
 """
 hdr_fmt = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'
 hdr_fmt_pck = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'           # packed style
@@ -124,11 +124,12 @@ class shm:
                        'atime_sec' : 0,
                        'atime_nsec': 0,
                        'cnt0'  : 0,
+                       'nel': 0,
                        'size'  : (0,0,0),
                        'naxis' : 0,
-                       'nel': 0,
                        'atype': 0,
-                       'cnt1'  : 0}
+                       'cnt1'  : 0,
+                       'semNb' : 0}
 
         # ---------------
         if fname is None:
@@ -201,6 +202,7 @@ class shm:
         self.mtdata['size']   = data.shape+((0,)*(3-len(data.shape)))
         self.mtdata['nel']    = data.size
         self.mtdata['atype']  = self.select_atype()
+        self.mtdata['semNb']  = self.nbSems
         
         self.select_dtype()
 
