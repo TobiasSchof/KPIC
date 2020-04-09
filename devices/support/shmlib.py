@@ -22,7 +22,7 @@ https://docs.python.org/2/library/threading.html#semaphore-objects
 import os, sys, mmap, struct
 import numpy as np
 import astropy.io.fits as pf
-import time
+from time import time
 #import pdb
 import posix_ipc
 import asyncio
@@ -47,8 +47,8 @@ mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec',
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
-hdr_fmt = '80s q q q q q q Q I 3H B B B B'
-hdr_fmt_aln = '80s q q q q q q Q I 3H B B B B2x' # aligned style
+hdr_fmt = '80s Q Q Q Q Q Q Q I 3H B B B B'
+hdr_fmt_aln = '80s Q Q Q Q Q Q Q I 3H B B B B2x' # aligned style
 """
 hdr_fmt = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'
 hdr_fmt_pck = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'           # packed style
@@ -87,7 +87,8 @@ Table taken from Python 2 documentation, section 7.3.2.2.
 '''
 
 class shm:
-    def __init__(self, fname=None, data=None, verbose=False, packed=False, nbkw=0, nbSems:int=1):
+    def __init__(self, fname=None, data=None, verbose=False, packed=False, 
+        nbkw=0, nbSems:int=1, subSems=[]):
         ''' --------------------------------------------------------------
         Constructor for a SHM (shared memory) object.
 
@@ -97,6 +98,8 @@ class shm:
         - data: some array (1, 2 or 3D of data)
         - verbose: optional boolean
         - nbSems: the number of semaphores to create
+        - subSems: a list of semaphores that should be updated with this shared
+            memory (in addition to any made with nbSems)
 
         Depending on whether the file already exists, and/or some new
         data is provided, the file will be created or overwritten.
@@ -110,8 +113,6 @@ class shm:
             self.hdr_fmt = hdr_fmt_pck # packed shm structure
         else:
             self.hdr_fmt = hdr_fmt_aln # aligned shm structure
-
-        self.c0_offset = 128        # fast-offset for counter #0 (updated later)
 
         # --------------------------------------------------------------------
         #                dictionary containing the metadata
@@ -139,7 +140,11 @@ class shm:
         self.fname = fname
         # ---------------
         # Creating semaphore, *nbSems
-        singleName=self.fname.split('/')[-1].split('.')[0]
+        spl = self.fname.split('/')
+        if len(spl) > 1: singleName = spl[-2]
+        else: singleName = ""
+
+        singleName += spl[-1].split('.')[0]
         self.semaphores = []
         for k in range(nbSems):
             semName = '/'+singleName+'_sem'+'0'+str(k)
@@ -148,6 +153,8 @@ class shm:
                 flags=posix_ipc.O_CREAT))
         info(str(k)+' semaphores created or re-used')
 
+        #copy any subscription semaphores
+        self.subs = subSems
 
         #Create lock semaphore
         self.lock = posix_ipc.Semaphore("/"+singleName+"_lock", \
@@ -195,14 +202,17 @@ class shm:
         # ---------------------------------------------------------
         # feed the relevant dictionary entries with available data
         # ---------------------------------------------------------
-        self.npdtype          = data.dtype
-        info(fname.split('/')[2].split('.')[0])
-        self.mtdata['imname'] = fname.split('/')[2].split('.')[0]
-        self.mtdata['naxis']  = data.ndim
-        self.mtdata['size']   = data.shape+((0,)*(3-len(data.shape)))
-        self.mtdata['nel']    = data.size
-        self.mtdata['atype']  = self.select_atype()
-        self.mtdata['semNb']  = self.nbSems
+        self.npdtype                = data.dtype
+        self.mtdata['imname']       = fname.split('/')[2].split('.')[0]
+        self.mtdata['naxis']        = data.ndim
+        self.mtdata['size']         = data.shape+((0,)*(3-len(data.shape)))
+        self.mtdata['nel']          = data.size
+        self.mtdata['atype']        = self.select_atype()
+        self.mtdata['semNb']        = self.nbSems
+        cur_t = time()
+        self.mtdata['crtime_sec']   = int(cur_t)
+        self.mtdata['crtime_nsec']  = int((cur_t%1) * 1000000000)
+        self.mtdata['cnt0']         = 0
         
         self.select_dtype()
 
@@ -224,8 +234,12 @@ class shm:
                 else:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]])
                 
-            if i+1 < len(mtkeys) and mtkeys[i+1] == "cnt0": # the mkey before "cnt0" !
-                self.c0_offset = len(minibuf)
+            #set offsets
+            if i+1 < len(mtkeys):
+                if mtkeys[i+1] == "cnt0": self.c0_offset = len(minibuf)
+                if mtkeys[i+1] == "latime_sec": self.latime_offset = len(minibuf)
+                if mtkeys[i+1] == "atime_sec": self.atime_offset = len(minibuf)
+
         self.im_offset = len(minibuf)
 
         # ---------------------------------------------------------
@@ -275,6 +289,13 @@ class shm:
                 except OSError: pass
         except AttributeError: pass
 
+        #as before for subscriptions
+        try:
+            for sem in self.subs:
+                try: sem.unlink()
+                except (OSError, posix_ipc.ExistentialError): pass
+        except AttributeError: pass
+
         #as before for lock
         try: self.lock.close()
         except (OSError, AttributeError): pass
@@ -298,6 +319,9 @@ class shm:
         offset = 0
         fmts = self.hdr_fmt.split(' ')
         for i, fmt in enumerate(fmts):
+            if mtkeys[i] == "cnt0": self.c0_offset = offset
+            elif mtkeys[i] == "latime_sec": self.latime_offset = offset
+            elif mtkeys[i] == "atime_sec": self.atime_offset = offset
             hlen = struct.calcsize(fmt)
             mdata_bit = struct.unpack(fmt, self.buf[offset:offset+hlen])
             #check if data is an array (e.g. size)
@@ -310,7 +334,6 @@ class shm:
             
             offset += hlen
 
-#        self.mtdata['imname'] = self.mtdata['imname'].strip('\x00')
         self.im_offset = offset # offset for the image content
 
         if verbose:
@@ -342,6 +365,45 @@ class shm:
             if mydt == self.npdtype:
                 self.mtdata['atype'] = i+1
         return(self.mtdata['atype'])
+
+    def get_time(self):
+        ''' --------------------------------------------------------------
+        Read the time the data in the SHM was acquired (UNIX epoch seconds)
+        -------------------------------------------------------------- '''
+        offset = self.atime_offset
+        time = struct.unpack('Q', self.buf[offset:offset+8])[0]
+        self.mtdata['atime_sec'] = time
+        return(time)
+
+    def set_time(self, latime:float = None, atime:float = None):
+        '''--------------------------------------------------------------
+        Updates the requested time values in the SHM (atime is write time)
+        --------------------------------------------------------------'''
+        if not atime is None:
+            #rename offset for concision
+            off = self.atime_offset
+
+            #get the seconds part of the time
+            sec = int(atime)
+            #get the nanoseconds part of the time
+            nsec = int((atime%1)*1000000000)
+
+            #write the two time parts
+            self.buf[off:off+8] = struct.pack('Q', sec)
+            self.buf[off+8:off+16] = struct.pack('Q', nsec)
+
+            #update metadata
+            self.mtdata['atime_sec'] = sec
+            self.mtdata['atime_nsec'] = nsec
+
+        if not latime is None:
+            off = self.latime_offset
+            sec = int(latime)
+            nsec = int((latime%1)*1000000000)
+            self.buf[off:off+8] = struct.pack('Q', sec)
+            self.buf[off+8:off+16] = struct.pack('Q', nsec)
+            self.mtdata['latime_sec'] = sec
+            self.mtdata['latime_nsec'] = nsec
 
     def get_counter(self,):
         ''' --------------------------------------------------------------
@@ -382,40 +444,15 @@ class shm:
         data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
         #Release the lock
         self.lock.release()
+        #Set last access time to current time
+        self.set_time(latime=time())
         
         if reform:
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
             data = np.reshape(data, rsz)
         return(data)
 
-    async def await_data(self, reform=False, semNb=0):
-        ''' --------------------------------------------------------------
-        Like get_data above but an awaitable version. Always waits for 
-        update
-
-        Parameters:
-        ----------
-        - reform: boolean, if True, reshapes the array in a 2-3D format
-        -------------------------------------------------------------- '''
-        i0 = self.im_offset                                  # image offset
-        i1 = i0 + self.img_len                               # image end
-
-        while True:
-            try: self.semaphores[semNb].acquire(0); break
-            except posix_ipc.BusyError: await asyncio.sleep(0)
-
-        #Acquire the lock
-        self.lock.acquire()
-        data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
-        #Release the lock
-        self.lock.release()
-
-        if reform:
-            rsz = self.mtdata['size'][:self.mtdata['naxis']]
-            data = np.reshape(data, rsz)
-        return(data)
-
-    def set_data(self, data, check_dt=False):
+    def set_data(self, data, check_dt=False, atime:float=None):
         ''' --------------------------------------------------------------
         Upload new data to the SHM file.
 
@@ -423,7 +460,7 @@ class shm:
         ----------
         - data: the array to upload to SHM
         - check_dt: boolean (default: false) recasts data
-
+        - time: the time (UNIX epoch seconds) that the data was acquired
         Note:
         ----
 
@@ -431,6 +468,9 @@ class shm:
         performance, data should be properly cast to start with, and
         this option not used!
         -------------------------------------------------------------- '''
+        #We want to keep acquired time current so get time if none was provided
+        if atime is None: atime = time()
+
         i0 = self.im_offset                                      # image offset
         i1 = i0 + self.img_len                                   # image end
         if check_dt is True:
@@ -439,6 +479,9 @@ class shm:
             self.buf[i0:i1] = data.astype(self.npdtype()).tostring()
             #Release the lock
             self.lock.release()
+            #Set last access time to current time and acquired time to the
+            #  passed time 
+            self.set_time(latime=time(), atime=atime)
         else:
             try:
                 #Acquire the lock
@@ -446,13 +489,20 @@ class shm:
                 self.buf[i0:i1] = data.tostring()
                 #Release the lock
                 self.lock.release()
+                #Set last access time to current time and acquired time to the
+                #  passed time 
+                self.set_time(latime=time(), atime=atime)
             except:
                 info("Warning: writing wrong data-type to shared memory")
                 return
         self.increment_counter()
-        for k in range(self.nbSems):
-            if self.semaphores[k].value < self.nbSems:
-                self.semaphores[k].release()
+        for sem in self.semaphores:
+            sem.release()
+
+        for sem in self.subs:
+            #since it's assume subscriptions are only for one user, 
+            #  subscriptions sems are bounded at 1.
+            if sem.value == 0: sem.release()
 
         return
 
