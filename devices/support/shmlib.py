@@ -25,10 +25,15 @@ import astropy.io.fits as pf
 from time import time
 #import pdb
 import posix_ipc
-import asyncio
 from logging import info #replacing print statements with info 
 from atexit import register
 from signal import signal, SIGHUP
+from glob import glob #used for finding semaphores
+
+
+#The directory where semaphores are stored (set by system, this variable is 
+#   used for checking, not for creation.
+SEM_DIR = "/dev/shm"
 
 # ------------------------------------------------------
 #          list of available data types
@@ -42,19 +47,12 @@ all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16,
 # ------------------------------------------------------
 mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
             'atime_sec', 'atime_nsec', 'cnt0', 'nel', 'size', 'naxis', 'atype', 
-            'cnt1', 'semNb']
+            'cnt1']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
-hdr_fmt = '80s Q Q Q Q Q Q Q I 3H B B B B'
-hdr_fmt_aln = '80s Q Q Q Q Q Q Q I 3H B B B B2x' # aligned style
-"""
-hdr_fmt = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'
-hdr_fmt_pck = '80s B 3I Q B d d q q B B B H5x Q Q Q B H'           # packed style
-hdr_fmt_aln = '80s B3x 3I Q B7x d d q q B B B1x H2x Q Q Q B1x H4x' # aligned style
-"""
-
+hdr_fmt = '80s Q Q Q Q Q Q Q I 3H B B B3x' # aligned style
 
 
 ''' 
@@ -87,32 +85,22 @@ Table taken from Python 2 documentation, section 7.3.2.2.
 '''
 
 class shm:
-    def __init__(self, fname=None, data=None, verbose=False, packed=False, 
-        nbkw=0, nbSems:int=1, subSems=[]):
+    def __init__(self, fname:str, data=None, sem:bool=False):
         ''' --------------------------------------------------------------
         Constructor for a SHM (shared memory) object.
 
         Parameters:
         ----------
         - fname: name of the shared memory file structure
-        - data: some array (1, 2 or 3D of data)
-        - verbose: optional boolean
-        - nbSems: the number of semaphores to create
-        - subSems: a list of semaphores that should be updated with this shared
-            memory (in addition to any made with nbSems)
+        - data: some array (1, 2 or 3D of data). If an existing file backing is
+            pointed to by fname, data will be ignored
+        - sem: whether this instance of the shm should create a semaphore
 
         Depending on whether the file already exists, and/or some new
         data is provided, the file will be created or overwritten.
         -------------------------------------------------------------- '''
-        #self.hdr_fmt   = hdr_fmt  # in case the user is interested
-        #self.c0_offset = 144      # fast-offset for counter #0
-        self.packed = packed
-        self.nbSems = nbSems
-        
-        if self.packed:
-            self.hdr_fmt = hdr_fmt_pck # packed shm structure
-        else:
-            self.hdr_fmt = hdr_fmt_aln # aligned shm structure
+
+        self.fname = fname
 
         # --------------------------------------------------------------------
         #                dictionary containing the metadata
@@ -129,59 +117,78 @@ class shm:
                        'size'  : (0,0,0),
                        'naxis' : 0,
                        'atype': 0,
-                       'cnt1'  : 0,
-                       'semNb' : 0}
+                       'cnt1'  : 0,}
 
-        # ---------------
-        if fname is None:
-            info("No SHM file name provided")
-            return(None)
-
-        self.fname = fname
-        # ---------------
-        # Creating semaphore, *nbSems
-        spl = self.fname.split('/')
-        if len(spl) > 1: singleName = spl[-2]
-        else: singleName = ""
-
-        singleName += spl[-1].split('.')[0]
-        self.semaphores = []
-        for k in range(nbSems):
-            semName = '/'+singleName+'_sem'+'0'+str(k)
-            #info('creating semaphore '+semName)
-            self.semaphores.append(posix_ipc.Semaphore(semName, \
-                flags=posix_ipc.O_CREAT))
-        info(str(k)+' semaphores created or re-used')
-
-        #copy any subscription semaphores
-        self.subs = subSems
-
-        #Create lock semaphore
-        self.lock = posix_ipc.Semaphore("/"+singleName+"_lock", \
-            flags=posix_ipc.O_CREAT, initial_value=1)
-
-        # ---------------
-        if ((not os.path.exists(fname)) or (data is not None)):
-            info("%s will be created or overwritten" % (fname,))
-            # the last param is number of keywords
-            self.create(fname, data, 0)
-
-        # ---------------
-        else:
+        # if this file backing already exists, load metadata
+        if os.path.isfile(fname):
             info("reading from existing %s" % (fname,))
             self.fd      = os.open(fname, os.O_RDWR)
             self.stats   = os.fstat(self.fd)
             self.buf_len = self.stats.st_size
             self.buf     = mmap.mmap(self.fd, self.buf_len, mmap.MAP_SHARED)
-            self.read_meta_data(verbose=verbose)
-            self.select_dtype()        # identify main data-type
-            self.get_data()            # read the main data
+            self.read_meta_data()
+            self.select_dtype()        # identify main data-type 
+        # otherwise, make name for semaphores
+        else:
+            spl = fname.split("/")
+            if len(spl) > 1: self.mtdata["imname"] = spl[-2]+spl[-1].split(".")[0]
+            else: self.mtdata["imname"] = spl[-1].split(".")[0]
         
+        #find name of shm for semaphores
+        singleName = self.mtdata["imname"]
+
+        #Create lock semaphore
+        self.lock = posix_ipc.Semaphore("/"+singleName+"_lock",\
+            flags=posix_ipc.O_CREAT, initial_value=1)
+
+        #save start of semaphore name for updating sems later
+        self.semName = "/" + singleName + "_sem"
+
+        #first get all semaphores for other processes
+        self.semaphores = []
+        self.updateSems()
+
+        #If requested, make semaphore for this instance
+        if not sem: self.sem = None
+        else: 
+            free = None
+            #find an unused semaphore
+            for x in range(0, 100):
+                sempath = SEM_DIR + "/sem." + singleName + "_sem"
+                if x < 10: sempath += "0"
+                sempath += str(x)
+
+                if not os.path.isfile(sempath): 
+                    free = x
+                    break
+
+            if free is None:
+                raise Exception("No free Semaphores. Please clean")
+
+            semName = "/" + singleName + "_sem"
+            if free < 10: semName += "0"
+            semName += str(free)
+
+            self.sem = posix_ipc.Semaphore(semName, flags = posix_ipc.O_CREAT)
+            self.semaphores.append(self.sem)
+
+        info('%d semaphores created or re-used'.format(len(self.semaphores)))
+
+        # next create the shm if we have data (we do this after semaphore
+        #   creation to alert any waiting processes that this has been created
+        if (data is not None) and (not os.path.isfile(fname)):
+            info("%s will be created or overwritten" % (fname,))
+            self.create(fname, data)
+
+        if (data is None) and (not os.path.isfile(fname)) and (not sem):
+            raise Exception("Either file must exist, data must be provided, \
+                or a semaphore must be created")
+
         #automatically perform cleanup
         register(self.close) #handles ctrl-c and exceptions
         signal(SIGHUP, self.close) #handles tmux kill-ses
 
-    def create(self, fname, data, nbkw=0):
+    def create(self, fname, data):
         ''' --------------------------------------------------------------
         Create a shared memory data structure
 
@@ -195,20 +202,19 @@ class shm:
         with information based on the provided data.
         -------------------------------------------------------------- '''
         
-        if data is None:
-            info("No data (ndarray) provided! Nothing happens here")
-            return
-
         # ---------------------------------------------------------
         # feed the relevant dictionary entries with available data
         # ---------------------------------------------------------
         self.npdtype                = data.dtype
-        self.mtdata['imname']       = fname.split('/')[2].split('.')[0]
+
+        spl = fname.split("/")
+        if len(spl) > 1: self.mtdata["imname"] = spl[-2]+spl[-1].split(".")[0]
+        else: self.mtdata["imname"] = spl[-1].split(".")[0]
+
         self.mtdata['naxis']        = data.ndim
         self.mtdata['size']         = data.shape+((0,)*(3-len(data.shape)))
         self.mtdata['nel']          = data.size
         self.mtdata['atype']        = self.select_atype()
-        self.mtdata['semNb']        = self.nbSems
         cur_t = time()
         self.mtdata['crtime_sec']   = int(cur_t)
         self.mtdata['crtime_nsec']  = int((cur_t%1) * 1000000000)
@@ -219,7 +225,7 @@ class shm:
         # ---------------------------------------------------------
         #          reconstruct a SHM metadata buffer
         # ---------------------------------------------------------
-        fmts = self.hdr_fmt.split(' ')
+        fmts = hdr_fmt.split(' ')
         minibuf = ''.encode()
         for i, fmt in enumerate(fmts):
             #check whether the fmt indicates array (i.e. for size)
@@ -282,18 +288,14 @@ class shm:
         #do nothing if buffer doesn't exist or is already closed
         except (OSError, AttributeError): pass
 
+        #if a semaphore was created for this process, unlink it
+        if self.sem is not None: self.sem.unlink()
+
         #as before for semaphores
         try:
             for sem in self.semaphores:
                 try: sem.close()
                 except OSError: pass
-        except AttributeError: pass
-
-        #as before for subscriptions
-        try:
-            for sem in self.subs:
-                try: sem.unlink()
-                except (OSError, posix_ipc.ExistentialError): pass
         except AttributeError: pass
 
         #as before for lock
@@ -307,43 +309,112 @@ class shm:
             return(0)
         except (OSError, AttributeError): pass
 
-    def read_meta_data(self, verbose=True):
+    def updateSems(self):
+        '''------------------------------------------------------------------
+        Checks the semaphores in self.semaphores. If any have been unlinked,
+           close them. If there are any new ones, add them.
+
+        Note: This assumes the naming convention used by CentOS. Before using
+           check that a) SEM_DIR is correct and b) if a semaphore is named
+           '/xyz' then it is stored as 'sem.xyz'
+        -------------------------------------------------------------------'''
+
+        #release any old semaphores
+        for sem in self.semaphores:
+            if not os.path.isfile(SEM_DIR+"/sem."+sem.name[1:]):
+                self.semaphores.remove(sem)
+                sem.close()
+        
+        #look for any files in the semaphore directory following the convention
+        #  for naming based on the name of this image
+        sems = glob(SEM_DIR+"/sem."+self.mtdata["imname"]+"_sem*")
+        #create an array to track semaphores to remove while adding new ones
+        tmp = [sem.name for sem in self.semaphores]
+        
+        #add any new semaphores and check if current semaphores are still used
+        for sem in sems:
+            #strip directories, leaving just file name
+            sem = sem[sem.rfind("/")+1:]
+            #remove the sem. at the beginning and add '/' to translate to the
+            #  name of the semaphore
+            sem = "/"+sem[sem.find(".")+1:]
+            #check if the semaphore is already being tracked
+            try: 
+                idx = tmp.index(sem)
+                #update tmp to say that this semaphore is still active
+                tmp[idx] = None;
+            except ValueError:
+                #add this semaphore to our list
+                self.semaphores.append(posix_ipc.Semaphore(sem, \
+                    posix_ipc.O_CREAT))
+
+        #remove any semaphores no longer being used
+        #note we iterate in reverse so pops don't affect indices
+        for idx, sem in list(enumerate(tmp))[::-1]:
+            if not sem is None: self.semaphores.pop(idx).close()
+
+    def read_meta_data(self):
         ''' --------------------------------------------------------------
         Read the metadata fraction of the SHM file.
         Populate the shm object mtdata dictionary.
-
-        Parameters:
-        ----------
-        - verbose: (boolean, default: True), prints its findings
         -------------------------------------------------------------- '''
         offset = 0
-        fmts = self.hdr_fmt.split(' ')
+        fmts = hdr_fmt.split(' ')
         for i, fmt in enumerate(fmts):
             if mtkeys[i] == "cnt0": self.c0_offset = offset
             elif mtkeys[i] == "latime_sec": self.latime_offset = offset
             elif mtkeys[i] == "atime_sec": self.atime_offset = offset
+
             hlen = struct.calcsize(fmt)
-            mdata_bit = struct.unpack(fmt, self.buf[offset:offset+hlen])
-            #check if data is an array (e.g. size)
-            try:
-                assert i != 0
-                int(fmt[0])
-                self.mtdata[mtkeys[i]] = mdata_bit
-            except (ValueError, AssertionError):
-                self.mtdata[mtkeys[i]] = mdata_bit[0]
+            #we have to handle name differently because unpacking doesn't work
+            #  correctly on unused bits
+            if i == 0:
+                #copy the name part of the metadata except 0 bits 
+                tmpbuf = [c for c in self.buf[:int(fmt[:fmt.find("s")])] if c!=0]
+                dec = struct.unpack("{}s".format(len(tmpbuf)), bytes(tmpbuf))
+                self.mtdata['imname'] = dec[0].decode()
+            else:
+                mdata_bit = struct.unpack(fmt, self.buf[offset:offset+hlen])
+                #if the length is only one, we just want to value
+                if len(mdata_bit) == 1: self.mtdata[mtkeys[i]] = mdata_bit[0]
+                #otherwise we want the whole tuple
+                else: self.mtdata[mtkeys[i]] = mdata_bit
             
             offset += hlen
 
         self.im_offset = offset # offset for the image content
 
-        if verbose:
-            self.print_meta_data()
+    def load(self) -> bool:
+        '''___________________________________________________________________
+        Loads the shared memory.
+
+        Returns:
+            bool = False if load fails (file doesn't exist or shm already 
+                loaded. True if load is successful.
+        -------------------------------------------------------------------'''
+
+        # shm is already loaded
+        if self.mtdata["crtime_sec"] != 0: return False
+
+        # file backing doesn't exist
+        if not os.path.isfile(self.fname): return False
+
+        # otherwise the load should be successful.
+        info("reading from existing %s" % (self.fname,))
+        self.fd      = os.open(self.fname, os.O_RDWR)
+        self.stats   = os.fstat(self.fd)
+        self.buf_len = self.stats.st_size
+        self.buf     = mmap.mmap(self.fd, self.buf_len, mmap.MAP_SHARED)
+        self.read_meta_data()
+        self.select_dtype()
+
+        return True
 
     def print_meta_data(self):
         ''' --------------------------------------------------------------
         Basic printout of the content of the mtdata dictionary.
         -------------------------------------------------------------- '''
-        fmts = self.hdr_fmt.split(' ')
+        fmts = hdr_fmt.split(' ')
         for i, fmt in enumerate(fmts):
             info(mtkeys[i], self.mtdata[mtkeys[i]])
 
@@ -424,7 +495,7 @@ class shm:
         self.mtdata['cnt0'] = cntr                   # update object mtdata
         return(cntr)
 
-    def get_data(self, check=False, reform=False, semNb=0):
+    def get_data(self, check=False, reform=False):
         ''' --------------------------------------------------------------
         Returns the data part of the shared memory 
 
@@ -433,11 +504,12 @@ class shm:
         - check: integer (last index) if not False, waits image update
         - reform: boolean, if True, reshapes the array in a 2-3D format
         -------------------------------------------------------------- '''
+
         i0 = self.im_offset                                  # image offset
         i1 = i0 + self.img_len                               # image end
 
-        if check is not False:
-            self.semaphores[semNb].acquire()
+        #wait for new data
+        if check: self.sem.acquire()
         
         #Acquire the lock
         self.lock.acquire()
@@ -477,6 +549,7 @@ class shm:
             #Acquire the lock
             self.lock.acquire()
             self.buf[i0:i1] = data.astype(self.npdtype()).tostring()
+            self.increment_counter()
             #Release the lock
             self.lock.release()
             #Set last access time to current time and acquired time to the
@@ -487,6 +560,7 @@ class shm:
                 #Acquire the lock
                 self.lock.acquire()
                 self.buf[i0:i1] = data.tostring()
+                self.increment_counter()
                 #Release the lock
                 self.lock.release()
                 #Set last access time to current time and acquired time to the
@@ -495,14 +569,10 @@ class shm:
             except:
                 info("Warning: writing wrong data-type to shared memory")
                 return
-        self.increment_counter()
+
+        self.updateSems()
         for sem in self.semaphores:
             sem.release()
-
-        for sem in self.subs:
-            #since it's assume subscriptions are only for one user, 
-            #  subscriptions sems are bounded at 1.
-            if sem.value == 0: sem.release()
 
         return
 
