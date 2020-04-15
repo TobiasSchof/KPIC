@@ -27,7 +27,7 @@ config.read("FIU_TTM.ini")
 _debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
 _logDefault=config.get("Communication", "debug_log")
 
-parser=ArgumentParser(conflict_handler="resolve", description="Controls the TTM.")
+parser=ArgumentParser(conflict_handler="resolve")
 
 #for help message, see bottom
 
