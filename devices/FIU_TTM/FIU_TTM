@@ -1,7 +1,7 @@
 #!/usr/bin/env kpython3
 
 #inherent python libraries
-from subprocess import Popen as bash
+from subprocess import Popen
 from argparse import ArgumentParser, SUPPRESS
 from configparser import ConfigParser
 from time import sleep, ctime
@@ -22,73 +22,67 @@ executable to control the TTM quickly from the command line
 """
     
 config=ConfigParser()
-config.read("TTM.ini")
+config.read("FIU_TTM.ini")
 
 _debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
-_logDefault=config.get("Communication", "log_path")
+_logDefault=config.get("Communication", "debug_log")
 
 parser=ArgumentParser(conflict_handler="resolve", description="Controls the TTM.")
 
-#create debug help message
-debugHelp="Sets the program to a debug mode({level} level)." + \
-    "Default log location is {logDef}." + \
-    "Can also use this tag to specify a different log location."	
-	
+#for help message, see bottom
+
 #add subparser to handle device commands.
-dev=parser.add_subparsers(help="Device commands")
+dev=parser.add_subparsers()
 	
-msg="Return the current position of the TTM."
-pos=dev.add_parser("status", help=msg, description=msg)
-pos.add_argument("-status", help=SUPPRESS)
-pos.add_argument("-push", action="store_true", \
-    help="Updates shared memory first.")
+#Return the current position of the TTM.
+pos=dev.add_parser("status")
+pos.add_argument("-status")
+pos.add_argument("-push", action="store_true")
 
-msg="Enables the TTM control script."
-enable=dev.add_parser("enable", help=msg, description=msg)
-enable.add_argument("-enable", help=SUPPRESS)
-enable.add_argument("-d", "--debug", default=-1, nargs="?", \
-    help=debugHelp.format(level="INFO", \
-    logDef=("console" if _logDefault==None else _logDefault)))
-enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?", \
-    help=debugHelp.format(level="DEBUG", \
-    logDef=("console" if _logDefault==None else _logDefault)))
+#Enables the TTM control script.
+enable=dev.add_parser("enable")
+enable.add_argument("-enable")
+enable.add_argument("-m", action="store_true")
+enable.add_argument("-d", "--debug", default=-1, nargs="?")
+enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?")
 
-msg="Disables the TTM control script."
-disable=dev.add_parser("disable", help=msg, description=msg)
-disable.add_argument("-disable", help=SUPPRESS)
+#Disables the TTM control script.
+disable=dev.add_parser("disable")
+disable.add_argument("-disable")
 
-msg="Moves TTM to the given position."
-moveAbs=dev.add_parser("goto", help=msg, description=msg)
-moveAbs.add_argument("-x", type=float, nargs="?", \
-    default=None, help="The x position to move to.")
-moveAbs.add_argument("-y", type=float, nargs="?", \
-    default=None, help="The y position to move to.")
-moveAbs.add_argument("-move", help=SUPPRESS)
+#Moves TTM to the given position.
+moveAbs=dev.add_parser("goto")
+moveAbs.add_argument("-goto")
+moveAbs.add_argument("ax1", nargs="?", default=None)
+moveAbs.add_argument("val1", nargs="?", default=None)
+moveAbs.add_argument("ax2", nargs="?", default=None)
+moveAbs.add_argument("val2", nargs="?", default=None)
+moveAbs.add_argument("-move")
 
-msg="Moves TTM to the center of its range."
-center=dev.add_parser("center", help=msg, description=msg)
-center.add_argument("-center", help=SUPPRESS)
-center.add_argument("-move", help=SUPPRESS)
+#Moves TTM to the center of its range.
+center=dev.add_parser("center")
+center.add_argument("-center")
+center.add_argument("-move")
 
-msg="Displays whether axes are in open loop"
-qol=dev.add_parser("ol?", help=msg, description=msg)
-qol.add_argument("-qol", help=SUPPRESS)
+#Displays whether axes are in open loop
+qol=dev.add_parser("ol?")
+qol.add_argument("-qol")
 
-msg="Opens the loop (turns servo off)"
-open_=dev.add_parser("open", help=msg, description=msg)
-open_.add_argument("-open", help=SUPPRESS)
+#Opens the loop (turns servo off)
+open_=dev.add_parser("open")
+open_.add_argument("-open")
 
-msg="Closes the loop (turns servos on)"
-close_=dev.add_parser("close", help=msg, description=msg)
-close_.add_argument("-close", help=SUPPRESS)
+#Closes the loop (turns servos on)
+close_=dev.add_parser("close")
+close_.add_argument("-close")
 
-msg="Turns the TTM on"
-on=dev.add_parser("on", help=msg, description=msg)
-on.add_argument("-on", help=SUPPRESS)
+#Turns the TTM on
+on=dev.add_parser("on")
+on.add_argument("-on")
 
-msg="Turns the TTM off"
-off=dev.add_parser("off", help=msg, description=msg)
-off.add_argument("-off", help=SUPPRESS)
+#Turns the TTM off
+off=dev.add_parser("off")
+off.add_argument("-off")
 
 #override -h flag to show the "usage" window
 parser.add_argument("-h", action="store_true")
@@ -98,155 +92,211 @@ args=parser.parse_args()
 
 #start control script if enable tag was used
 if "enable" in args:
-    command=config.get("Environment", "start_command").split(" ")
-    if args.move:
-        command.append("-m")
+    #vertical pipe separates tmux command from python command
+    command=config.get("Environment", "start_command").split("|")
+    if args.m:
+        command[-1] += (" -m")
     if args.debug != -1:
-        command.append("-d")
+        command[-1] += (" -d")
         if args.debug is not None:
-            command.append(args.debug)
+            command += args.debug
 
-    bash(command)
+    Popen(command[0].split(" ") + [command[-1]])
     sys.exit()
 
-#for anything else we will want shared memory so enable it
-str_d={}
-for name in config.options("Shm_D_Content"):
-    str_d[name]=np.int(config.getfloat("Shm_D_Content", name))
+if "disable" in args:
+    command=config.get("Environment", "end_command").split(" ")
+    Popen(command)
+    sys.exit()
 
-Shm_D=shm(config.get("Shm_path", "Shm_D"))
-try: dataD=Shm_D.get_data()
+#for anything else we will want shared memory so enable it as needed
+Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+
+try: 
+    cur_pos = Pos_D.get_data()
+    time = Pos_D.get_time()
 except AttributeError:
-    if not "disable" in args:    
-        print()
-        print("NO SHARED MEMORY. PLEASE USE 'TTM enable'")
-        print()
+    print()
+    print("NO SHARED MEMORY. PLEASE USE 'FIU_TTM enable'")
+    print()
     sys.exit()
 
 #if position was requested without push, we don't need the device to be on
 if "status" in args and not args.push:
-    pos1=dataD[str_d["pos_1"]].item()
-    pos2=dataD[str_d["pos_2"]].item()
-    time=ctime(dataD[str_d["cur_t"]].item())
-    print("Position: {}. Data was updated at {}.".format([pos1, pos2], time))
+    time=ctime(time)
+    print("Position: {}. Data was updated {}.".format(list(cur_pos), time))
     sys.exit()
+
+#Now we need Stat_D to tell if the script is on
+Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+DStat = Stat_D.get_data()[0]
 
 #if control script is off, tell user to turn it on
-if dataD[str_d["status"]].item() in [-1, -2]:
-    if not "disable" in args:    
-        print()
-        print("CONTROL SCRIPT OFF. PLEASE USE 'TTM enable' OR 'TTM status'")
-        print()
+if DStat in [-1, -2]:
+    print()
+    print("CONTROL SCRIPT OFF. PLEASE USE 'FIU_TTM enable'")
+    print()
     sys.exit()
 
-#at this point, we want command shared memory
-str_p={}
-for name in config.options("Shm_P_Content"):
-    str_p[name]=np.int(config.getfloat("Shm_P_Content", name))
+#at this point, we need Stat_P shm
+Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
 
-Shm_P=shm(config.get("Shm_path", "Shm_P"))
 #Note, at this point we know the script status reflects the script is alive
 #so command shared memory should be valid, but just in case, check 
-try: dataP=Shm_P.get_data()
+try: PStat = Stat_P.get_data()
 except AttributeError:
     print()
-    print("NO SHARED MEMORY. PLEASE USE 'TTM enable' OR 'TTM status'")
+    print("NO SHARED MEMORY. PLEASE USE 'FIU_TTM enable' OR 'FIU_TTM status'")
     print()
-    sys.exit()
-
-if "disable" in args:
-    dataP[str_p["status"]] = -1
-    Shm_P.set_data(dataP)
     sys.exit()
 
 if "on" in args:
-    dataP[str_p["status"]] = 1
-    Shm_P.set_data(dataP)
+    PStat[0] = 1
+    Stat_P.set_data(PStat)
+    _ = -1
+    while Stat_D.get_data()[0] not in [2, 1]: 
+        _ = (_+1)%3
+        print("Turning on device{:<4}".format("."*(_+1)), end="\r")
+        sleep(1)
+    print("Device on.{:15}".format(""))
     sys.exit()
 
 if "off" in args:
-    dataP[str_p["status"]] = 0
-    Shm_P.set_data(dataP)
+    PStat[0] = 0
+    Stat_P.set_data(PStat)
     sys.exit()
 
 #Now we need the device on
-if dataD[str_d["status"]].item() == 0:
+if DStat == 0:
     print()
-    print("DEVICE OFF. PLEASE USE 'TTM on'")
+    print("DEVICE OFF. PLEASE USE 'FIU_TTM on'")
     print()
     sys.exit()
-       
+
+#Open servo status shm
+Svos = shm(config.get("Shm_Info", "Svos").split(",")[0])
+SvoStat = Svos.get_data()
+ 
 if "qol" in args:
-    svo=dataP[str_p["svos"]]
-    if svo == "1": print("Loop closed")
-    else: print("Loop closed")
+    print(["Loop closed" if axis else "Loop open" for axis in SvoStat])
     sys.exit()
          
 if "open" in args:
-    dataP[str_p["svos"]]=0
-    Shm_P.set_data(dataP)
+    if not any(SvoStat): sys.exit()
+    SvoStat[0] = 0
+    SvoStat[1] = 0
+    Svos.set_data(SvoStat)
     sys.exit()
         
 if "close" in args:
-    dataP[str_p["svos"]]=1
-    Shm_P.set_data(dataP)
+    if all(SvoStat): sys.exit()
+    SvoStat[0] = 1
+    SvoStat[1] = 1
+    Svos.set_data(SvoStat)
     sys.exit()
         
 #we checked for status without push earlier, so this one has it
 if "status" in args:
-    time=dataD[str_d["cur_t"]].item()
-    Shm_P.set_data(Shm_P.get_data())
-    #wait for shared memory to be updated
-    while time == Shm_D.get_data()[str_d["cur_t"]].item(): sleep(.01)
+    #warn the user if the stage is in open loop.
+    if not all(SvoStat):
+        print("WARNING, STAGE HAS AT LEAST ONE AXIS IN OPEN LOOP." + \
+            " POSITION MAY BE UNRELIABLE.")
+        print()
 
-    dataD=Shm_D.get_data()
-    pos1=dataD[str_d["pos_1"]].item()
-    pos2=dataD[str_d["pos_2"]].item()
-    time=ctime(dataD[str_d["cur_t"]].item())
-    print("Position: {}. Data was updated at {}.".format([pos1, pos2], time))
+    #Get the counter for the position before requesting an update
+    cnt = Pos_D.get_counter()
+
+    #request an update by reflecting move state in Stat_D
+    DStat = Stat_D.get_data()
+    DStat[0] = 2
+    Stat_D.set_data(DStat)
+    #make control script act by touching Stat_P
+    PStat[0] = 1
+    Stat_P.set_data(PStat)
+
+    #wait for shared memory to be updated
+    while Pos_D.get_counter() == cnt: sleep(.01)
+
+    cur_pos = Pos_D.get_data()
+    time = Pos_D.get_time()
+    cur_stat = Stat_D.get_data()
+    time=ctime(time)
+    #warn the user if the stage is moving
+    if cur_stat[0] == 2:
+        print("WARNING, STAGE IS CURRENTLY IN MOTION.")
+        print()
+
+    print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
     sys.exit()
 
-if "goto" in args and not (args.x is None and args.y is None):
-    pos={}
-    if not args.x is None: pos["1"] = args.x
-    if not args.y is None: pos["2"] = args.y
-    #save time of last update
-    time=dataD[str_d["cur_t"]].item()
-    for axis in pos: dataP[str_p["pos_{}".format(axis)]] = pos[axis]
-    Shm_P.set_data(dataP)
-    #wait for shared memory to be updated
-    #NOTE: semaphores unuseable because we don't know how many times
-    #any semaphores have been updated
-    while time == Shm_D.get_data()[str_d["cur_t"]].item(): sleep(.01)
-    dataD=Shm_D.get_data()
-    if dataD[str_d["error"]].item() == 1:
-        print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
-    elif dataD[str_d["error"]].item() == 3:
-        print()
-        print("MOVE TIMED OUT. CHECK FOR BLOCKAGES.")
-        print()
-        sys.exit()
-    else: sys.exit()
+#at this point, we need Pos_P and Error
+Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+Error = shm(config.get("Shm_Info", "Error").split(",")[0])
 
-#at this point, all tags were parsed so all that's left is help menu
-#check if we should display a move help window or general
+if "goto" in args and not args.ax1 is None:
+    pos = Pos_P.get_data()
+    try:
+        #validate first parameter
+        assert args.ax1 in ["x", "y"]
+        assert args.val1 is not None
+        #convert val1 to a float
+        try: args.val1 = float(args.val1)
+        except: assert 1==0
+
+        ax = {"x":0, "y":1}
+        
+        pos[ax[args.ax1]] = args.val1
+
+        if args.ax2 is not None:
+            #validate second parameter
+            assert args.ax2 in ["x", "y"]
+            assert args.val2 is not None
+            #convert val2 to a float
+            try: args.val2 = float(args.val2)
+            except: assert 1==0
+            #validate that the same axis was not passed twice
+            assert args.ax1 != args.ax2
+            
+            pos[ax[args.ax2]] = args.val2
+
+        Pos_P.set_data(pos)
+
+        #give device time to throw an error
+        sleep(1)
+
+        error = Error.get_data()[0] 
+        if error == 1:
+            print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
+        elif error == 2:
+            print()
+            print("LOOP OPEN, CANNOT MOVE.")
+            print()
+            sys.exit()
+        else: sys.exit()
+
+    except AssertionError:
+        print("INVALID PARAMETERS. SEE EXAMPLES BELOW.")
+        print()
+
+#before finding limits, we display usage (note the only tag left to parse is
+#  'center' which comes with 'move', so it's ok to display this first.
 if not "move" in args:
     cmds=["goto", "center", "status"]
     print("""
 --------------------------------------------
 Movement:
       - - - - - - - - - - - - - - - -      
-TTM <CMD> <-x/-y <ARG>>  
+FIU_TTM <CMD> <-x/-y <ARG>>
 --------------------------------------------
 CMD:
 {b:3}{:<8}move to an absoluate position
 {b:3}{:<8}move to center of range
 
-Type TTM <CMD> for examples and limits
+Type FIU_TTM <CMD> for examples and limits
 --------------------------------------------
 Query:
       - - - - - - - - - - - - - - - -      
-TTM <CMD> [-push]
+FIU_TTM <CMD> [-push]
 --------------------------------------------
 CMD:
 {b:3}{:<8}get position and time from
@@ -256,11 +306,11 @@ CMD:
 {b:11}updates shared memory before
 {b:11}returning.
 EXAMPLES:
-{b:3}TTM status
-{b:3}TTM status -push
+{b:3}FIU_TTM status
+{b:3}FIU_TTM status -push
 --------------------------------------------
 
-Type man TTM for comprehensive command list
+Type man FIU_TTM for comprehensive command list
 
 """.format(*cmds, b=""))
     sys.exit()
@@ -271,26 +321,26 @@ min2=config.getfloat("TTM_Limits", "min_2")
 max2=config.getfloat("TTM_Limits", "max_2")
 
 if "center" in args:
-    pos={1:(min1+max1)/2, 2:(min2+max2)/2}
-    #save time of last update
-    time=dataD[str_d["cur_t"]].item()
-    for axis in pos:
-        dataP[str_p["pos_{}".format(axis)]] = pos[axis]
-    Shm_P.set_data(dataP)
+    pos = Pos_P.get_data()
+    pos[0] = (min1+max1)/2
+    pos[1] = (min2+max2)/2
+
+    #save counter so we know when shm has been updated
+    cnt = Pos_D.get_counter()
+
+    #update Pos_P
+    Pos_P.set_data(pos)
+
     #wait for shared memory to be updated
-    #NOTE: semaphores unuseable because we don't know how many times
-    #any semaphores have been updated
-    while time == Shm_D.get_data()[str_d["cur_t"]].item(): sleep(.01)
-    dataD=Shm_D.get_data()
-    if dataD[str_d["error"]].item() == 1:
-        print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
-    elif dataD[str_d["error"]].item() == 3:
+    sleep(1)
+
+    error = Error.get_data()[0] 
+    if error == 2:
         print()
-        print("MOVE TIMED OUT. CHECK FOR BLOCKAGES.")
+        print("LOOP OPEN, CANNOT MOVE.")
         print()
-        sys.exit()
-    else:
-        sys.exit()
+
+    sys.exit()
 
 
 opt_msg="(x: must be between {} and {})".format(min1, max1)
@@ -303,7 +353,7 @@ use3="y {:.3f}".format(min2+.5*thirdy)
 
 print("""
 --------------------------------------------
-Usage: TTM goto <-x/-y <ARG>>
+Usage: FIU_TTM goto <-x/-y <ARG>>
 --------------------------------------------
 x/y:
 {b:3}the axis to move (can use one or both)
@@ -312,9 +362,9 @@ ARG:
 {b:5}{opt_msg}
 
 EXAMPLES:
-{b:3}TTM goto {use1}
-{b:3}TTM goto {use2}
-{b:3}TTM goto {use3}
+{b:3}FIU_TTM goto {use1}
+{b:3}FIU_TTM goto {use2}
+{b:3}FIU_TTM goto {use3}
 --------------------------------------------
 
 ERROR: invalid ARG. Please see above.

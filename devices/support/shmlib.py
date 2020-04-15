@@ -26,8 +26,8 @@ from time import time
 #import pdb
 import posix_ipc
 from logging import info #replacing print statements with info 
-from atexit import register
-from signal import signal, SIGHUP
+from atexit import register, unregister
+from signal import signal, SIGHUP, SIGTERM
 from glob import glob #used for finding semaphores
 
 
@@ -40,7 +40,8 @@ SEM_DIR = "/dev/shm"
 # ------------------------------------------------------
 all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16, 
               np.uint32,    np.int32,   np.uint64,    np.int64,
-              np.float32,   np.float64, np.complex64, np.complex128]
+              np.float32,   np.float64, np.complex64, np.complex128,
+              np.bool]
 
 # ------------------------------------------------------
 # list of metadata keys for the shm structure (global)
@@ -172,7 +173,8 @@ class shm:
             self.sem = posix_ipc.Semaphore(semName, flags = posix_ipc.O_CREAT)
             self.semaphores.append(self.sem)
 
-        info('%d semaphores created or re-used'.format(len(self.semaphores)))
+        msg = '%d semaphores created or re-used'.format(len(self.semaphores))
+        info(msg)
 
         # next create the shm if we have data (we do this after semaphore
         #   creation to alert any waiting processes that this has been created
@@ -181,12 +183,14 @@ class shm:
             self.create(fname, data)
 
         if (data is None) and (not os.path.isfile(fname)) and (not sem):
-            raise Exception("Either file must exist, data must be provided, \
-                or a semaphore must be created")
+            msg = "Either file must exist, data must be provided, or a" + \
+                " semaphore must be created."
+            raise Exception(msg)
 
         #automatically perform cleanup
         register(self.close) #handles ctrl-c and exceptions
         signal(SIGHUP, self.close) #handles tmux kill-ses
+        signal(SIGTERM, self.close) #handles terminate calls
 
     def create(self, fname, data):
         ''' --------------------------------------------------------------
@@ -277,37 +281,42 @@ class shm:
         self.mtdata['imname'] = newname.ljust(80, ' ')
         self.buf[0:80]        = struct.pack('80s', self.mtdata['imname'])
 
-    def close(self,):
+    def close(self):
         ''' --------------------------------------------------------------
         Clean close of a SHM data structure link
 
         Clean close of buffer, release the file descriptor.
         -------------------------------------------------------------- '''
+
         #try closing the buffer (the shared memory itself) 
         try: self.buf.close()
-        #do nothing if buffer doesn't exist or is already closed
-        except (OSError, AttributeError): pass
+        except Exception as ouch: info("Exception on close: {}".format(ouch))
 
         #if a semaphore was created for this process, unlink it
-        if self.sem is not None: self.sem.unlink()
+        if self.sem is not None: 
+            try: 
+                self.sem.unlink()
+                self.sem.close()
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-        #as before for semaphores
+        #close any semaphores opened that we don't own
         try:
             for sem in self.semaphores:
                 try: sem.close()
-                except OSError: pass
-        except AttributeError: pass
+                except Exception as ouch: info("Exception on close: {}".format(ouch))
+        except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-        #as before for lock
+        #close the lock semaphore
         try: self.lock.close()
-        except (OSError, AttributeError): pass
+        except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-        #as before for the underlying file
+        #close the underlying file
         try:
             os.close(self.fd)
             self.fd = 0
-            return(0)
-        except (OSError, AttributeError): pass
+        except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+        unregister(self.close)
 
     def updateSems(self):
         '''------------------------------------------------------------------
@@ -319,12 +328,6 @@ class shm:
            '/xyz' then it is stored as 'sem.xyz'
         -------------------------------------------------------------------'''
 
-        #release any old semaphores
-        for sem in self.semaphores:
-            if not os.path.isfile(SEM_DIR+"/sem."+sem.name[1:]):
-                self.semaphores.remove(sem)
-                sem.close()
-        
         #look for any files in the semaphore directory following the convention
         #  for naming based on the name of this image
         sems = glob(SEM_DIR+"/sem."+self.mtdata["imname"]+"_sem*")
@@ -511,11 +514,9 @@ class shm:
         #wait for new data
         if check: self.sem.acquire()
         
-        #Acquire the lock
-        self.lock.acquire()
-        data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
-        #Release the lock
-        self.lock.release()
+        #Use a context manager so lock is released if process is killed
+        with self.lock:
+            data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
         #Set last access time to current time
         self.set_time(latime=time())
         
@@ -546,28 +547,27 @@ class shm:
         i0 = self.im_offset                                      # image offset
         i1 = i0 + self.img_len                                   # image end
         if check_dt is True:
-            #Acquire the lock
-            self.lock.acquire()
-            self.buf[i0:i1] = data.astype(self.npdtype()).tostring()
-            self.increment_counter()
-            #Release the lock
-            self.lock.release()
-            #Set last access time to current time and acquired time to the
-            #  passed time 
-            self.set_time(latime=time(), atime=atime)
-        else:
-            try:
-                #Acquire the lock
-                self.lock.acquire()
-                self.buf[i0:i1] = data.tostring()
+            #Use context manager so lock is released if process ends
+            with self.lock:
+                self.buf[i0:i1] = data.astype(self.npdtype()).tostring()
                 self.increment_counter()
-                #Release the lock
-                self.lock.release()
                 #Set last access time to current time and acquired time to the
                 #  passed time 
                 self.set_time(latime=time(), atime=atime)
+        else:
+            try:
+                #Use context manager so lock is released if process ends
+                with self.lock:
+                    self.buf[i0:i1] = data.tostring()
+                    self.increment_counter()
+                    #Set last access time to current time and acquired time to 
+                    #  the passed time 
+                    self.set_time(latime=time(), atime=atime)
             except:
                 info("Warning: writing wrong data-type to shared memory")
+                msg = "     shm name: {}".format(self.fname)
+                info(msg)
+                msg = "     data: {}".format(data)
                 return
 
         self.updateSems()

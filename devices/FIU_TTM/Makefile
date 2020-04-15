@@ -1,15 +1,15 @@
 # NIRSPEC fiber injection unit. Build tip-tilt mirror
 
-override SYSNAM = kss/nirspec/nsfiu/devices/TTM
+override SYSNAM = kss/nirspec/nsfiu/devices/FIU_TTM
 override VERNUM = 1.0
 
 # If I knew that code would not work with Python 2 I would:
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-RELLIB = TTM_cmds.py TTM_Control.py TTM_draw.py
-RELBIN = TTM
-RELDAT = TTM.ini
+RELLIB = FIU_TTM_cmds.py FIU_TTM_Control.py FIU_TTM_draw.py
+RELBIN = FIU_TTM
+RELDAT = FIU_TTM.ini
 LIBSUB = python
 ##FILES = $(RELBIN)
 

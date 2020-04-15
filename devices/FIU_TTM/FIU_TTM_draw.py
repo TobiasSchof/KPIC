@@ -1,7 +1,10 @@
 #inherent python libraries
 from configparser import ConfigParser
 from time import sleep, gmtime, time
-import sys, io
+from subprocess import Popen
+from atexit import register
+from signal import signal, SIGHUP, SIGTERM
+import sys, io, os, posix_ipc, logging
 
 #nfiuserver libraries
 from shmlib import shm
@@ -12,114 +15,154 @@ session and log any changes to the state shared memory. Does not run faster
 than once per 5 seconds
 """
 
+#this script should not be used as an import
+if __name__ != "__main__":
+    print("FIU_TTM_draw.py is not meant to be used as an import")
+    sys.exit()
+
 DATA = os.environ.get("DATA") #the path to the data directory
+try:
+    if DATA[-1] == "/": DATA=DATA[:-1]
+except TypeError:
+    DATA = "/nfiudata"
+    print("No DATA environment variable, using '/nfiudata'")
 LOG_FILE = "FIU_TTM.log" #the name of the log file (appended to DATA/YYYMMDD/)
 
 
 config=ConfigParser()
-config.read("TTM.ini")
+config.read("FIU_TTM.ini")
+
+#create a semaphore to combine all shm sems
+shm_update = posix_ipc.Semaphore(None, flags=posix_ipc.O_CREX)
+#make a list of sem listen processes to kill at program termination
+Sem_Listeners=[]
 
 #all the info we need to connect to a shm is in Shm_Info
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
-Stat_D = shm(Stat_D[0], nbSems=int(Stat_D[1]))
+Stat_D = shm(Stat_D[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-Pos_D = shm(Pos_D[0], nbSems=int(Pos_D[1]))
+Pos_D = shm(Pos_D[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
 
 Error = config.get("Shm_Info", "Error").split(",")
-Error = shm(Error[0], nbSems=int(Error[1]))
+Error = shm(Error[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
 
 Stat_P = config.get("Shm_Info", "Stat_P").split(",")
-Stat_P = shm(Stat_P[0], nbSems=int(Stat_P[1]))
+Stat_P = shm(Stat_P[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], nbSems=int(Pos_P[1]))
+Pos_P = shm(Pos_P[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
 
 Svos = config.get("Shm_Info", "Svos").split(",")
-Svos = shm(Svos[0], nbSems=int(Svos[1]))
+Svos = shm(Svos[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Svos.sem.name, shm_update.name]))
 
-#for convenience, we lump all shms together
-SHMS=[Stat_D, Pos_D, Error, Stat_P, Pos_P, Svos]
+def close():
+    """Cleanup method to release semaphores and kill processes."""
 
-async def main():
-    """A method that enables asyncio use.
+    try:
+        for proc in Sem_Listeners:
+            try: proc.kill()
+            except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: print("Exception on close: {}".format(ouch))
+
+    try: 
+        shm_update.unlink()
+        shm_update.close()
+    except Exception as ouch: print("Exception on close: {}".format(ouch))
+
+register(close)
+signal(SIGHUP, close)
+signal(SIGTERM, close)
+
+def loop():
+    """A method that performs one iteration of the loop.
 
     Waits 5 seconds between iterations.
     """
 
-    #listens for updates on all shared memories
-    listeners = [asyncio.create_task(SHM.await_data()) for SHM in SHM]
+    #get counts of last update on each of the shms that we need to log to tell
+    #   if they've been updated.
+    Dstat_cnt = Stat_D.mtdata["cnt0"]
+    Dpos_cnt = Pos_D.mtdata["cnt0"]
+    Error_cnt = Error.mtdata["cnt0"]
+    Svo_cnt = Svos.mtdata["cnt0"]
 
-    done, _ = await asyncio.wait(listeners, return_when=asyncio.FIRST_COMPLETED)
+    #wait for one of the shms to be updated
+    shm_update.acquire()
 
-    updates=[]
-    if listeners[SHMS.index(Stat_D)] in done: updates.append(1)
-    if listeners[SHMS.index(Pos_D)] in done: updates.append(2)
-    if listeners[SHMS.index(Error)] in done: updates.append(3)
+    updates = []
+    if Stat_D.get_counter() != Dstat_cnt: updates.append(1)
+    if Pos_D.get_counter() != Dpos_cnt: updates.append(2)
+    if Error.get_counter() != Error_cnt: updates.append(3)
+    if Svos.get_counter() != Svo_cnt: updates.append(4)
 
     update(updates)
     draw()
 
     sleep(5)
 
-async def draw():
-    """Draws a display with shared memory values.
+def draw():
+    """Draws a display with shared memory values."""
 
-    Inputs:
-        dataD = the result of Shm_D.get_data()
-        dataP = the result of Shm_P.get_data()
-    """
-
-    #need to take data out of numpy array for proper string conversion
-    #we store time here too so we get time and position at same isntance
-    dpos = [pos for pos in Pos_D.get_data()]
+    #convert numpy array to list for proper printing
+    dpos = [list(Pos_D.get_data()), Pos_D.get_time()]
        
-    #need to take data out of numpy array for proper string conversion
-    ppos = [pos for pos in Pos_P.get_data()]
+    #convert numpy array to list for proper printing
+    ppos = [list(Pos_P.get_data()), Pos_P.get_time()]
         
     #translate the state status for user
-    dstatus={2:"Device moving", 1:"Script: on | Device: on", \
+    dstatus={2:"Script: on | Device: moving", 1:"Script: on | Device: on", \
         0:"Script: on | Device: off"}
-    dstatus=dstatus[Stat_D.get_data()[0]]
+    dstatus=[dstatus[Stat_D.get_data()[0]], Stat_D.get_time()]
 
     #translate the command status for user
     pstatus={True:"Device on", False:"Device off"}
-    pstatus=pstatus[Stat_P.get_data()[0]]
+    pstatus=[pstatus[Stat_P.get_data()[0]], Stat_P.get_time()]
 
     #translate the error for user
-    derror={0:"No error", 1:"Move requested beyond limits", 2:"Loop Open"}
-    derror=derror[Error.get_data()[0]]
+    derror={0:"No error", 1:"Move requested beyond limits", 2:"Loop open",\
+        3:"Device off"}
+    derror=[derror[Error.get_data()[0]], Error.get_time()]
 
     #translate servo status for user
     servostat = {True:"on", False:"off"}
-    servostat = [servostat(svo) for svo in Svos.get_data()]
+    servostat = [list(Svos.get_data()), Svos.get_time()]
 
-    #get time from dpos
-    update_t = ctime(dpos[-1])
+    def t(time:float):
+        """Returns a printable string for a UNIX epoch time, formatted in GMT"""
+        gmt = gmtime(time)
+        date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        ftime = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        return "{} {}".format(date, ftime)
 
-    #remove time from dpos
-    dpos = dpos[:-1]
-
+    fmt = u"\u2503"" {:<37}"*2+u"\u2503"
     print("\033c", end="")
     print(u"\u250F""{:<77}"u"\u2513".format(u"\u2501"*77))
     print(u"\u2503""{:^77}"u"\u2503".format("TTM Controller"))
     print(u"\u2523""{0:<38}"u"\u2533""{0:<38}"u"\u252B".format(u"\u2501"*38))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Device state:", "Requests:"))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Position: ", "Position:"))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format(str(dpos), str(ppos)))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Time of last update:", "Servo status:"))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format(update_t, str(servostat)))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("Status:", "Status:"))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format(dstatus, pstatus))
-    print(u"\u2503"" {:<37}"*2+u"\u2503".format("", ""))
-    print(u"\u2503"" {:<37}"u*2+"\u2503".format("Error message:", ""))
-    print(u"\u2503"" {:<37}"u"*2+\u2503".format(derror, ""))
+    print(fmt.format("Device state:", "Requests:"))
+    print(fmt.format("", ""))
+    print(fmt.format("Position: ", "Position:"))
+    print(fmt.format(str(dpos[0]), str(ppos[0])))
+    print(fmt.format(t(dpos[1]), t(ppos[1])))
+    print(fmt.format("", ""))
+    print(fmt.format("Status:", "Status:"))
+    print(fmt.format(dstatus[0], pstatus[0]))
+    print(fmt.format(t(dstatus[1]), t(pstatus[1])))
+    print(fmt.format("", ""))
+    print(fmt.format("Error message:", "Servo status:"))
+    print(fmt.format(derror[0], str(servostat[0])))
+    print(fmt.format(t(derror[1]), t(servostat[1])))
+    print(fmt.format("", ""))
     print(u"\u2517"+u"\u2501"*38+u"\u253B"+u"\u2501"*38+u"\u251B")
 
-async def update(update:list):
+def update(updates:list):
     """Updates the log.
 
     Inputs:
@@ -127,42 +170,48 @@ async def update(update:list):
             1 = Stat_D
             2 = Pos_D
             3 = Error
+            4 = Svos
     """
 
-    gmt = gmtime(time())
+    gmt = gmtime()
     date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
 
-    cur_path = "{}{}".format(DATA, date.replace("/", ""))
+    cur_path = "{}/{}".format(DATA, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
-    if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    try:
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    except os.FileNotFoundError:
+        print("DATA variable set incorrectly.")
 
     log_format = "%(message)s"
 
+    #remove any current handlers
+    for handler in logging.root.handlers:
+        logging.root.removeHandler(handler)
     #start logger
     logging.basicConfig(format=log_format,\
         filename="{}/{}".format(cur_path, LOG_FILE))
-    #logging seems to be fickle and not log if level is set in basicconfig
-    #not as the first command in a script, so set the level separately
-    logging.root.setLevel(60)
     
     #translate the update list to names and values
-    names = {1:"status", 2:"position", 3:"error"}
+    names = {1:"status", 2:"position", 3:"error", 4:"servo state"}
     vals = {"status":Stat_D.get_data()[0], "error":Error.get_data()[0],\
-        "position":[pos for pos in Pos_D.get_data()[:-1]]}
+        "position":list(Pos_D.get_data()), "servo state":list(Svos.get_data())}
+    times = {"status":Stat_D.get_time(), "error":Error.get_time(), \
+        "position":Pos_D.get_time(), "servo state":Svos.get_time()}
 
-    log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
-    #start log message with date and time
-    msg="{:<11}{:<10}update:".format(date, log_t)
-    #have next part variable
-    msg=msg+"{b:1}{name:>6} = {val}"
-    #we will be updating this so make sure we have the global parameter
-    for item in update:
+    #format log message
+    msg="{date:<11}{time:<10}update: {name:>6} = {val}"
+    for item in updates:
         #log a change if there's a new value
         name = names[item]
+        gmt = gmtime(times[name])
+        date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
         val = vals[name]
-        logging.log(60, msg.format(b="", name=name, val=val))
-        #update msg (this way we don't add date and time after first log)
-        msg="{b:<29}{name:<6} = {val}"
 
-#continuously run the asyncio processes
-while True: asyncio.run(main())
+        logging.log(60, msg.format(date=date, time=log_t, name=name, val=val))
+
+draw()
+
+#continuously run the process loop
+while True: loop()
