@@ -7,7 +7,8 @@ override VERNUM = 1.0
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-RELLIB = DevExceptions.py General_Cmds.py shmlib.py
+RELLIB = dev_Exceptions.py shmlib.py
+RELBIN = linksem
 LIBSUB = python
 ##FILES = $(RELBIN)
 

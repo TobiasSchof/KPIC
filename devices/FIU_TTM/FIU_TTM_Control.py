@@ -37,6 +37,10 @@ cur_thread = None
 
 info=logging.info
 
+class NPSError(Exception):
+    """An exception to be thrown if there is an error with the NPS"""
+    pass
+
 class AlreadyAlive(Exception):
     """An exception to be thrown if control code is initialized twice"""
     pass
@@ -500,11 +504,19 @@ info("Command shared memories successfully created.")
 info("Initializing NPS")
 NPS=NPS_cmds()
 info("Finding TTM port")
-NPS.dev_idx = NPS.devices.index("FIU TTM")
+NPS.TTM_port = None
+for port, dev in enumerate(NPS.devices):
+    if dev == "FIU TTM":
+        NPS.TTM_port = port
+        break
+if NPS.TTM_port is None:
+    info("Cannot find NPS port")
+    raise NPSError("Cannot find NPS port")
+
 #convenience methods to deal with the NPS
-turn_on = lambda: NPS.turnOn(NPS.dev_idx+1)
-turn_off = lambda: NPS.turnOff(NPS.dev_idx+1)
-q_pow = lambda: NPS.getStatusAll()[NPS.dev_idx]
+turn_on = lambda: NPS.turnOn(NPS.TTM_port)
+turn_off = lambda: NPS.turnOff(NPS.TTM_port)
+q_pow = lambda: NPS.getStatusAll()[NPS.TTM_port]
 
 #set up PI device.
 pidev=GCSDevice()

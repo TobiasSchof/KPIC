@@ -24,15 +24,15 @@ ____Change Log:____
 
 '''
 
-#TODO::: @Dan -  talk to sylvain about moving conf file into [..]/dev/config
+from time import gmtime
+from configparser import ConfigParser
+import os, sys, telnetlib 
 
-import os
-import sys
-import telnetlib
-import time
-import numpy as np
+CONFILE = 'NPS.ini' 
 
-CONFILE = '/home/nfiudev/bin/pulizzi.cfg' 
+def ConnectionError(Exception):
+    """A connection to be thrown on connection error"""
+    pass
 
 class NPS_cmds(object):
     '''--------------------------------------------------------------
@@ -49,7 +49,6 @@ class NPS_cmds(object):
         ''' -------------------------------------------------------------------
         ------------------------------------------------------------------- '''
         self.conf = conf
-        self.devices = list()
         # Populate class variables with values from conf file
         self.readConf()
         self.verbose = False
@@ -57,86 +56,48 @@ class NPS_cmds(object):
     # =========================================================================
     def readConf(self):
         ''' -------------------------------------------------------------------
+        Reads the config file specifed in constructor
         ------------------------------------------------------------------- '''
-        # Try to open the config file
-        try:
-            File = open(self.conf, "r")
-        except:
-            print("Failed to open configuration file: " + self.conf)
-            return
-        # Extract information from the configuration file
-        Lines = File.readlines()
-        # Close the config file
-        File.close()
-        # Create an index
-        index = 0
-        # Populate thelist of deviced connected to the NPS based on information
-        # contains in the config file 
-        while(index < len(Lines)):
-            line = Lines[index].strip()
-            if(line.startswith("#") or line == ""):
-                index = index + 1
-                continue
-            if(line == "<TAB>"):
-                index = index + 1
-                self.name = Lines[index].strip()
-                index = index + 1
-                if(Lines[index].strip() == "IPC32XX"):
-                    print('ERROR::: Invalid controller type')
-                    print('  This library is currently not set up to handle IPC32XX controllers.')
-                    print('  Check your provided conf file: %s'%self.conf)
-                    return
-                    #StatusFnc   = 'IPC32XX_Status'
-                    #PowerOnFnc  = 'IPC32XX_On'
-                    #PowerOffFnc = 'IPC32XX_Off'
-                elif(Lines[index].strip() == "IPC34XX"):
-                    # These are not currently used but are left here to make it
-                    # easier to implement IPC32 vs 34 control
-                    StatusFnc   = 'IPC34XX_Status'
-                    PowerOnFnc  = 'IPC34XX_On'
-                    PowerOffFnc = 'IPC34XX_Off'
-                else:
-                    print('ERROR::: Unrecognized Pulizzi Model:')
-                    #print("Unrecognized Pulizzi Model: " + Lines[index].strip())
-                    print('  Conf file: %s'%self.conf)
-                    print('  Model: %s'%(Lines[index].strip()))
-                    return
-                index = index + 1
-                sp = Lines[index].strip().split()
-                self.address = sp[0]
-                self.port    = sp[1]
-                index = index + 1
-                while(index < len(Lines) and Lines[index].strip() != "<TAB>"):
-                    if(Lines[index].strip() == ""):
-                        index = index + 1
-                        continue
-                    self.devices.append(Lines[index].strip())
-                    index = index + 1
-                    # This would be the index for enable/disable
-                    index = index + 1
-                    # This would be the index for the description
-                    index = index + 1
-                #Finished reading first tab so exit
-                break
+        
+        config = ConfigParser()
+        ret = config.read(self.conf)
+
+        #check to make sure config file was read correclty
+        if self.conf not in ret: raise Exception("Could not find config file")
+
+        model = config.get("Device_Info", "model").strip()
+        if model == "IPC34XX":
+            # These are not currently used but are left here to make it
+            # easier to implement IPC32 vs 34 control
+            self.StatusFnc   = 'IPC34XX_Status'
+            self.PowerOnFnc  = 'IPC34XX_On'
+            self.PowerOffFnc = 'IPC34XX_Off'
+        elif model == "IPC32XX":
+            # This library is not meant to be used with this model
+            msg = "This library is currently not set up to handle IPC32XX" +\
+                " controllers."
+            raise Exception(msg)
+        else:
+            msg = "Invalid pulizzi model: {}".format(model)
+            raise Exception(msg)
+
+        # load communication info
+        self.address = config.get("Communication", "address")
+        self.port = config.get("Communication", "port")
+        
+        #load devices
+        self.devices={}
+        for port in config.options("Ports"):
+            self.devices[port] = self.config.get("Ports", port)
 
     # =========================================================================
-    def getStatusAll(self):
-        ''' -------------------------------------------------------------------
-        Returns the status of all the outlets on the Pulizzi
-
-        Returns:
-            list of booleans with one boolean for every names outlet 
-
-        NOTE: 
-            if timeout occurs while reading an outlet, that value will be None
-            As such, it might be a good idea to check against False explicitly
-        ------------------------------------------------------------------- '''
+    def __startConnection(self):
+        """Opens the connection to the NPS. DO NOT USE EXTERNALLY"""
+        
         # Start telnet connection
-        try:
-            telnet = telnetlib.Telnet(self.address, self.port)
-        except:
-            print("%s - Connection to controller failed. Try again."%self.name)
-            return
+        try: telnet = telnetlib.Telnet(self.address, self.port)
+        except: raise ConnectionError("Controller connection failed.")
+
         # Wait 0.5 second
         time.sleep(0.5)
 
@@ -147,41 +108,59 @@ class NPS_cmds(object):
         if(res[0] == -1):
             #Timed out
             telnet.close()
-            print('%s - Timed out while attempting to establish connection.'%self.name)
-            return
+            raise ConnectionError("Connection timeout on startup.")
         # Wait 0.5 second
         time.sleep(0.5)
+
+    # =========================================================================
+    def __closeConnection(self):
+        """Closes the connection to the NPS"""
+
+        # send logout command
+        telnet.write(("LO\r\n").encode('ascii'))
+        res = telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], self.TIMEOUT)
+
+        #timed out
+        if(res[0] == -1):
+            telnet.close()
+            raise ConnectionError("Connection timeout on logout.")
+
+        telnet.close()
+
+    # =========================================================================
+    def getStatusAll(self) -> dict:
+        ''' -------------------------------------------------------------------
+        Returns the status of all the outlets on the Pulizzi
+
+        Returns:
+            dict of boolean values and integer keys keys = port, value = if on
+
+        NOTE: 
+            if timeout occurs while reading an outlet, that port won't be in
+            the dictionary.
+        ------------------------------------------------------------------- '''
+        
+        # Open connection to the NPS
+        self.__startConnection()
 
         # Query all outlets (device does not have an easy way to query single)
         telnet.write(("DX0\r\n").encode('ascii'))
 
-        # Initialize list for outlet status
-        devstat = [None]*len(self.devices)  
-        for i in range(len(self.devices)):
-            tmp_1 = "OUTLET " + str(i+1) + " ON"
-            tmp_2 = "OUTLET " + str(i+1) + " OFF"
+        devstat = {}
+        for i in self.devices:
+            tmp_1 = "OUTLET {} ON".format(i)
+            tmp_2 = "OUTLET {} OFF".format(i)
             fmt   = 'utf-8' 
             res = telnet.expect([bytes(tmp_1,fmt), bytes(tmp_2,fmt)], self.TIMEOUT)
             
-            if(res[0] == -1):
-                msg = " - Outlet " + str(i+1) + " timed out while waiting for status."
-                #Timed out
-                print(self.name + msg)
-            elif(res[0] == 0):
-                #Outlet is on
-                devstat[i] = True
-            else:
-                #Outlet is off
-                devstat[i] = False
+            # outlet is on
+            if res[0] == 0 : devstat[i] = True
+            # outlet is off (-1 is a timeout)
+            elif res[0] != -1: devstat[i] = False
             
-        telnet.write(("LO\r\n").encode('ascii'))
-        res = telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], self.TIMEOUT)
-
-        if(res[0] == -1):
-            #Timed out
-            print(self.name + " - Timed out when attempting to logout of pulizzi.")
-
-        telnet.close()
+        # Close connection to the NPS
+        self.__closeConnection()
+            
         return devstat
 
     # =========================================================================
@@ -195,7 +174,7 @@ class NPS_cmds(object):
                 *** NOTE: 'outlets' can also be a single integer
 
         Returns:
-            list of booleans reporting if outlet was succesfully changed
+            dict of booleans reporting if outlet was succesfully changed
                  True if change was successful, False if timeout occurred
         
         Example:
@@ -205,53 +184,31 @@ class NPS_cmds(object):
                 This will turn on outlets 2, 5, and 8
         '''
         # Start telnet connection
-        try:
-            telnet = telnetlib.Telnet(self.address, self.port)
-        except:
-            print("%s - Connection to controller failed. Try again."%self.name)
-            return
-
-        time.sleep(0.5)
-
-        # Establish comms
-        telnet.write(("@@@@\r\n").encode('ascii'))
-        res = telnet.expect([bytes("IPC ONLINE!", 'utf-8')], self.TIMEOUT)
-
-        if(res[0] == -1):
-            #Timed out
-            telnet.close()
-            print('%s - Timed out while attempting to establish connection.'%self.name)
-            return
-
-        time.sleep(0.5)
+        self.__startConnection()
      
-        if not isinstance(outlets, list):
-            # Cast outlets to a list since it is likely a single integer
-            outlets = [outlets]
+        # Cast outlets to a list since it is likely a single integer
+        if not type(outlets) is list: outlets = [outlets]
          
-        devstat = [None]*len(outlets)  # initialize list for outlet statuses
-        for i in range(len(outlets)):
-            telnet.write(("N0" + str(outlets[i]) + "\r\n").encode('ascii'))
+        # check that the outlet is valid
+        for i in outlets:
+            try: self.devices[int(i)]
+            except (KeyError, ValueError):
+                self.__closeConnection()
+                msg = "Invalid port {}".format("i")
+                raise ValueError(msg)
+
+        devstat = {}
+        for i in outlets:
+            telnet.write("N0{}\r\n".format(i).encode('ascii'))
             res = telnet.expect([bytes("DONE", 'utf-8')], self.TIMEOUT)
 
-            if(res[0] == -1):
-                #Timed out
-                #telnet.close()
-                print('%s - Outlet %d timed out while attempting to ON'%(self.name,outlets[i]))
-                devstat[i] = False 
-                #return
-            else:
-                #print('%s - Outlet %d successfully turned ON.'%(self.name, outlets[i]))
-                devstat[i] = True
+            # -1 corresponds to a timeout
+            if res[0] == -1: devstat[i] = False
+            else: devstat[i] = True
 
-        telnet.write(("LO\r\n").encode('ascii'))
-        res = telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], self.TIMEOUT)
+        # Close connection to the NPS
+        self.__closeConnection()
 
-        if(res[0] == -1):
-            #Timed out
-            print(self.name + " - Timed out when attempting to logout of pulizzi.")
-
-        telnet.close()
         return devstat
 
     # =========================================================================
@@ -274,54 +231,33 @@ class NPS_cmds(object):
             turnOff([2,5,8])
                 This will turn off outlets 2, 5, and 8
         '''
+
         # Start telnet connection
-        try:
-            telnet = telnetlib.Telnet(self.address, self.port)
-        except:
-            print("%s - Connection to controller failed. Try again."%self.name)
-            return
-
-        time.sleep(0.5)
-
-        # Establish comms
-        telnet.write(("@@@@\r\n").encode('ascii'))
-        res = telnet.expect([bytes("IPC ONLINE!", 'utf-8')], self.TIMEOUT)
-
-        if(res[0] == -1):
-            #Timed out
-            telnet.close()
-            print('%s - Timed out while attempting to establish connection.'%self.name)
-            return
-
-        time.sleep(0.5)
+        self.__startConnection()
      
-        if not isinstance(outlets, list):
-            # Cast outlets to a list since it is likely a single integer
-            outlets = [outlets]
-         
-        devstat = [None]*len(outlets)  # initialize list for outlet statuses
-        for i in range(len(outlets)):
-            telnet.write(("F0" + str(outlets[i]) + "\r\n").encode('ascii'))
+        # Cast outlets to a list since it is likely a single integer
+        if not type(outlets) is list: outlets = [outlets]
+
+        # check that the outlet is valid
+        for i in outlets:
+            try: self.devices[int(i)]
+            except (KeyError, ValueError):
+                self.__closeConnection()
+                msg = "Invalid port {}".format("i")
+                raise ValueError(msg)
+
+        devstat = {}
+        for i in outlets:
+            telnet.write("F0{}\r\n".format(i).encode('ascii'))
             res = telnet.expect([bytes("DONE", 'utf-8')], self.TIMEOUT)
 
-            if(res[0] == -1):
-                #Timed out
-                #telnet.close()
-                print('%s - Outlet %d timed out while attempting to OFF'%(self.name,outlets[i]))
-                devstat[i] = False 
-                #return
-            else:
-                #print('%s - Outlet %d successfully turned OFF.'%(self.name, outlets[i]))
-                devstat[i] = True
+            # -1 corresponds to a timeout
+            if(res[0] == -1): devstat[i] = False 
+            else: devstat[i] = True
 
-        telnet.write(("LO\r\n").encode('ascii'))
-        res = telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], self.TIMEOUT)
+        # Close connection to the NPS
+        self.__closeConnection()
 
-        if(res[0] == -1):
-            #Timed out
-            print(self.name + " - Timed out when attempting to logout of pulizzi.")
-
-        telnet.close()
         return devstat
 
     # =========================================================================
@@ -355,7 +291,4 @@ class NPS_cmds(object):
             print('\033[91mERROR: Something wrong happened.\033[0m')
             # Does not return anything
             return
-
-if __name__ == "__main__":
-    main()
 
