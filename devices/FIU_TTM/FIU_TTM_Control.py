@@ -14,7 +14,7 @@ import numpy as np
 
 #nfiuserver libraries
 from shmlib import shm
-from NPS import NPS_cmds
+from NPS_cmds import NPS_cmds
 
 """
 
@@ -505,8 +505,8 @@ info("Initializing NPS")
 NPS=NPS_cmds()
 info("Finding TTM port")
 NPS.TTM_port = None
-for port, dev in enumerate(NPS.devices):
-    if dev == "FIU TTM":
+for port in NPS.devices:
+    if NPS.devices[port] == "FIU TTM":
         NPS.TTM_port = port
         break
 if NPS.TTM_port is None:

@@ -64,8 +64,8 @@ def main():
     #displays which devices are connected to which ports
     elif ("devices" == args[0].lower()):
         state = nps.devices        #Checks what is connected to the NPS
-        for port, dev in enumerate(state):
-            print("Port %1d: %s"%(port, dev)) #Print port assignment
+        for port in state:
+            print("Port %1d: %s"%(port, state[port])) #Print port assignment
         sys.exit()
         
     #prints the status of each port
@@ -76,16 +76,16 @@ def main():
         # Get length of longest device name
         wth = len(max(list(devs.values()), key=len))
 
-        for port, dev in enumerate(devs):
+        for port in devs:
             stat = "on" if state[port] else "off"
-            kwds={"port":port, "dev":dev, "w":wth, "stat":stat}
-            print("\033[KPort {port:%d} {dev:^{w}} {stat}".format(kwds))
+            kwds={"port":port, "dev":devs[port], "w":wth, "stat":stat}
+            print("\033[KPort {port} {dev:^{w}} {stat}".format(**kwds))
         sys.exit()
     
     #turns the specified ports on
     elif "on" == args[0].lower():
         msg = "WARNING: devices should be turned on via shared memory, "+\
-            "not via NPS.\n to continue with NPS command, enter 'y'. To "+\
+            "not via NPS.\n To continue with NPS command, enter 'y'. To "+\
             "cancel, enter anything else. "
         ans = input(msg) 
         if ans != "y": sys.exit()
@@ -107,7 +107,7 @@ def main():
     #turns the specified ports off
     elif "off" == args[0].lower():
         msg = "WARNING: devices should be turned on via shared memory, "+\
-            "not via NPS.\n to continue with NPS command, enter 'y'. To "+\
+            "not via NPS.\n To continue with NPS command, enter 'y'. To "+\
             "cancel, enter anything else. "
         ans = input(msg) 
         if ans != "y": sys.exit()

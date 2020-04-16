@@ -180,7 +180,7 @@ def update(updates:list):
     #check whether the date of the last state shared memory update has a folder
     try:
         if not os.path.isdir(cur_path): os.mkdir(cur_path)
-    except os.FileNotFoundError:
+    except FileNotFoundError:
         print("DATA variable set incorrectly.")
 
     log_format = "%(message)s"
@@ -190,7 +190,7 @@ def update(updates:list):
         logging.root.removeHandler(handler)
     #start logger
     logging.basicConfig(format=log_format,\
-        filename="{}/{}".format(cur_path, LOG_FILE))
+        filename="{}/{}".format(cur_path, LOG_FILE), level=60)
     
     #translate the update list to names and values
     names = {1:"status", 2:"position", 3:"error", 4:"servo state"}

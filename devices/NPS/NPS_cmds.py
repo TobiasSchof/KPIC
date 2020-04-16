@@ -10,8 +10,6 @@ Dependencies:______________________________________________
    
   Native:
   - telnetlib   --
-  - sys         --
-  - time        --
   - os          --
 
 ================================================================================
@@ -24,11 +22,20 @@ ____Change Log:____
 
 '''
 
-from time import gmtime
+from time import gmtime, sleep
 from configparser import ConfigParser
-import os, sys, telnetlib 
+import telnetlib, logging, os
 
-CONFILE = 'NPS.ini' 
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+CONFILE = RELDIR+'/data/NPS.ini' 
+DATA = os.environ.get("DATA")
+try:
+    if DATA[-1] == "/": DATA=DATA[:-1]
+except TypeError:
+    DATA = "/nfiudata"
+    print("No DATA environment variable, using '/nfiudata'")
 
 def ConnectionError(Exception):
     """A connection to be thrown on connection error"""
@@ -88,44 +95,81 @@ class NPS_cmds(object):
         #load devices
         self.devices={}
         for port in config.options("Ports"):
-            self.devices[port] = self.config.get("Ports", port)
+            self.devices[int(port)] = config.get("Ports", port)
 
     # =========================================================================
-    def __startConnection(self):
-        """Opens the connection to the NPS. DO NOT USE EXTERNALLY"""
-        
-        # Start telnet connection
-        try: telnet = telnetlib.Telnet(self.address, self.port)
-        except: raise ConnectionError("Controller connection failed.")
+    def __loadLogger(self):
+        """Starts logging to the correct files"""
 
-        # Wait 0.5 second
-        time.sleep(0.5)
+        #get current time
+        gmt = gmtime()
+        date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
 
-        # Establish comms
-        telnet.write(("@@@@\r\n").encode('ascii'))
-        res = telnet.expect([bytes("IPC ONLINE!", 'utf-8')], self.TIMEOUT)
+        #format path to log file
+        cur_path = "{}/{}".format(DATA, date.replace("/", ""))
 
-        if(res[0] == -1):
-            #Timed out
-            telnet.close()
-            raise ConnectionError("Connection timeout on startup.")
-        # Wait 0.5 second
-        time.sleep(0.5)
+        #check whether the current date already has a directory
+        try:
+            if not os.path.isdir(cur_path): os.mkdir(cur_path)
+        #mkdir will throw this error if root directory path doesn't exist
+        except FileNotFoundError:
+            print("DATA variable set incorrectly, can't log.")
+
+        log_format = "%(message)s"
+
+        #remove any previous handlers
+        for handler in logging.root.handlers:
+            logging.root.removeHandler(handler)
+        #start logger
+        logging.basicConfig(format=log_format,\
+            filename="{}/{}".format(cur_path, "NPS.log"), level=60) 
 
     # =========================================================================
-    def __closeConnection(self):
-        """Closes the connection to the NPS"""
+    class NPS:
+        """A context manager to open and close connection to NPS"""
 
-        # send logout command
-        telnet.write(("LO\r\n").encode('ascii'))
-        res = telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], self.TIMEOUT)
+        def __init__(self, address, port, timeout):
+            """Gets required information for connection"""
+            self.address = address
+            self.port = port
+            self.TIMEOUT = timeout
 
-        #timed out
-        if(res[0] == -1):
-            telnet.close()
-            raise ConnectionError("Connection timeout on logout.")
+        def __enter__(self):
+            """Opens connection"""
 
-        telnet.close()
+            # Start telnet connection
+            try: self.telnet = telnetlib.Telnet(self.address, self.port)
+            except: raise ConnectionError("Controller connection failed.")
+
+            # Wait 0.5 second
+            sleep(0.5)
+
+            # Establish comms
+            self.telnet.write(("@@@@\r\n").encode('ascii'))
+            res = self.telnet.expect([bytes("IPC ONLINE!", 'utf-8')], self.TIMEOUT)
+
+            if(res[0] == -1):
+                #Timed out
+                self.telnet.close()
+                raise ConnectionError("Connection timeout on startup.")
+            # Wait 0.5 second
+            sleep(0.5)
+
+            return self.telnet
+
+        def __exit__(self, type, value, tb):
+            """Closes connection"""
+            
+            try:
+                # send logout command
+                self.telnet.write(("LO\r\n").encode('ascii'))
+                res = self.telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], self.TIMEOUT)
+
+                #timed out
+                if(res[0] == -1):
+                    raise ConnectionError("Connection timeout on logout.")
+            finally:
+                self.telnet.close()
 
     # =========================================================================
     def getStatusAll(self) -> dict:
@@ -140,26 +184,21 @@ class NPS_cmds(object):
             the dictionary.
         ------------------------------------------------------------------- '''
         
-        # Open connection to the NPS
-        self.__startConnection()
+        with self.NPS(self.address, self.port, self.TIMEOUT) as telnet:
+            # Query all outlets (device does not have an easy way to query single)
+            telnet.write(("DX0\r\n").encode('ascii'))
 
-        # Query all outlets (device does not have an easy way to query single)
-        telnet.write(("DX0\r\n").encode('ascii'))
-
-        devstat = {}
-        for i in self.devices:
-            tmp_1 = "OUTLET {} ON".format(i)
-            tmp_2 = "OUTLET {} OFF".format(i)
-            fmt   = 'utf-8' 
-            res = telnet.expect([bytes(tmp_1,fmt), bytes(tmp_2,fmt)], self.TIMEOUT)
+            devstat = {}
+            for i in self.devices:
+                tmp_1 = "OUTLET {} ON".format(i)
+                tmp_2 = "OUTLET {} OFF".format(i)
+                fmt   = 'utf-8' 
+                res = telnet.expect([bytes(tmp_1,fmt), bytes(tmp_2,fmt)], self.TIMEOUT)
             
-            # outlet is on
-            if res[0] == 0 : devstat[i] = True
-            # outlet is off (-1 is a timeout)
-            elif res[0] != -1: devstat[i] = False
-            
-        # Close connection to the NPS
-        self.__closeConnection()
+                # outlet is on
+                if res[0] == 0 : devstat[i] = True
+                # outlet is off (-1 is a timeout)
+                elif res[0] != -1: devstat[i] = False
             
         return devstat
 
@@ -183,8 +222,6 @@ class NPS_cmds(object):
             turnOn([2,5,8])
                 This will turn on outlets 2, 5, and 8
         '''
-        # Start telnet connection
-        self.__startConnection()
      
         # Cast outlets to a list since it is likely a single integer
         if not type(outlets) is list: outlets = [outlets]
@@ -193,21 +230,32 @@ class NPS_cmds(object):
         for i in outlets:
             try: self.devices[int(i)]
             except (KeyError, ValueError):
-                self.__closeConnection()
                 msg = "Invalid port {}".format("i")
                 raise ValueError(msg)
 
+        self.__loadLogger()
         devstat = {}
-        for i in outlets:
-            telnet.write("N0{}\r\n".format(i).encode('ascii'))
-            res = telnet.expect([bytes("DONE", 'utf-8')], self.TIMEOUT)
+        with self.NPS(self.address, self.port, self.TIMEOUT) as telnet:
+            for i in outlets:
+                telnet.write("N0{}\r\n".format(i).encode('ascii'))
+                res = telnet.expect([bytes("DONE", 'utf-8')], self.TIMEOUT)
 
-            # -1 corresponds to a timeout
-            if res[0] == -1: devstat[i] = False
-            else: devstat[i] = True
+                gmt = gmtime()
+                date = "{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon,\
+                    gmt.tm_mday)
+                time = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min,\
+                    gmt.tm_sec)
 
-        # Close connection to the NPS
-        self.__closeConnection()
+                # -1 corresponds to a timeout
+                if res[0] == -1: 
+                    msg="{date:<11}{time:<10}error: timeout on NPS port {port} ON"
+                    devstat[i] = False
+                else:
+                    msg = "{date:<11}{time:<10}update: NPS port {port} ON"
+                    devstat[i] = True;
+                
+                #log result
+                logging.log(60, msg.format(date=date, time=time, port=i))
 
         return devstat
 
@@ -232,9 +280,6 @@ class NPS_cmds(object):
                 This will turn off outlets 2, 5, and 8
         '''
 
-        # Start telnet connection
-        self.__startConnection()
-     
         # Cast outlets to a list since it is likely a single integer
         if not type(outlets) is list: outlets = [outlets]
 
@@ -242,21 +287,33 @@ class NPS_cmds(object):
         for i in outlets:
             try: self.devices[int(i)]
             except (KeyError, ValueError):
-                self.__closeConnection()
                 msg = "Invalid port {}".format("i")
                 raise ValueError(msg)
 
+        self.__loadLogger()
         devstat = {}
-        for i in outlets:
-            telnet.write("F0{}\r\n".format(i).encode('ascii'))
-            res = telnet.expect([bytes("DONE", 'utf-8')], self.TIMEOUT)
+        with self.NPS(self.address, self.port, self.TIMEOUT) as telnet:
+            for i in outlets:
+                telnet.write("F0{}\r\n".format(i).encode('ascii'))
+                res = telnet.expect([bytes("DONE", 'utf-8')], self.TIMEOUT)
 
-            # -1 corresponds to a timeout
-            if(res[0] == -1): devstat[i] = False 
-            else: devstat[i] = True
+                #get current time and format for log
+                gmt = gmtime()
+                date = "{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon,\
+                    gmt.tm_mday)
+                time = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min,\
+                        gmt.tm_sec)
 
-        # Close connection to the NPS
-        self.__closeConnection()
+                # -1 corresponds to a timeout
+                if(res[0] == -1): 
+                    msg = "{date:<11}{time:<10}error: timeout on NPS port {port} OFF"
+                    devstat[i] = False 
+                else: 
+                    msg = "{date:<11}{time:<10}update: NPS port {port} OFF"
+                    devstat[i] = True
+                
+                #log result
+                logging.log(60, msg.format(date=date, time=time, port=i))
 
         return devstat
 

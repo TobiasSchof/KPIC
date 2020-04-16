@@ -7,6 +7,8 @@ override VERNUM = 1.0
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
+SOURCE = linksem.c
+
 RELLIB = dev_Exceptions.py shmlib.py
 RELBIN = linksem
 LIBSUB = python
@@ -40,3 +42,7 @@ endif
 ################################################################################
 include $(RELDIR)/etc/rules.mk
 ################################################################################
+
+#C compilations
+linksem: linksem.c
+	$(CC) -o linksem linksem.c -lpthread
