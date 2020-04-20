@@ -32,6 +32,9 @@ if __name__ != "__main__":
     print("FIU_TTM_Control.py is not meant to be used as an import.")
     sys.exit()
 
+#IP address for the PI device.
+IP = "10.136.1.45"
+
 #a flag to tell the update thread to stop what it's doing
 STOP=False
 
@@ -163,8 +166,7 @@ def connect_device():
     with pi_lock:
         while True:
             try:
-                pidev.ConnectTCPIP(ipaddress=config.get('Communication',\
-                    'IP_Address'))
+                pidev.ConnectTCPIP(ipaddress=IP)
                 info("FIU TTM Connected.")
                 break
             except GCSError:
