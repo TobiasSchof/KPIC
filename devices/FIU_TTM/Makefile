@@ -7,8 +7,8 @@ override VERNUM = 1.0
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-RELLIB = FIU_TTM_cmds.py FIU_TTM_Control.py FIU_TTM_draw.py
-RELBIN = FIU_TTM
+RELLIB = FIU_TTM_cmds.py
+RELBIN = FIU_TTM FIU_TTM_Control FIU_TTM_draw
 RELDAT = FIU_TTM.ini
 LIBSUB = python
 ##FILES = $(RELBIN)

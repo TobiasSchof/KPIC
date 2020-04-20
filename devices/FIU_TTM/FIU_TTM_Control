@@ -1,3 +1,5 @@
+#!/usr/bin/env kpython3
+
 #inherent python libraries
 from configparser import ConfigParser
 from atexit import register, unregister
@@ -532,7 +534,7 @@ if q_pow(): connect_device()
     
 info("Starting display drawer")        
 #we use popen to start the drawing scrip separately to prevent blocking
-display_cmd = "kpython3 FIU_TTM_draw.py"
+display_cmd = "FIU_TTM_draw"
 draw_proc=Popen(display_cmd.split(" "))
 
 error = 0
