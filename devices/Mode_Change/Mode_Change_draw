@@ -1,0 +1,199 @@
+#!/usr/bin/env kpython3
+
+#inherent python libraries
+from configparser import ConfigParser
+from time import sleep, gmtime, time
+from subprocess import Popen
+from atexit import register
+from signal import signal, SIGHUP, SIGTERM
+import sys, io, os
+
+#installs
+import posix_ipc
+
+#nfiuserver libraries
+from shmlib import shm
+
+"""
+A script to continuously maintain a display of shm values in the TTM tmux 
+session and log any changes to the state shared memory. Does not run faster
+than once per 5 seconds
+"""
+
+#this script should not be used as an import
+if __name__ != "__main__":
+    print("Mode_Change_draw is not meant to be used as an import")
+    sys.exit()
+
+DATA = os.environ.get("DATA") #the path to the data directory
+try:
+    if DATA[-1] == "/": DATA=DATA[:-1]
+except TypeError:
+    DATA = "/nfiudata"
+    print("No DATA environment variable, using '/nfiudata'")
+LOG_FILE = "Mode_Change.log" #the name of the log file (appended to DATA/YYYMMDD/)
+
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+config=ConfigParser()
+config.read(RELDIR+"/data/Mode_Change.ini")
+
+#create a semaphore to combine all shm sems
+shm_update = posix_ipc.Semaphore(None, flags=posix_ipc.O_CREX)
+#make a list of sem listen processes to kill at program termination
+Sem_Listeners=[]
+
+#all the info we need to connect to a shm is in Shm_Info
+Stat_D = config.get("Shm_Info", "Stat_D").split(",")
+Stat_D = shm(Stat_D[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
+
+Pos_D = config.get("Shm_Info", "Pos_D").split(",")
+Pos_D = shm(Pos_D[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
+
+Error = config.get("Shm_Info", "Error").split(",")
+Error = shm(Error[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
+
+Pos_P = config.get("Shm_Info", "Pos_P").split(",")
+Pos_P = shm(Pos_P[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
+
+def close():
+    """Cleanup method to release semaphores and kill processes."""
+
+    try:
+        for proc in Sem_Listeners:
+            try: proc.kill()
+            except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: print("Exception on close: {}".format(ouch))
+
+    try: 
+        shm_update.unlink()
+        shm_update.close()
+    except Exception as ouch: print("Exception on close: {}".format(ouch))
+
+register(close)
+signal(SIGHUP, close)
+signal(SIGTERM, close)
+
+def loop():
+    """A method that performs one iteration of the loop.
+
+    Waits 5 seconds between iterations.
+    """
+
+    #get counts of last update on each of the shms that we need to log to tell
+    #   if they've been updated.
+    Dstat_cnt = Stat_D.mtdata["cnt0"]
+    Dpos_cnt = Pos_D.mtdata["cnt0"]
+    Error_cnt = Error.mtdata["cnt0"]
+
+    #wait for one of the shms to be updated
+    shm_update.acquire()
+
+    updates = []
+    if Stat_D.get_counter() != Dstat_cnt: updates.append(1)
+    if Pos_D.get_counter() != Dpos_cnt: updates.append(2)
+    if Error.get_counter() != Error_cnt: updates.append(3)
+
+    update(updates)
+    draw()
+
+    sleep(5)
+
+def draw():
+    """Draws a display with shared memory values."""
+
+    #convert numpy array to list for proper printing
+    dpos = [Pos_D.get_data()[0], Pos_D.get_time()]
+       
+    #convert numpy array to list for proper printing
+    ppos = [Pos_P.get_data()[0], Pos_P.get_time()]
+    if ppos[0] == -1: ppos[0] = "Pupil mode"
+    elif ppos[0] == -2: ppos[0] = "Focal mode"
+    elif ppos[0] == -3: ppos[0] = "Zernike mode"
+        
+    #translate the state status for user
+    dstatus={1:"Script: on | Device: on", 0:"Script: on | Device: off"}
+    dstatus=[dstatus[Stat_D.get_data()[0]], Stat_D.get_time()]
+
+    #translate the error for user
+    derror = {0:"None", 1:"Requested move out of limits", 4:"Controller error"}
+    derror=[derror[Error.get_data()[0]], Error.get_time()]
+
+    def t(time:float):
+        """Returns a printable string for a UNIX epoch time, formatted in GMT"""
+        gmt = gmtime(time)
+        date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        ftime = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        return "{} {}".format(date, ftime)
+
+    fmt = u"\u2503"" {:<37}"*2+u"\u2503"
+    print("\033c", end="")
+    print(u"\u250F""{:<77}"u"\u2513".format(u"\u2501"*77))
+    print(u"\u2503""{:^77}"u"\u2503".format("Viewing Mode Controller"))
+    print(u"\u2523""{0:<38}"u"\u2533""{0:<38}"u"\u252B".format(u"\u2501"*38))
+    print(fmt.format("Device state:", "Requests:"))
+    print(fmt.format("", ""))
+    print(fmt.format("Position: ", "Position:"))
+    print(fmt.format(str(dpos[0]), str(ppos[0])))
+    print(fmt.format(t(dpos[1]), t(ppos[1])))
+    print(fmt.format("", ""))
+    print(fmt.format("Status:", ""))
+    print(fmt.format(dstatus[0], ""))
+    print(fmt.format(t(dstatus[1]),""))
+    print(fmt.format("", ""))
+    print(fmt.format("Error message:", ""))
+    print(fmt.format(derror[0], ""))
+    print(fmt.format(t(derror[1]), ""))
+    print(fmt.format("", ""))
+    print(u"\u2517"+u"\u2501"*38+u"\u253B"+u"\u2501"*38+u"\u251B")
+
+def update(updates:list):
+    """Updates the log.
+
+    Inputs:
+        update = the list of state shms that have been updated:
+            1 = Stat_D
+            2 = Pos_D
+            3 = Error
+    """
+
+    gmt = gmtime()
+    date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+
+    cur_path = "{}/{}".format(DATA, date.replace("/", ""))
+    #check whether the date of the last state shared memory update has a folder
+    try:
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    except FileNotFoundError:
+        print("DATA variable set incorrectly.")
+
+    #translate the update list to names and values
+    names = {1:"status", 2:"position", 3:"error"}
+    vals = {"status":Stat_D.get_data()[0], "error":Error.get_data()[0],\
+        "position":Pos_D.get_data()[0]}
+    times = {"status":Stat_D.get_time(), "error":Error.get_time(), \
+        "position":Pos_D.get_time()}
+
+    #format log message
+    msg="{date:<11}{time:<10}update: {name:>6} = {val}\n"
+    for item in updates:
+        #log a change if there's a new value
+        name = names[item]
+        gmt = gmtime(times[name])
+        date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        val = vals[name]
+
+        with open("{}/{}".format(cur_path, LOG_FILE), "a") as log:
+            log.write(msg.format(date=date, time=log_t, name=name, val=val))
+
+draw()
+
+#continuously run the process loop
+while True: loop()
