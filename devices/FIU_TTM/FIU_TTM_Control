@@ -7,12 +7,13 @@ from time import time, ctime, sleep
 from signal import signal, SIGHUP, SIGTERM
 from subprocess import Popen
 from argparse import ArgumentParser
-import sys, io, os, posix_ipc, threading, logging
+import sys, io, os, threading, logging
 
 #installs
 from pipython import GCSDevice
 from pipython.gcserror import GCSError
 import numpy as np
+import posix_ipc
 
 #nfiuserver libraries
 from shmlib import shm
@@ -23,16 +24,16 @@ from NPS_cmds import NPS_cmds
 THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT's TIP TILT MIRROR
 AND NOT FOR USE BY USER
 
-See FIU_TTM_cmds.py or type FIU_TTM in terminal to control the TTM 
+See FIU_TTM_cmds or type FIU_TTM in terminal to control the TTM 
 
 """
 
 #This script is not an import
 if __name__ != "__main__": 
-    print("FIU_TTM_Control.py is not meant to be used as an import.")
+    print("FIU_TTM_Control is not meant to be used as an import.")
     sys.exit()
 
-#IP address for the PI device.
+# ip address for the PI device
 IP = "10.136.1.45"
 
 #a flag to tell the update thread to stop what it's doing
@@ -124,7 +125,7 @@ def move(target:list) -> int:
         #precision of encoder)
     for idx in axes:
         req = target[int(idx)-1]
-        info("Moving axis {} to {}.".format(idx, target))
+        info("Moving axis {} to {}.".format(idx, req))
         with pi_lock: pidev.MOV(idx, req)
 
     return 0
@@ -180,8 +181,6 @@ def connect_device():
     info("Config limits: {}".format(limits))
 
     info("Checking that config limits are within software limits.")
-    #keep track of whether config file should be rewritten
-    change=False
     #get software limits
     with pi_lock: softmin=pidev.qTMN()
     with pi_lock: softmax=pidev.qTMX()
@@ -190,21 +189,11 @@ def connect_device():
             min_="min_{}".format(axis)
             max_="max_{}".format(axis)
             if limits[min_] < softmin[axis]:
-                info("Changing {} limit".format(min_))
+                info("Changing {} limit to {}.".format(min_, softmin[axis]))
                 limits[min_] = softmin[axis]
-                config.set("TTM_Limits", min_, str(softmin[axis]))
-                change=True 
             if limits[max_] < softmax[axis]:
-                info("Changing {} limit".format(max_))
+                info("Changing {} limit to {}.".format(max_, softmax[axis]))
                 limits[max_] = softmax[axis]
-                config.set("TTM_Limits", max_, str(softmax[axis]))
-                change=True 
-    #if a change is necessary, rewrite the config file
-    if change:
-        with pi_lock:
-            with open("TTM.ini", "w") as file:
-                info("Changing limits in config file.")
-                config.write(file)
 
     info("Getting command shared memory")
 
@@ -221,8 +210,8 @@ def connect_device():
         pos_i = {axis:pos[int(axis)-1] for axis in axes}
         with pi_lock: pidev.MOV(pos_i)
     else:
-        info("Cannot move to initial positions. Changing command shared\
-         memory values.")
+        info("Cannot move to initial positions. Changing command shared " +\
+         "memory values.")
         with pi_lock: cur_pos = pidev.qPOS()
         with pi_lock: cur_svo = pidev.qSVO()
         #get values for each axis
@@ -244,6 +233,19 @@ def device_off():
             pidev.SVO({axis:0 for axis in axes})
             info("Zeroing voltage.")
             pidev.SVA({axis:0 for axis in axes})
+
+            #update needs pi_lock so release it for now
+            pi_lock.release()
+            
+            #update position
+            #if there is an existing update thread, tell it to stop
+            global cur_thread
+            if cur_thread is not None and cur_thread.is_alive():
+                cur_thread.join()
+            else: update() #update shm
+
+            pi_lock.acquire()
+            
             info("Closing connection to TTM.")
             pidev.CloseConnection()
 
@@ -253,8 +255,13 @@ def device_off():
     info("Waiting for TTM to turn off.")
     while q_pow(): sleep(.5)
 
+    Stat_D.set_data(np.array([0], np.int8))
+
 def device_on():
     """Waits for NPS to turn on device and then connects"""
+
+    # if device is already on, do nothing
+    if q_pow(): return
 
     info("Sending on command to NPS")
     turn_on()
@@ -329,11 +336,11 @@ def close():
         STOP = True
         if cur_thread is not None and cur_thread.is_alive():
             cur_thread.join()
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Killing draw process.")
     try: draw_proc.terminate()
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Deleting command shared memory file.")
     #We want to delete all command shared memories  so scripts can't 
@@ -341,15 +348,15 @@ def close():
     try:
         for shm in [Stat_P, Pos_P, Svos]:
             try: os.remove(shm.fname)
-            except Exception as ouch: print("Exception on close: {}".format(ouch))
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Checking if TTM is connected.")
     try:    
         if pidev.IsConnected():
             info("Turning off TTM.")
             device_off()
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
     
     info("Updating state shared memory file.")
     try:
@@ -357,24 +364,27 @@ def close():
         change = {2:-1, 1:-1, 0:-2, -1:-1, -2:-2}
         #set state status based on above change
         Stat_D.set_data(np.array([change[Stat_D.get_data()[0]]], np.int8))
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     #killing semaphore listening processes.
     try:
         for proc in Sem_Listeners:
             try: proc.terminate()
-            except Exception as ouch: print("Exception on close: {}".format(ouch))
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
     
     try: ShmP.unlink()
-    except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
         
     info("Closing tmux session.")
     Popen(config.get("Environment", "end_command").split(" "))
 
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
 #read TTM config file
 config = ConfigParser()
-config.read("FIU_TTM.ini")
+config.read(RELDIR+"/data/FIU_TTM.ini")
 
 log_path=config.get("Communication", "debug_log")
 debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
@@ -382,7 +392,7 @@ debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message
 parser = ArgumentParser()
 #boolean flag for CAN_MOVE
 parser.add_argument("-m", action="store_true")
-#flags to put into debug move
+#flags to put into debug mode
 parser.add_argument("-d", default=-1, nargs="?")
 parser.add_argument("-d!", "--dd", default=-1, nargs="?")
 
@@ -409,7 +419,7 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
     "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
     "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
     "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
-    "complex128":np.complex128, "bool":np.bool}
+    "complex128":np.complex128}
 
 #for now we just want to connect to shm to see if there's already a script
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
@@ -486,22 +496,23 @@ def Punlink():
     try: 
         Stat_P.lock.unlink()
     except (AttributeError, posix_ipc.ExistentialError) as ouch:
-        print("Exception on close: {}".format(ouch))
+        info("Exception on close: {}".format(ouch))
 
     try: 
         Pos_P.lock.unlink()
     except (AttributeError, posix_ipc.ExistentialError) as ouch:
-        print("Exception on close: {}".format(ouch))
+        info("Exception on close: {}".format(ouch))
 
     try: 
         Svos.lock.unlink()
     except (AttributeError, posix_ipc.ExistentialError) as ouch:
-        print("Exception on close: {}".format(ouch))
+        info("Exception on close: {}".format(ouch))
 
-#we want to register P shm unlink before creating shared memory, otherwise
+#we want to register P shm unlink acter creating shared memory, otherwise
 #  the shm will be cleaned up and we lose access to the lock
 register(Punlink)
 signal(SIGHUP, Punlink)
+signal(SIGTERM, Punlink)
 
 info("Command shared memories successfully created.")
 
@@ -535,7 +546,7 @@ pi_lock = threading.Lock()
 if q_pow(): connect_device()
     
 info("Starting display drawer")        
-#we use popen to start the drawing scrip separately to prevent blocking
+#we use popen to start the drawing script separately to prevent blocking
 display_cmd = "FIU_TTM_draw"
 draw_proc=Popen(display_cmd.split(" "))
 

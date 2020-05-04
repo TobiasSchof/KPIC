@@ -5,7 +5,7 @@ from subprocess import Popen
 from argparse import ArgumentParser, SUPPRESS
 from configparser import ConfigParser
 from time import sleep, ctime
-import sys, io
+import sys, io, os
 
 #installed libraries
 import numpy as np
@@ -20,9 +20,12 @@ if __name__ != "__main__": sys.exit()
 executable to control the TTM quickly from the command line
 
 """
-    
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
 config=ConfigParser()
-config.read("FIU_TTM.ini")
+config.read(RELDIR+"/data/FIU_TTM.ini")
 
 _debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
 _logDefault=config.get("Communication", "debug_log")
@@ -110,16 +113,15 @@ if "disable" in args:
     sys.exit()
 
 #for anything else we will want shared memory so enable it as needed
-Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-
-try: 
-    cur_pos = Pos_D.get_data()
-    time = Pos_D.get_time()
-except AttributeError:
+try: Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+except:
     print()
     print("NO SHARED MEMORY. PLEASE USE 'FIU_TTM enable'")
     print()
     sys.exit()
+    
+cur_pos = Pos_D.get_data()
+time = Pos_D.get_time()
 
 #if position was requested without push, we don't need the device to be on
 if "status" in args and not args.push:
@@ -139,16 +141,14 @@ if DStat in [-1, -2]:
     sys.exit()
 
 #at this point, we need Stat_P shm
-Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
-
-#Note, at this point we know the script status reflects the script is alive
-#so command shared memory should be valid, but just in case, check 
-try: PStat = Stat_P.get_data()
-except AttributeError:
+try: Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
+except:
     print()
     print("NO SHARED MEMORY. PLEASE USE 'FIU_TTM enable' OR 'FIU_TTM status'")
     print()
     sys.exit()
+
+PStat = Stat_P.get_data()
 
 if "on" in args:
     PStat[0] = 1
@@ -206,12 +206,7 @@ if "status" in args:
     #Get the counter for the position before requesting an update
     cnt = Pos_D.get_counter()
 
-    #request an update by reflecting move state in Stat_D
-    DStat = Stat_D.get_data()
-    DStat[0] = 2
-    Stat_D.set_data(DStat)
     #make control script act by touching Stat_P
-    PStat[0] = 1
     Stat_P.set_data(PStat)
 
     #wait for shared memory to be updated
@@ -343,8 +338,8 @@ if "center" in args:
     sys.exit()
 
 
-opt_msg="(x: must be between {} and {})".format(min1, max1)
-opt_msg="(y: must be between {} and {})".format(min2, max2)
+lim_msgx="(x: must be between {} and {})".format(min1, max1)
+lim_msgy="(y: must be between {} and {})".format(min2, max2)
 thirdx=(max1-min1)/3
 thirdy=(max2-min2)/3
 use1="x {:.2f} y {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
@@ -359,7 +354,8 @@ x/y:
 {b:3}the axis to move (can use one or both)
 ARG:
 {b:3}the absolute position to move to
-{b:5}{opt_msg}
+{b:5}{lim_msgx}
+{b:5}{lim_msgy}
 
 EXAMPLES:
 {b:3}FIU_TTM goto {use1}
@@ -368,4 +364,5 @@ EXAMPLES:
 --------------------------------------------
 
 ERROR: invalid ARG. Please see above.
-""".format(use1=use1, use2=use2, use3=use3, opt_msg=opt_msg, b=""))
+""".format(use1=use1, use2=use2, use3=use3, lim_msgx=lim_msgx,\
+    lim_msgy=lim_msgy, b=""))

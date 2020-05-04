@@ -9,6 +9,9 @@ from shmlib import shm
 #various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
 class FIU_TTM_cmds:
     """Class for controlling the tip tilt mirror via shared memory.
     
@@ -40,7 +43,7 @@ class FIU_TTM_cmds:
         
         #the config file has all the info needed to connect to shared memory
         config = ConfigParser()
-        config.read("FIU_TTM.ini")
+        config.read(RELDIR+"/data/FIU_TTM.ini")
 
         #Stat_D will give us info on device and script status
         self.Stat_D = config.get("Shm_Info", "Stat_D").split(",")[0]

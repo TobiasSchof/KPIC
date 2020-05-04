@@ -6,7 +6,10 @@ from time import sleep, gmtime, time
 from subprocess import Popen
 from atexit import register
 from signal import signal, SIGHUP, SIGTERM
-import sys, io, os, posix_ipc, logging
+import sys, io, os
+
+#installs
+import posix_ipc
 
 #nfiuserver libraries
 from shmlib import shm
@@ -31,8 +34,11 @@ except TypeError:
 LOG_FILE = "FIU_TTM.log" #the name of the log file (appended to DATA/YYYMMDD/)
 
 
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
 config=ConfigParser()
-config.read("FIU_TTM.ini")
+config.read(RELDIR+"/data/FIU_TTM.ini")
 
 #create a semaphore to combine all shm sems
 shm_update = posix_ipc.Semaphore(None, flags=posix_ipc.O_CREX)
@@ -185,15 +191,6 @@ def update(updates:list):
     except FileNotFoundError:
         print("DATA variable set incorrectly.")
 
-    log_format = "%(message)s"
-
-    #remove any current handlers
-    for handler in logging.root.handlers:
-        logging.root.removeHandler(handler)
-    #start logger
-    logging.basicConfig(format=log_format,\
-        filename="{}/{}".format(cur_path, LOG_FILE), level=60)
-    
     #translate the update list to names and values
     names = {1:"status", 2:"position", 3:"error", 4:"servo state"}
     vals = {"status":Stat_D.get_data()[0], "error":Error.get_data()[0],\
@@ -202,7 +199,7 @@ def update(updates:list):
         "position":Pos_D.get_time(), "servo state":Svos.get_time()}
 
     #format log message
-    msg="{date:<11}{time:<10}update: {name:>6} = {val}"
+    msg="{date:<11}{time:<10}update: {name:>6} = {val}\n"
     for item in updates:
         #log a change if there's a new value
         name = names[item]
@@ -211,7 +208,8 @@ def update(updates:list):
         log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
         val = vals[name]
 
-        logging.log(60, msg.format(date=date, time=log_t, name=name, val=val))
+        with open("{}/{}".format(cur_path, LOG_FILE), "a") as log:
+            log.write(msg.format(date=date, time=log_t, name=name, val=val))
 
 draw()
 
