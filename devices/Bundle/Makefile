@@ -1,4 +1,4 @@
-# NIRSPEC fiber injection unit. Build tip-tilt mirror
+# NIRSPEC fiber extraction unit. Build bundle movement controller
 
 override SYSNAM = kss/nirspec/nsfiu/devices/Bundle
 override VERNUM = 1.0
