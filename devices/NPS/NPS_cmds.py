@@ -24,7 +24,7 @@ ____Change Log:____
 
 from time import gmtime, sleep
 from configparser import ConfigParser
-import telnetlib, logging, os
+import telnetlib, os
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
@@ -98,8 +98,8 @@ class NPS_cmds(object):
             self.devices[int(port)] = config.get("Ports", port)
 
     # =========================================================================
-    def __loadLogger(self):
-        """Starts logging to the correct files"""
+    def __getPath(self) -> str:
+        """Returns the path of the current day's log"""
 
         #get current time
         gmt = gmtime()
@@ -115,14 +115,7 @@ class NPS_cmds(object):
         except FileNotFoundError:
             print("DATA variable set incorrectly, can't log.")
 
-        log_format = "%(message)s"
-
-        #remove any previous handlers
-        for handler in logging.root.handlers:
-            logging.root.removeHandler(handler)
-        #start logger
-        logging.basicConfig(format=log_format,\
-            filename="{}/{}".format(cur_path, "NPS.log"), level=60) 
+        return "{}/{}".format(cur_path, "NPS.log")
 
     # =========================================================================
     class NPS:
@@ -233,7 +226,7 @@ class NPS_cmds(object):
                 msg = "Invalid port {}".format("i")
                 raise ValueError(msg)
 
-        self.__loadLogger()
+        path = self.__getPath()
         devstat = {}
         with self.NPS(self.address, self.port, self.TIMEOUT) as telnet:
             for i in outlets:
@@ -248,14 +241,15 @@ class NPS_cmds(object):
 
                 # -1 corresponds to a timeout
                 if res[0] == -1: 
-                    msg="{date:<11}{time:<10}error: timeout on NPS port {port} ON"
+                    msg="{date:<11}{time:<10}error: timeout on NPS port {port} ON\n"
                     devstat[i] = False
                 else:
-                    msg = "{date:<11}{time:<10}update: NPS port {port} ON"
+                    msg = "{date:<11}{time:<10}update: NPS port {port} ON\n"
                     devstat[i] = True;
                 
                 #log result
-                logging.log(60, msg.format(date=date, time=time, port=i))
+                with open(path, "a") as log:
+                    log.write(msg.format(date=date, time=time, port=i))
 
         return devstat
 
@@ -290,7 +284,7 @@ class NPS_cmds(object):
                 msg = "Invalid port {}".format("i")
                 raise ValueError(msg)
 
-        self.__loadLogger()
+        path = self.__getPath()
         devstat = {}
         with self.NPS(self.address, self.port, self.TIMEOUT) as telnet:
             for i in outlets:
@@ -306,14 +300,16 @@ class NPS_cmds(object):
 
                 # -1 corresponds to a timeout
                 if(res[0] == -1): 
-                    msg = "{date:<11}{time:<10}error: timeout on NPS port {port} OFF"
+                    msg = "{date:<11}{time:<10}error: timeout on NPS port" +\
+                        "{port} OFF\n"
                     devstat[i] = False 
                 else: 
-                    msg = "{date:<11}{time:<10}update: NPS port {port} OFF"
+                    msg = "{date:<11}{time:<10}update: NPS port {port} OFF\n"
                     devstat[i] = True
                 
                 #log result
-                logging.log(60, msg.format(date=date, time=time, port=i))
+                with open(path, "a") as log:
+                    log.write(msg.format(date=date, time=time, port=i))
 
         return devstat
 
