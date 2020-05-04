@@ -1,0 +1,417 @@
+#!/usr/bin/env kpython3
+
+#inherent python libraries
+from subprocess import Popen
+from argparse import ArgumentParser, SUPPRESS
+from configparser import ConfigParser
+from time import sleep, ctime
+import sys, io, os
+
+#installed libraries
+import numpy as np
+
+#nfiuserver libraries
+from shmlib import shm
+
+if __name__ != "__main__": sys.exit()
+
+"""
+
+executable to control the Zabers quickly from the command line
+
+"""
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+config=ConfigParser()
+config.read(RELDIR+"/data/Bundle.ini")
+
+_debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
+_logDefault=config.get("Communication", "debug_log")
+
+parser=ArgumentParser(conflict_handler="resolve")
+
+#for help message, see bottom
+
+#add subparser to handle device commands.
+dev=parser.add_subparsers()
+	
+#Return the current position of the Zabers.
+pos=dev.add_parser("status")
+pos.add_argument("-status")
+pos.add_argument("-push", action="store_true")
+
+#Enables the Zabers control script.
+enable=dev.add_parser("enable")
+enable.add_argument("-enable")
+enable.add_argument("-m", action="store_true")
+enable.add_argument("-d", "--debug", default=-1, nargs="?")
+enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?")
+
+#Disables the Zabers control script.
+disable=dev.add_parser("disable")
+disable.add_argument("-disable")
+
+#Moves Zabers to the given position.
+moveAbs=dev.add_parser("goto")
+moveAbs.add_argument("-goto")
+moveAbs.add_argument("ax1", nargs="?", default=None)
+moveAbs.add_argument("val1", nargs="?", default=None)
+moveAbs.add_argument("ax2", nargs="?", default=None)
+moveAbs.add_argument("val2", nargs="?", default=None)
+moveAbs.add_argument("ax3", nargs="?", default=None)
+moveAbs.add_argument("val3", nargs="?", default=None)
+moveAbs.add_argument("-move")
+
+#Moves Zabers to the center of its range.
+center=dev.add_parser("center")
+center.add_argument("-center")
+center.add_argument("-move")
+
+#Displays whether axes are in open loop
+qol=dev.add_parser("homed?")
+qol.add_argument("-qhome")
+
+#Opens the loop (turns servo off)
+open_=dev.add_parser("home")
+open_.add_argument("-home")
+
+#Displays whether anti-sticktion is on
+qantis=dev.add_parser("AS?")
+qantis.add_argument("-qAS")
+
+#Turns anti-sticktion on or off
+antis=dev.add_parser("AS")
+antis.add_argument("-val", default="on", nargs="?")
+
+#Displays whether anti-backlash is on
+qantib=dev.add_parser("AB?")
+qantib.add_argument("-qAB")
+
+#Turns anti-backlash on or off
+antib=dev.add_parser("AB")
+antib.add_argument("-val", default="on", nargs="?")
+
+#Turns the Zabers on
+on=dev.add_parser("on")
+on.add_argument("-on")
+
+#Turns the Zabers off
+off=dev.add_parser("off")
+off.add_argument("-off")
+
+#override -h flag to show the "usage" window
+parser.add_argument("-h", action="store_true")
+	
+args=parser.parse_args()
+
+
+#start control script if enable tag was used
+if "enable" in args:
+    #vertical pipe separates tmux command from python command
+    command=config.get("Environment", "start_command").split("|")
+    if args.m:
+        command[-1] += (" -m")
+    if args.debug != -1:
+        command[-1] += (" -d")
+        if args.debug is not None:
+            command += args.debug
+
+    Popen(command[0].split(" ") + [command[-1]])
+    sys.exit()
+
+if "disable" in args:
+    command=config.get("Environment", "end_command").split(" ")
+    Popen(command)
+    sys.exit()
+
+#for anything else we will want shared memory so enable it as needed
+try: Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+except:
+    print()
+    print("NO SHARED MEMORY. PLEASE USE 'Bundle enable'")
+    print()
+    sys.exit()
+    
+cur_pos = Pos_D.get_data()
+time = Pos_D.get_time()
+
+#if position was requested without push, we don't need the device to be on
+if "status" in args and not args.push:
+    time=ctime(time)
+    print("Position: {}. Data was updated {}.".format(list(cur_pos), time))
+    sys.exit()
+
+#Now we need Stat_D to tell if the script is on
+Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+DStat = Stat_D.get_data()[0]
+
+#if control script is off, tell user to turn it on
+if DStat in [-1, -2]:
+    print()
+    print("CONTROL SCRIPT OFF. PLEASE USE 'Bundle enable'")
+    print()
+    sys.exit()
+
+#at this point, we need Stat_P shm
+try: Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
+except:
+    print()
+    print("NO SHARED MEMORY. PLEASE USE 'Bundle enable' OR 'Bundle status'")
+    print()
+    sys.exit()
+
+PStat = Stat_P.get_data()
+
+if "on" in args:
+    PStat[0] = 1
+    Stat_P.set_data(PStat)
+    _ = -1
+    while Stat_D.get_data()[0] not in [2, 1]: 
+        _ = (_+1)%3
+        print("Turning on device{:<4}".format("."*(_+1)), end="\r")
+        sleep(1)
+    print("Device on.{:15}".format(""))
+    sys.exit()
+
+if "off" in args:
+    PStat[0] = 0
+    Stat_P.set_data(PStat)
+    sys.exit()
+
+#Now we need the device on
+if DStat == 0:
+    print()
+    print("DEVICE OFF. PLEASE USE 'Bundle on'")
+    print()
+    sys.exit()
+
+if "qhome" in args:
+    if PStat[0] == -1: print("Device is not homed")
+    else: print("Device is homed")
+    sys.exit()
+
+if "home" in args:
+    PStat[0] = 1
+    Stat_P.set_data(PStat)
+    sys.exit()
+
+#Now we need the device homed
+if DStat == -1:
+    print()
+    print("DEVICE NOT HOMED. PLEASE USE 'Bundle home'.")
+    print()
+
+if "qAS" in args:
+    if DStat in [2, 3]: print("Anti-Sticktion is off.")
+    else: print("Anti-Sticktion is on.")
+    sys.exit()
+
+if "AS" in args:
+    if type(args.val) is not str: 
+        print("Invalid option. Use 'Bundle AS on' or 'Bundle AS off'.")
+        sys.exit()
+    args.val = args.val.lower().strip()
+    if args.val == "off":
+        # if anti-sticktion is alread off, just exit
+        if PStat in [-2, -3]: sys.exit()
+        PStat[0] = -3 if PStat == -4 else -2
+        Stat_P.set_data(PStat)
+        sys.exit()
+    elif args.val == "on":
+        # if anti-sticktion is alread on, just exit
+        if PStat in [1, -4]: sys.exit()
+        PStat[0] = -4 if PStat == -3 else 1
+        Stat_P.set_data(PStat)
+        sys.exit()
+    else:
+        print("Invalid option. Use 'Bundle AS on' or 'Bundle AS off'.")
+        sys.exit()
+        
+if "qAB" in args:
+    if DStat in [4, 3]: print("Anti-Backlash is off.")
+    else: print("Anti-Backlash is on.")
+    sys.exit()
+
+if "AB" in args:
+    if type(args.val) is not str: 
+        print("Invalid option. Use 'Bundle AB on' or 'Bundle AB off'.")
+        sys.exit()
+    args.val = args.val.lower().strip()
+    if args.val == "off":
+        # if anti-backlash is alread off, just exit
+        if PStat in [-4, -3]: sys.exit()
+        PStat[0] = -3 if PStat == -2 else -4
+        Stat_P.set_data(PStat)
+        sys.exit()
+    elif args.val == "on":
+        # if anti-backlash is alread on, just exit
+        if PStat in [1, -2]: sys.exit()
+        PStat[0] = -2 if PStat == -3 else 1
+        Stat_P.set_data(PStat)
+        sys.exit()
+    else:
+        print("Invalid option. Use 'Bundle AB on' or 'Bundle AB off'.")
+        sys.exit()
+
+#we checked for status without push earlier, so this one has it
+if "status" in args:
+    #Get the counter for the position before requesting an update
+    cnt = Pos_D.get_counter()
+
+    #make control script act by touching Stat_P
+    Stat_P.set_data(PStat)
+
+    #wait for shared memory to be updated
+    while Pos_D.get_counter() == cnt: sleep(.01)
+
+    cur_pos = Pos_D.get_data()
+    time = Pos_D.get_time()
+    time=ctime(time)
+
+    print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
+    sys.exit()
+
+#at this point, we need Pos_P and Error
+Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+
+if "goto" in args and not args.ax1 is None:
+    pos = Pos_P.get_data()
+    try:
+        #validate first parameter
+        assert args.ax1 in ["x", "y", "f"]
+        assert args.val1 is not None
+        #convert val1 to a float
+        try: args.val1 = float(args.val1)
+        except: assert 1==0
+
+        ax = {"x":0, "y":1, "f":2}
+        
+        pos[ax[args.ax1]] = args.val1
+
+        if args.ax2 is not None:
+            #validate second parameter
+            assert args.ax2 in ["x", "y", "f"]
+            assert args.val2 is not None
+            #convert val2 to a float
+            try: args.val2 = float(args.val2)
+            except: assert 1==0
+            #validate that the same axis was not passed twice
+            assert args.ax1 != args.ax2
+            
+            pos[ax[args.ax2]] = args.val2
+
+        if args.ax3 is not None:
+            #validate second parameter
+            assert args.ax3 in ["x", "y", "f"]
+            assert args.val3 is not None
+            #convert val3 to a float
+            try: args.val3 = float(args.val3)
+            except: assert 1==0
+            #validate that the same axis was not passed twice
+            assert args.ax1 != args.ax3
+            
+            pos[ax[args.ax3]] = args.val3
+
+        Pos_P.set_data(pos)
+
+        #give device time to throw an error
+        sleep(1)
+
+        error = Error.get_data()[0] 
+        if error == 20:
+            print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
+        else: sys.exit()
+
+    except AssertionError:
+        print("INVALID PARAMETERS. SEE EXAMPLES BELOW.")
+        print()
+
+#before finding limits, we display usage (note the only tag left to parse is
+#  'center' which comes with 'move', so it's ok to display this first.
+if not "move" in args:
+    cmds=["goto", "center", "status"]
+    print("""
+--------------------------------------------
+Movement:
+      - - - - - - - - - - - - - - - -      
+Bundle <CMD> <-x/-y/-f <ARG>>
+--------------------------------------------
+CMD:
+{b:3}{:<8}move to an absoluate position
+{b:3}{:<8}move to center of range
+
+Type Bundle <CMD> for examples and limits
+--------------------------------------------
+Query:
+      - - - - - - - - - - - - - - - -      
+Bundle <CMD> [-push]
+--------------------------------------------
+CMD:
+{b:3}{:<8}get position and time from
+{b:11}shared memory
+[-push]:
+{b:3}optional tag for query commands that 
+{b:11}updates shared memory before
+{b:11}returning.
+EXAMPLES:
+{b:3}Bundle status
+{b:3}Bundle status -push
+--------------------------------------------
+
+Type man Bundle for comprehensive command list
+
+""".format(*cmds, b=""))
+    sys.exit()
+            
+min1=config.getfloat("Limits", "min_1")
+max1=config.getfloat("Limits", "max_1")
+min2=config.getfloat("Limits", "min_2")
+max2=config.getfloat("Limits", "max_2")
+min2=config.getfloat("Limits", "min_3")
+max2=config.getfloat("Limits", "max_3")
+
+if "center" in args:
+    pos = Pos_P.get_data()
+    pos[0] = (min1+max1)/2
+    pos[1] = (min2+max2)/2
+    pos[2] = (min3+max3)/2
+
+    #update Pos_P
+    Pos_P.set_data(pos)
+
+    sys.exit()
+
+lim_msgx="(x: must be between {} and {})".format(min1, max1)
+lim_msgy="(y: must be between {} and {})".format(min2, max2)
+lim_msgf="(f: must be between {} and {})".format(min3, max3)
+thirdx=(max1-min1)/3
+thirdy=(max2-min2)/3
+thirdf=(max3-min3)/3
+use1="x {:.2f} y {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
+use2="x {:.0f} f {:.2f}".format(min1+2*thirdx, min3+thirdf)
+use3="x {:.3f} y {:.3f} f {:.3f}".format(min1, min2+.5*thirdy, max3) 
+
+print("""
+--------------------------------------------
+Usage: Bundle goto <-x/-y/-f <ARG>>
+--------------------------------------------
+x/y:
+{b:3}the axis to move (can use 1, 2, or 3)
+ARG:
+{b:3}the absolute position to move to
+{b:5}{lim_msgx}
+{b:5}{lim_msgy}
+{b:5}{lim_msgf}
+
+EXAMPLES:
+{b:3}Bundle goto {use1}
+{b:3}Bundle goto {use2}
+{b:3}Bundle goto {use3}
+--------------------------------------------
+
+ERROR: invalid ARG. Please see above.
+""".format(use1=use1, use2=use2, use3=use3, lim_msgx=lim_msgx,\
+    lim_msgy=lim_msgy, lim_msgf=lim_msgf, b=""))

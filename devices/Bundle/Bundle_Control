@@ -1,0 +1,849 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from configparser import ConfigParser
+from atexit import register
+from signal import signal, SIGHUP, SIGTERM
+from subprocess import Popen
+import logging, os
+
+# installs
+import numpy as np
+
+# nfiuserver libraries
+from shmlib import shm
+
+# Connection information for the Zabers
+DEVNM   = "/tmp/zabertty"    # local link name
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if a second control script is started"""
+    pass
+
+class Zaber():
+    """A class to control the zabers"""
+
+    from zaber.serial import BinarySerial, BinaryDevice, BinaryCommand,\
+        BinaryReply, exceptions
+
+    MSTEP2MM = 0.047625/1000 # millimeters / microstep conversion
+
+    # serial number - axis definitions 
+    AXIS_DEF = {:"x"
+                :"y"
+                :"f"}
+
+    def init(self, devnm:str):
+        """Constructure for the zaber class
+
+        Inputs:
+            devnm = the serial port where the zaber is connected
+        """
+
+        self.devnm = devnm
+
+        ret = self.open()
+
+        if ret is not None:
+            debug("Error while opening communication: {}.".format(ret))
+
+        debug("{} axes found.".format(len(self.axes)))
+
+    def open(self):
+        """Opens connection tozo the Zabers
+        
+        Returns:
+            int = error code if an error occurs
+        """
+
+        # Instantiate the zaber serial control class (one for all 3 devices)
+        self.port = BinarySerial(self.devnm)
+
+        # make sure that axes are numbered
+        self.renumber()
+
+        # instantiate devices (one per axis)
+        axes = []
+        for con in [1, 2, 3]: axes.append(BinaryDevice(self.port, con))
+
+        # find out which device is which serial number, and populate self.axes
+        #    dictionary accordingly
+        self.axes = {}
+        for axis in axes:
+            # read serial number
+            reply = axis.send(63, 0)
+            # check for error
+            if reply.command_number == 255:
+                debug("Error while setting LEDs on axis {} to {}.".format(axis,\
+                    vals[axis])
+                return reply.data
+
+            # put device in devs dict with key corresponding to axis
+            self.axes[AXIS_DEF[reply.data]] = axis 
+
+        # Ensure the LEDs are off
+        LEDstat = self.isLEDOn(list(self.axes))
+        
+        # if isLEDOn response is an int, it's an error code
+        if type(LEDstat) is int: return LEDstat
+
+        self.setLED({LED:False for LED in LEDstat if LEDstat[LED]})
+
+    def close(self):
+        """Closes connection to the Zabers"""
+
+        self.port.close()
+
+    def isLEDOn(self, axes:list) -> dict:
+        """Query whether the LEDs on the specified axis are on
+    
+        Each axis has two LEDs, this will return whether either is on.
+
+        Inputs:
+            axes = the axes to query (from keys of self.axes)
+        Returns:
+            dict = keys by axes, values booleans reflecting LED status
+            or
+            int  = error code if an error occurred
+        """
+
+        ret = {}
+        for axis in axes:
+            devmd = self.getDevMode(axis)
+
+            # if devmd is an int, it's an error code
+            if type(devmd) is int: return devmd
+
+            ret[axis] = not (devmd[14] and devmd[15]) 
+
+        return ret
+
+    def setLED(self, vals:dict):
+        """Sets the requested LEDs to the requested value
+        
+        Inputs:
+            vals = keys correspond to axes (reflective of keys in self.axes),
+                   values are booleans: True = on, False = off
+        Returns:
+            the error code if an error is encountered
+        """
+
+        for axis in vals:
+            # get current dev mode to avoid changing any bits besides LEDs
+            devmd = self.getDevMode(axis)
+
+            # change LED bits to desired value
+            # NOTE: these are disable bits, so True = off, False = on
+            devmd[-2:] = [not vals[axis]]*2
+
+            # convert to decimal value to send request (sum powers of 2)
+            enc = 0
+            for bit, idx in enumerate(devmd): enc += (int(bit) << idx)
+
+            # send command to set new dev mode
+            reply = self.axes[axis].send(40, enc)
+
+            if reply.command_number == 255:
+                debug("Error while setting LEDs on axis {} to {}.".format(axis,\
+                    vals[axis])
+                return reply.data
+
+    def getDevMode(self, axis:str) -> list:
+        """Returns the Device Mode bits of the specified axis
+
+        Inputs:
+            axis = the axis to get the device mode for (from self.axes.keys())
+        Returns:
+            list = See Zaber T-NA series User Manual for bit meaning
+            or
+            int = error code if an error is encountered
+        """
+
+        # request device mode
+        reply = self.axes[axis].send(53,40)
+
+        # check for error
+        if reply.command_number == 255:
+            debug("Error {} encountered while requesting ".format(reply.data)+\
+                "device mode for axis {}.".format(axis))
+            return reply.data
+
+        # convert data to a binary string
+        ret = "{:016b}".format(reply.data)
+        # convert the above string to a binary list with 2^0 at index 0
+        ret = [char for char in ret[::-1]]
+
+        # return this list
+        return ret
+
+    def renumber(self):
+        """Sends the renumber command to all axes"""
+
+        # send renumber to all devices
+        self.port.write(0,2,0)
+        sleep(1)
+
+    def isHomed(self) -> bool:
+        """Returns the homed state of the device
+        
+        Returns:
+            bool = True if all axes are homed, False otherwise
+            or
+            int = error code if an error occurs
+        """
+        
+        stat = []
+        for axis in self.axes:
+            devmd = self.getDevMode(axis)
+
+            # if devmd is an int, it's an error code
+            if type(devmd) is int: return devmd
+
+            stat.append(devmd[7])
+            
+        return all(stat)  
+
+    def home(self):
+        """Homes all axes
+
+        Returns:
+            int = error code if error occurs
+        """
+
+        for axis in self.axes:
+            reply = self.axes[axis].home()
+
+            # check reply for error
+            if reply.command_number == 255:
+                debug("Error {} while homing axis {}.".format(reply.data, axis))
+                return reply.data
+
+    def reset(self):
+        """Resets all axes (will have to home before moving again)"""
+
+        self.port.write(0, 0, 0)
+        # sleep to allow device time to respond
+        sleep(1)
+
+    def getPos(self, axes:list=list(self.axes)) -> dict:
+        """Returns the position of the given axes
+
+        Inputs:
+            axes = the axes (self.axes keys) to be returned. Default is all
+        Returns:
+            dict = keys as axes, values as floats representing position (mm)
+            or 
+            int = error code if an error occured
+        """
+
+        ret = {}
+        for axis in axes:
+            reply = self.axes[axis].send(60,0)
+            if reply.command_number == 255:
+                debug("Error {} while getting position for axis {}.".format(
+                    reply.data, axis))
+                return reply.data
+
+            # convert position to mm
+            ret[axis] = reply.data*MSTEP2MM
+
+        return ret
+
+    def moveAbs(self, targets:dict):
+        """Preforms requested moves
+
+        Does not check limits before sending command.
+
+        Inputs:
+            targets = keys as axes (self.axes keys), value as target (mm)
+        Returns:
+            int = error code if an error occured (e.g. for move outside limit)
+        """
+
+        for axis in targets:
+            # convert mm to steps
+            pos = round(targets[axis]/MSTEP2MM)
+            reply = self.axes[axis].move_abs(pos)
+            
+            # check for error
+            if reply.command_number == 255:
+                debug("Error {} occurred while moving axis {} to {} ({} " +\
+                    "mm)".format(reply.data, axis, pos, targets[axis])
+                return reply.data 
+
+    def getMaxMove(self) -> dict:
+        """Returns the maximum position (mm) of each axis
+
+        Returns:
+            dict = keys as axes (self.axes keys), values as position (mm)
+            or
+            int = error code if error occurred
+        """
+
+        ret = {}
+        for axis in self.axes:
+            # request infomation on max move
+            reply = self.axes[axis].send(53,44)
+
+            if reply.command_number == 255:
+                debug("Error {} while requesting max move for axis {}.".format(
+                    reply.data, axis)
+                return reply.data
+            
+            # convert return (steps) to mm
+            ret[axis] = reply.data / MSTEP2MM 
+
+        return ret
+
+    def isAntiBacklashOn(self) -> bool:
+        """Checks whether Anti-backlash is enabled for all axes
+
+        Returns:
+            bool = True if AB is on for all axes, False otherwise
+            or
+            int = error code if an error occurred
+        """
+
+        ret = True
+        for axis in self.axes:
+            stat = self.getDevMode(axis)
+
+            # check for error
+            if type(stat) is int:
+                debug("Error {} occurred while checking ".format(stat.data) +\
+                    "device mode on axis {}.".format(axis))
+                return stat.data
+
+            # anti-backlash is the second bit
+            ret &= bool(stat[1])
+
+        return ret
+
+    def setAntiBacklash(self, val:bool=True):
+        """Sets all axes anti-backlash bit
+
+        Inputs:
+            val = True to turn AB on, False to turn it off
+        Returns:
+            int = error code if an error occurred
+        """
+
+        for axis in self.axes:
+            # we get the current device mode to avoid changing any other bits
+            stat = self.getDevMode(axis)
+
+            # check for an error
+            if type(stat) is int:
+                debug("Error {} occured while getting ".format(stat.data) +\
+                    "device mode for axis {}.".format(axis))
+                return stat.data 
+
+            # set the anti-backlash bit
+            stat[1] = int(val)
+
+            # convert bool list to integer
+            enc = 0
+            for bit, idx in enumerate(stat): enc += (bit << idx)
+
+            # send new device mode
+            reply = self.axes[axis].send(40, enc)
+
+            if reply.command_numer == 255:
+                debug("Error {} while setting axis {} ".format(reply.data, 
+                    axis) + "anti-backlash bit to {}.".format(val))
+                return reply.data
+
+    def isAntiSticktionOn(self):
+        """Checks whether Anti-sticktion is enabled for all axes
+
+        Returns:
+            bool = True if AS is on for all axes, False otherwise
+            or
+            int = error code if an error occurred
+        """
+
+        ret = True
+        for axis in self.axes:
+            stat = self.getDevMode(axis)
+
+            # check for error
+            if type(stat) is int:
+                debug("Error {} occurred while checking ".format(stat.data) +\
+                    "device mode on axis {}.".format(axis))
+                return stat.data
+
+            # anti-sticktion is the third bit
+            ret &= bool(stat[2])
+
+        return ret
+
+    def setAntiSticktion(self, val:bool=True):
+        """Sets all axes anti-sticktion bit
+
+        Inputs:
+            val = True to turn AS on, False to turn it off
+        Returns:
+            int = error code if an error occurred
+        """
+
+        for axis in self.axes:
+            # we get the current device mode to avoid changing any other bits
+            stat = self.getDevMode(axis)
+
+            # check for an error
+            if type(stat) is int:
+                debug("Error {} occured while getting ".format(stat.data) +\
+                    "device mode for axis {}.".format(axis))
+                return stat.data 
+
+            # set the anti-sticktion bit
+            stat[2] = int(val)
+
+            # convert bool list to integer
+            enc = 0
+            for bit, idx in enumerate(stat): enc += (bit << idx)
+
+            # send new device mode
+            reply = self.axes[axis].send(40, enc)
+
+            if reply.command_numer == 255:
+                debug("Error {} while setting axis {} ".format(reply.data, 
+                    axis) + "anti-sticktion bit to {}.".format(val))
+                return reply.data
+
+def update(error:int = 0):
+    """Updates the shared memory"""
+
+    resp = zabers.getPos()
+    stat = 1
+    # in this case, there was an error
+    if type(resp) is int:
+        # check if device is off
+        if not q_pow(): stat = 0 
+        # keep error if one was passed, otherwise store this error
+        elif error == 0: error = resp
+    else:
+        # update position
+        Pos_D.set_data(np.array([resp["x"],resp["y"],resp["f"]],\
+            Pos_D.get_data().dtype))
+
+    if stat != 0 and not zabers.isAntiSticktionOn(): stat = 2
+    if stat != 0 and not zabers.isAntiBacklashOn():
+        stat = 4 if stat == 1 else 3
+
+    stat_old = Stat_D.get_data()
+    # update status if there's a new value
+    if stat 1= stat_old[0]: Stat_D.set_data(np.array([stat], stat_old.dtype))
+
+    err_old = Error.get_data()
+    # update error if there's a new value
+    if error != 0 or error != err_old[0]:
+        Error.set_data(np.array([error], err_old.dtype)
+
+def move() -> int:
+    """Makes the requested move
+    
+    Returns:
+        int = error code
+    """
+
+    if not zabers.isHomed(): return 3
+
+    req = Pos_P.get_data()
+    for target, idx in enumerate(req):
+        if not (0 <= target <= limits[idx+1][1]): return 20 
+
+    axes = ["x", "y", "f"]
+    cmd = {axes[idx]:req[idx] for idx in [0,1,2]}
+
+    # moveAbs returns the error code if there's an error, and nothing otherwise
+    resp = zabers.moveAbs(cmd)
+    if resp is None: return 0
+    else: return resp
+
+def doStatus() -> int:
+    """Performs any actions reflected by Stat_P shm
+    
+    Returns:
+        int = error code
+    """
+
+    stat = Stat_P.get_data()[0]
+    error = 0
+    resp = None
+    if stat == 1:
+        # home device
+        homed = zabers.isHomed()
+        if type(homed) is not bool or not homed: 
+            resp = zabers.home()
+            if resp is not None: error = resp
+
+        # turn on anti-backlash
+        AB = zabers.isAntiBacklashOn()
+        if type(AB) is not bool or not AB: 
+            resp = zabers.setAntiBacklash()
+            if resp is not None: error = resp
+
+        # turn on anti-sticktion
+        AS = zabers.isAntiSticktionOn()
+        if type(AS) is not bool or not AS: 
+            resp = zabers.setAntiSticktion()
+            if resp is not None: error = resp
+
+    elif stat == 0:
+        off()
+
+    elif stat == -1:
+        # reset device (unhome)
+        homed = zabers.isHomed()
+        if type(homed) is not bool or homed: 
+            resp = zabers.reset()
+            if resp is not None: error = resp
+
+    elif stat == -2:
+        # turn off anti-sticktion
+        AS = zabers.isAntiSticktionOn()
+        if (type(AS) is not bool) or AS: 
+            resp = zabers.setAntiSticktion(False)
+            if resp is not None: error = resp
+
+        # turn on anti-backlash
+        AB = zabers.isAntiBacklashOn()
+        if (type(AB) is not bool) or not AB: 
+            resp = zabers.setAntiBacklash()
+            if resp is not None: error = resp
+
+    elif stat == -3:
+        # turn off anti-sticktion
+        AS = zabers.isAntiSticktionOn()
+        if (type(AS) is not bool) or AS: 
+            resp = zabers.setAntiSticktion(False)
+            if resp is not None: error = resp
+
+        # turn off anti-backlash
+        AB = zabers.isAntiBacklashOn()
+        if (type(AB) is not bool) or AB: 
+            resp = zabers.setAntiBacklash(False)
+            if resp is not None: error = resp
+                
+    elif stat == -4
+        # turn anti-backlash off
+        AB = zabers.isAntiBacklashOn()
+        if (type(AB) is not bool) or AB: 
+            resp = zabers.setAntiBacklash(False)
+            if resp is not None: error = resp
+
+        # turn on anti-sticktion
+        AS = zabers.isAntiSticktionOn()
+        if (type(AS) is not bool) or not AS: 
+            resp = zabers.setAntiSticktion()
+            if resp is not None: error = resp
+
+    return error
+
+def loop():
+    """Continuously check for shm updates and performs actions accordingly"""
+
+    # get counts of each command shm on last read
+    pos_cnt = Pos_P.mtdata["cnt0"]
+    stat_cnt = Stat_P.mtdata["cnt0"]
+
+    # wait for a command shared memory to be updated
+    ShmP.acquire()
+
+    error = 0
+
+    # if the status has been updated, perform request
+    if stat_cnt != Stat_P.get_counter():
+        resp = doStatus()
+        if resp != 0: error = resp
+    # if the position has been updated, perform request
+    if pos_cnt != Pos_P.get_counter():
+        resp = move()
+        if resp != 0: error = resp
+
+    update(error)
+
+def on():
+    """Turns on the device via the NPS and performs any required boot-up 
+    actions"""
+
+    # do nothing if device is already on
+    if q_pow(): return
+
+    # otherwise turn on device
+    turn_on()
+
+    # wait for device to turn on
+    while not q_pow(): sleep(1)
+
+    # try to open connection to zabers
+    connect_device()
+
+def off():
+    """Turns off the device via the NPS and performs any required shut-down
+    actions"""
+
+    # do nothing if device is already off
+    if not q_pow(): return
+
+    # otherwise update shm
+    update()
+
+    # close connection to device and turn it off
+    zabers.close()
+    tunr_off()
+
+    # wait for device to power off
+    while q_pow(): sleep(1)
+
+    # update shm again (for status)
+    update()
+
+def connect_device():
+    """Opens connection to the Zabers"""
+
+    # open connection to the zabers
+    zabers.open()
+
+    global limits
+    soft = zabers.getMaxMove()
+    # if there was an error, update and return
+    if type(soft) is int: update(soft); return
+    # otherwise, check limits
+    axis_assignments = {1:"x", 2:"y", 3:"f"}
+    for lim in limits:
+        soft_max = soft[axis_assignments[lim]]
+        if limits[lim][1] > soft_max:
+            info("Changing max limit for axis {} to {}".format(lim, soft_max))
+            limits[lim][1] = soft_max 
+
+    if CAN_MOVE:
+        doStatus()
+        move()
+    else:
+        # decide on status to put into shm
+        stat = 0
+        if q_pow():
+            homed = zabers.isHomed()
+            AS = zabers.isAntiSticktionOn()
+            AB = zabers.isAntiBacklashOn()
+            if not homed: stat = -1
+            elif not AS and not AB: stat = -3
+            elif not AS: stat = -2
+            elif not AB: stat = -4
+            else: stat = 1
+
+        _ = Stat_P.get_data()
+        _[0] = stat
+        Stat_P.set_data(np.array([stat], np.int8)
+
+        # set Pos_P to reflect Pos_D
+        d = Pos_D.get_data()
+        Pos_P.set_data(d)
+        
+    # update shared memory
+    update()
+
+def close():
+    """Performs a clean close of the program, releasing resources as necessary"""
+
+    info("Killing draw process.")
+    try: draw_proc.terminate()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Deleting command shared memory files")
+    # We want to delete all command shared memories so scripts can't 
+    #    accidentally connect
+    try:
+        for shm in [Stat_P, Pos_P]:
+            try: os.remove(shm.fname)
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".foramt(ouch))
+
+    info("Turning off device")
+    try: off()
+    except Exception as ouch: info("Exception on close: {}".format(ouch)
+
+    info("Updating state shared memory file.")
+    try:
+        # define how the status should change
+        change = {1:-1, 0:-2, -1:-1, -2:-2}
+        # set state status based on above change
+        old = Stat_D.get_data()
+        Stat_D.set_data(np.array([change[old[0]], old.dtype))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Killing semaphore listening processes.")
+    try:
+        for proc in Sem_Listeners:
+            try: proc.terminate()
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Unlinking ShmP service semaphore")
+    try: ShmP.unlink()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Closing tmux session.")
+    Popen(config.get("Environment", "end_command").split(" ")
+
+# load up resources
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+config = ConfigParser()
+config.read(RELDIR+"/data/FIU_TTM.ini")
+
+log_path = config.get("Communication", "debug_log")
+debug_format = "%(filenames.%(funcName)s@%(asctime)s - %(levelname)s: %m(message)s"
+
+limits={}
+for axis in [1, 2, 3]:
+    limits[axis] = [config.get("Limits", "min_{}".format(axis)), \
+        config.get("Limits", "max_{}".format(axis))]
+
+parser = ArgumentParser()
+# boolean flag for CAN_MOVE
+parser.add_argument("-m", action="store_true")
+# flags to put into debug mode
+parser.add_argument("-d", default=-1, nargs="?")
+parser.add_argument("-d!", "--dd", default=-1, nargs="?")
+
+args = parser.parse_args()
+
+# whether this device can move on startup
+CAN_MOVE = args.m
+
+# set up debug mode
+if args.dd != -1:
+    # if a path was given, save it
+    if not args.dd is None: log_path=args.dd
+    logging.basicConfig(format=debug_format, datefmt="%H:%M:%S",\
+        filename=log_path)
+    logging.root.setLevel(logging.DEBUG)
+elif args.d != -1:
+    if not args.d is None: log_path=args.d
+    logging.basicConfig(format=debug_format, datefmt="%H:%M:%S",\
+        filename=log_path)
+    logging.root.setLevel(logging.INFO)
+
+# make the folder for shared memories if it doesn't already exist
+if not os.path.isdir("/tmp/BUNDLE"): os.mkdir("/tmp/BUNDLE")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# Connect to shm to check if control script is alive
+Stat_D = config.get("Shm_Info", "Stat_D").split(",")
+if os.path.isfile(Stat_D[0]):
+    Stat_D = shm(Stat_D[0])
+    status = Stat_D.get_data()[0]
+
+    if status in [2, 1, 0]:
+        info("Active control script exists. Raising exception.")
+        msg = "State shared memory status {}".format(status)
+        raise AlreadyAlive(msg)
+else:
+    info("No status state shared memory. Creating file.")
+    Stat_D += config.get("Shm_Init", "Stat_D").split(",")
+    Stat_D = shm(Stat_D[0], data=np.array([Stat_D[2:]], dtype=type_[Stat_D[1]]))
+
+Pos_D = config.get("Shm_Info", "Pos_D").split(",")
+if os.path.isfile(Pos_D[0]): Pos_D = shm(Pos_D[0])
+else:
+    info("No position state shared memory. Creating file.")
+    Pos_D += config.get("Shm_Init", "Pos_D").split(",")
+    Pos_D = shm(Pos_D[0], data=np.array([Pos_D[2:]], dtype=type_[Pos_D[1]]))
+
+Error = config.get("Shm_Info", "Error").split(",")
+if os.path.isfile(Error[0]): Error = shm(Error[0])
+else:
+    info("No state error shared memory. Creating file.")
+    Error += config.get("Shm_Init", "Error").split(",")
+    Error = shm(Error[0], data=np.arra([Error[2:]], dtype=type_[Error[1]]))
+
+info("No duplicate control script, continuing with initialization.")
+
+#NOTE: we want to register cleanup after Shm_D is initialized so we can edit it
+# register handles keyboard interrupts and exceptions
+# signal handles tmux kill-ses and os terminate
+info("Registering cleanup")
+register(close)
+signal(SIGHUP, close)
+signal(SIGTERM, close)
+
+info("Initializing command shared memory from config file.")
+
+# create a subscription semaphore to link all P shms
+ShmP = posix_ipc.Semaphore(None, flags = posix_ipc.O_CREX)
+
+# create a list to store processes that are updating semaphores (to be killed
+#    at close)
+Sem_Listeners = []
+
+Stat_P = config.get("Shm_Info", "Stat_P").split(",") +\
+    config.get("Shm_Init", "Stat_P").split(",")
+Stat_P = shm(Stat_P[0], data=np.array([Stat_P[2:]], dtype=type_[Stat_P[1]]), \
+    sem=True)
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
+
+Pos_P = config.get("Shm_Info", "Pos_P").split(",") +\
+    config.get("Shm_Init", "Pos_P").split(",")
+Pos_P = shm(Pos_P[0], data=np.array([Pos_P[2:]], dtype=type_[Pos_P[1]]), \
+    sem=True)
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
+
+def Punlink():
+    """Tries to unlink the lock semaphores on the P shms"""
+
+    try: Stat_P.lock.unlink()
+    except Exception as ouch: 
+        info("Exception on close: {}".format(ouch))
+        info("Exception on close: {}".format(ouch))
+
+    try: Pos_P.lock.unlink()
+    except Exception as ouch: 
+        info("Exception on close: {}".format(ouch))
+        info("Exception on close: {}".format(ouch))
+
+register(Punlink)
+signal(SIGHUP, Punlink)
+signal(SIGTERM, Punlink)
+
+info("Command shared memories successfully created.")
+
+info("Initializing NPS")
+NPS = NPS_cmds()
+info("Finding TTM port")
+NPS.TTM_port = None
+for port in NPS.devices:
+    if NPS.devices[port] == "Zaber Bundle":
+        NPS.BUNDLE_port = port
+        break
+if NPS.BUNDLE_port is None:
+        info("Cannot find NPS port")
+        raise NPSError("Cannot find NPS port")
+
+# convenience methods to deal with the NPS
+turn_on = lambda: NPS.turnOn(NPS.BUNDLE_port)
+turn_off = lambda: NPS.turnOff(NPS.BUNDLE_port)
+q_pow = lambda: NPS.getStatusAll()[NPS.BUNDLE_port]
+
+# set up Zaber device
+zabers = Zaber(DEVNM)
+if q_pow(): connect_device()
+
+info("Starting display drawer")
+display_cmd = "Bundle_Zaber_draw")
+draw_proc = Popen(display_cmd.split(" "))
+
+info("Updating shared memories")
+update(0)
+
+info("Beginning loop")
+loop()
