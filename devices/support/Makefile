@@ -9,7 +9,7 @@ override VERNUM = 1.0
 
 SOURCE = linksem.c
 
-RELLIB = dev_Exceptions.py shmlib.py
+RELLIB = dev_Exceptions.py shmlib.py Conex.py
 RELBIN = linksem
 LIBSUB = python
 ##FILES = $(RELBIN)
