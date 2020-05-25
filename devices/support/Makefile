@@ -7,9 +7,9 @@ override VERNUM = 1.0
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-SOURCE = linksem.c
+SOURCE = linksem.c shmlib.cpp
 
-RELLIB = dev_Exceptions.py shmlib.py Conex.py
+RELLIB = dev_Exceptions.py shmlib.py Conex.py libshmlib.so shmlib.hpp
 RELBIN = linksem
 LIBSUB = python
 ##FILES = $(RELBIN)
@@ -43,6 +43,10 @@ endif
 include $(RELDIR)/etc/rules.mk
 ################################################################################
 
+libflags = -c -fpic -Werror -Wall
+
 #C compilations
 linksem: linksem.c
 	$(CC) -o linksem linksem.c -lpthread
+libshmlib.so: shmlib.o
+    $(CC) $(libflags) -o libshmlib.so shmlib.o

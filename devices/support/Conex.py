@@ -1,6 +1,6 @@
 from time import sleep
 from logging import debug
-import serial
+import telnetlib
 
 #Should Modify:
 #Add method to class change serial timeout
@@ -10,7 +10,7 @@ class TimeoutError(Exception):
     """An error to be thrown for movement timeout"""
     pass
 
-class Conex_Device(object):
+class Conex_Device:
     '''Class for controlling the Newport Conex Stages
     
     Currently handles:
@@ -22,16 +22,14 @@ class Conex_Device(object):
     MVTIMEOUT   = 600       #(MVTIMEOUTxDELAY)= number of seconds device will 
                                 #wait before declaring a move timeout error
     
-    def __init__(self, devnm, baud=57600):
+    def __init__(self, host, port):
         '''Create serial object and instantiate instance variables
-        *devnm should be a string like '/dev/ttyUSB0'
-        baud = the baudrate for comms. 57600 for Serial, 921600 for USB
         '''
-        #Create Serial Object for Communication (keep closed though)
-        self.ser    = serial.Serial()     
-        self.ser.baudrate    = baud
-        self.ser.port        = devnm
-        self.ser.timeout     = 0.5
+        #Create Telnet Object for Communication (keep closed though)
+        self.tel = telnetlib.Telnet()
+        self.host = host
+        self.port = port
+        self.isOpen = False
         
         #Other Instance Variables
         self.SN     = 'DevNotOpenedYet'     #Device serial number
@@ -48,11 +46,12 @@ class Conex_Device(object):
         *Does not reopen device if already open
         '''
         #Open port if not already open
-        if self.ser.isOpen():
+        if self.isOpen:
             debug('(SN:%s) is already open' %self.SN)
         else:
-            debug('Connecting to : %s...' %self.ser.name)
-            self.ser.open()
+            debug('Connecting to : {}:{}...'.format(self.host, self.port))
+            self.tel.open(self.host, self.port)
+            self.isOpen = True
             
             #Send 'ID?' command to synchronize comms with device:
                 #The first message sent after the device is powered up is 
@@ -71,16 +70,17 @@ class Conex_Device(object):
             else:
                 raise Exception("Controller type not recognized")
 
-            #Request Software Limits
-            self.reqLim()
-        
             debug('Device is a   : %s \n'   %self.TY +
                   'Serial Number : %s \n'   %self.SN +
                   'Frameware vs. : %s \n'   %self.FW )
               
     def close(self):
         '''Closes the device connection'''
-        self.ser.close()
+        if not self.isOpen:
+            debug("Device is already closed")
+        else:
+            self.tel.close()
+            self.isOpen = False
     
     #:::::::::::::::::::::::WRITE/READ FUNCTIONS:::::::::::::::::::::::::::::::    
     def write(self, MSG, append = None):
@@ -94,13 +94,11 @@ class Conex_Device(object):
             have a dedicated function yet.
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return
             
-        msg = MSG.encode()      #convert to bytes
-        
         #convert 'append' and append to end
         if append != None:
             MSG = MSG + str(append)
@@ -108,38 +106,50 @@ class Conex_Device(object):
         MSG = MSG + '\r\n'
         msg = MSG.encode()
             
-        #Send message using pySerial (serial)
-        self.ser.write(msg)
+        #Send message using telnet
+        self.tel.write(msg)
         
     def readAll(self):
-        '''Returns the full read buffer
+        '''Returns the full read buffer or the first 50 lines
         Also serves as a 'flush' function to clear buffer itself
             Useful for debugging reads to ensure read data is as expected
         Returns the read data as bytes in bytearray
             Does NOT strip() CR\LF at end of messages
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return
-        
-        sleep(self.DELAY)                  #Give device time to respond
-        rd  = self.ser.readlines()
-        
-        return rd
 
-    def read(self):
+        cnt  = 0
+        resl = []
+        res = self.read(tmt=.25)
+        resl.append(res)
+        while len(res) > 0 and cnt < 50:
+            res = self.read(tmt=.25)
+            resl.append(res)
+            cnt += 1
+            sleep(.05)
+        if len(resl[-1]) == 0:
+            resl.pop()
+        return resl
+        
+    def read(self, tmt=1.0):
         '''Reads a single line from the readbuffer
         Strips the CR\LF and decodes it into a string
         *DOES NOT CHECK IF PORT IS OPEN
             Thus, performing read with port closed could throw errors
+
+        Inputs:
+            tmt = timeout in seconds
         Returns:
-            str result of single-line read
+            str = result of single-line read
         '''
         #Does not check if port is open to avoid slow-downs from checking
             #if port is open repeatedly when back-to-back reads are performed 
-        return self.ser.readline().strip().decode()
+        return self.tel.read_until(bytes('\r\n',
+            'utf-8'),tmt).strip().decode('utf-8')
     
     #:::::::::::::::::::::::STATE CHANGE FUNCTIONS:::::::::::::::::::::::::::::
     def home(self, isBlocking = False):
@@ -157,7 +167,7 @@ class Conex_Device(object):
             None if there's no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -194,7 +204,7 @@ class Conex_Device(object):
             None if there's no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -220,7 +230,7 @@ class Conex_Device(object):
             None if there's no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -245,7 +255,7 @@ class Conex_Device(object):
             None if no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -270,7 +280,7 @@ class Conex_Device(object):
             None if no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -294,7 +304,7 @@ class Conex_Device(object):
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -315,7 +325,7 @@ class Conex_Device(object):
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -336,7 +346,7 @@ class Conex_Device(object):
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -357,7 +367,7 @@ class Conex_Device(object):
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -378,7 +388,7 @@ class Conex_Device(object):
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -402,7 +412,7 @@ class Conex_Device(object):
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -437,7 +447,7 @@ class Conex_Device(object):
             None if no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -461,7 +471,7 @@ class Conex_Device(object):
 
         #Wait for move to complete when isBlocking is set
         if isBlocking:
-        tmtItr = 0;     #Iteration counter for timeout
+            tmtItr = 0;     #Iteration counter for timeout
             while self.isMoving():
                 if tmtItr > self.MVTIMEOUT:
                     msg = "Timeout on absolute move: {}".format(relMOV)
@@ -486,7 +496,7 @@ class Conex_Device(object):
             None if no error
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -510,7 +520,7 @@ class Conex_Device(object):
 
         #Wait for move to complete when isBlocking is set
         if isBlocking:
-        tmtItr = 0;     #Iteration counter for timeout
+            tmtItr = 0;     #Iteration counter for timeout
             while self.isMoving():
                 if tmtItr > self.MVTIMEOUT:
                     msg = "Timeout on relative move: {}".format(relMOV)
@@ -530,7 +540,7 @@ class Conex_Device(object):
             str with error code returned by device
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -554,7 +564,7 @@ class Conex_Device(object):
             *If device is not open(), the code itself is returned
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('WARNING::: Device must be open to translate string\n' + 
                   '  solution: call open()')
             return erCd
@@ -580,7 +590,7 @@ class Conex_Device(object):
             -1 if communication isn't open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -613,7 +623,7 @@ class Conex_Device(object):
             -1 if communication isn't open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -646,7 +656,7 @@ class Conex_Device(object):
             Serial number, device number, revision version
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -678,7 +688,7 @@ class Conex_Device(object):
             -1 if communication isn't open
         '''
         #Check if port is open
-        if not self.ser.isOpen():
+        if not self.isOpen:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1

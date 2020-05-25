@@ -33,6 +33,9 @@ except TypeError:
     print("No DATA environment variable, using '/nfiudata'")
 LOG_FILE = "FIU_TTM.log" #the name of the log file (appended to DATA/YYYMMDD/)
 
+# folder in nfiudata to put logs
+LOGS = DATA + "/LOGS"
+
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
@@ -182,9 +185,11 @@ def update(updates:list):
     """
 
     gmt = gmtime()
-    date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+    # nirspec, etc. only take the last two digits of the year, so match this
+    year = str(gmt.tm_year)[-2:]
+    date="{}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
-    cur_path = "{}/{}".format(DATA, date.replace("/", ""))
+    cur_path = "{}/{}".format(LOGS, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
     try:
         if not os.path.isdir(cur_path): os.mkdir(cur_path)

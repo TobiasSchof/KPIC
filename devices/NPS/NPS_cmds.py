@@ -37,6 +37,8 @@ except TypeError:
     DATA = "/nfiudata"
     print("No DATA environment variable, using '/nfiudata'")
 
+LOGS = DATA + "/LOGS"
+
 def ConnectionError(Exception):
     """A connection to be thrown on connection error"""
     pass
@@ -103,10 +105,12 @@ class NPS_cmds(object):
 
         #get current time
         gmt = gmtime()
-        date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        # nirspec, etc only use the last two digits of the year, so match this
+        year = str(gmt.tm_year)[-2:]
+        date="{}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
         #format path to log file
-        cur_path = "{}/{}".format(DATA, date.replace("/", ""))
+        cur_path = "{}/{}".format(LOGS, date.replace("/", ""))
 
         #check whether the current date already has a directory
         try:

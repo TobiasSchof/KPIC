@@ -4,8 +4,9 @@
 from configparser import ConfigParser
 from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
-from subprocessing import Popen
+from subprocess import Popen
 from time import sleep
+from argparse import ArgumentParser
 import sys, os, logging
 
 #installs
@@ -13,6 +14,7 @@ import numpy as np
 import posix_ipc
 
 #nfiuserver libraries
+from shmlib import shm
 from Conex import Conex_Device
 from NPS_cmds import NPS_cmds
 
@@ -33,21 +35,29 @@ if __name__ != "__main__":
 info = logging.info
 
 # Connection information for the device
-DEVNM = "/dev/ttyS0"
-BAUD  = 57600
+HOST = "192.168.108.54"
+PORT = 2007
 
 # get location of config files
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
+class NPSError(Exception):
+    """An exception to be thrown if there is an error with the NPS"""
+    pass
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice"""
+    pass
+
 # This stage's encoder is a visual one so creates a lot of light leak. This
 #    means that we cannot leave the stage on. To ensure we don't, we use a
 #    context manager that turns the device off on exit
-def devManager():
+class devManager:
     """Context manager to turn on the device and home it on enter and turn
     it off on exit."""
     
-    def __enter__(self)
+    def __enter__(self):
         """Opens connection to the device and homes it to be ready to move"""
 
         # turn device on
@@ -62,21 +72,22 @@ def devManager():
         #    config limits are compliant with software limits
         else: 
             dev.open()
+            dev.reqLim()   
+            global MN
+            global MX
             if MN < dev.lims["1"][0]:
-                global MN
                 MN = dev.lims["1"][0]
-                info("Changing min limit to {}.".format(dev.lims["1"][0])
+                info("Changing min limit to {}.".format(dev.lims["1"][0]))
             if MX > dev.lims["1"][1]:
-                global MX
                 MX = dev.lims["1"][1]
-                info("Changing max limit to {}.".format(dev.lims["1"][1])
+                info("Changing max limit to {}.".format(dev.lims["1"][1]))
 
         # home device - block execution
         dev.home(isBlocking=True)
 
         return self
 
-    def __exit__(self, value, type, tb):
+    def __exit__(self, type, value, tb):
         """Closes connection to the device and turn the device off."""
         
         # close connection
@@ -100,9 +111,10 @@ def update(error:int=0):
     elif type(pos) is tuple:
         err = pos[0]["1"]
         Error.set_data(np.array([-1*(ord(err)-64)], np.int8))
+        Stat_D.set_data(np.array([1], np.int8))    
     else:
         # set shms
-        Error.set_data(np.array([error], np.int8)
+        Error.set_data(np.array([error], np.int8))
         Pos_D.set_data(np.array([pos["1"]], np.float16))
         Stat_D.set_data(np.array([1], np.int8))    
 
@@ -117,7 +129,7 @@ def loop():
 
     error = 0
     # connects to device and homes on start of with, closes connection on exit
-    with devManager():
+    with devManager() as wrap:
         # if requested position is within limits, send command
         if MN <= req_pos <= MX: dev.moveAbs({"1":req_pos}, isBlocking=True)
         else: error = 1
@@ -129,6 +141,30 @@ def loop():
     update(error)
 
     loop()
+
+def close():
+    """Performs a clean close of this control script"""
+
+    info("Killing draw process.")
+    try: draw_proc.terminate()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Deleting command shared memory files.")
+    #We want to delete all command shared memories so scripts can't mistakenly
+    #think the control script is alive.
+    try: os.remove(Pos_P.fname)
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Updating state shared memory file.")
+    try:
+        # define how the status should change
+        change = {1:-1, 0:-1, -1:-1, -2:-2}
+        # set state status based on above change
+        Stat_D.set_data(np.array([change[Stat_D.get_data()[0]]], np.int8))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Closing tmux session.")
+    Popen(config.get("Environment", "end_command").split(" "))
 
 # load the config information
 config = ConfigParser()
@@ -201,7 +237,7 @@ else:
 
 Error = config.get("Shm_Info", "Error").split(",")
 if os.path.isfile(Error[0]): Error = shm(Error[0])
-else
+else:
     info("No state shared memory file, creating backing.")
     Error += config.get("Shm_Init", "Error").split(",")
     Error = shm(Error[0], data=np.array([Error[2:]], dtype=type_[Error[1]]))
@@ -221,7 +257,7 @@ signal(SIGTERM, close)
 info("Initializing command shared memory from config file.")
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",") +\
-    config.get("Shm_Init", "Pos_P")
+    config.get("Shm_Init", "Pos_P").split(",")
 Pos_P = shm(Pos_P[0], data=np.array([Pos_P[2:]], dtype=type_[Pos_P[1]]), \
     sem=True)
 
@@ -241,7 +277,7 @@ NPS = NPS_cmds()
 info("Finding NPS port")
 NPS.MC_port = None
 for port in NPS.devices:
-    if NPS.devices[port] == "TC mode stage"
+    if NPS.devices[port] == "TC mode stage":
         NPS.MC_port = port
         break
 if NPS.MC_port is None:
@@ -254,10 +290,10 @@ turn_off = lambda: NPS.turnOff(NPS.MC_port)
 q_pow = lambda: NPS.getStatusAll()[NPS.MC_port]
 
 # set up Conex device
-dev = Conex_Device(DEVNM, BAUD)
+dev = Conex_Device(HOST, PORT)
 
 # if the device is already on, connect to it
-if q_pow(): connect_device()
+if q_pow(): turn_off()
 
 info("Starting display drawer")
 # we use popen to start the drawing script separately to prevent blocking
@@ -265,7 +301,7 @@ display_cmd = "Mode_Change_draw"
 draw_proc = Popen(display_cmd.split(" "))
 
 info("Updating shared memory")
-with devManager():
+with devManager() as wrap:
     update()
 
 loop()

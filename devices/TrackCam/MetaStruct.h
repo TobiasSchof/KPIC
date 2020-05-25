@@ -75,10 +75,6 @@ typedef struct
     //  keeps track of the last updated slice in the buffer
     uint8_t cnt1 = 0;
 
-    // keeps track of how many semaphores this structure has
-    //    (Note: this is only semaphores to track new data, not locks)
-    uint8_t semNb = 0;
-
 } im_metadata;
 
 /*

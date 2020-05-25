@@ -40,8 +40,7 @@ SEM_DIR = "/dev/shm"
 # ------------------------------------------------------
 all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16, 
               np.uint32,    np.int32,   np.uint64,    np.int64,
-              np.float32,   np.float64, np.complex64, np.complex128,
-              np.bool]
+              np.float32,   np.float64, np.complex64, np.complex128]
 
 # ------------------------------------------------------
 # list of metadata keys for the shm structure (global)
@@ -142,13 +141,6 @@ class shm:
         self.lock = posix_ipc.Semaphore("/"+singleName+"_lock",\
             flags=posix_ipc.O_CREAT, initial_value=1)
 
-        #save start of semaphore name for updating sems later
-        self.semName = "/" + singleName + "_sem"
-
-        #first get all semaphores for other processes
-        self.semaphores = []
-        self.updateSems()
-
         #If requested, make semaphore for this instance
         if not sem: self.sem = None
         else: 
@@ -171,10 +163,6 @@ class shm:
             semName += str(free)
 
             self.sem = posix_ipc.Semaphore(semName, flags = posix_ipc.O_CREAT)
-            self.semaphores.append(self.sem)
-
-        msg = '%d semaphores created or re-used'.format(len(self.semaphores))
-        info(msg)
 
         # next create the shm if we have data (we do this after semaphore
         #   creation to alert any waiting processes that this has been created
@@ -299,13 +287,6 @@ class shm:
                 self.sem.close()
             except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-        #close any semaphores opened that we don't own
-        try:
-            for sem in self.semaphores:
-                try: sem.close()
-                except Exception as ouch: info("Exception on close: {}".format(ouch))
-        except Exception as ouch: info("Exception on close: {}".format(ouch))
-
         #close the lock semaphore
         try: self.lock.close()
         except Exception as ouch: info("Exception on close: {}".format(ouch))
@@ -318,43 +299,36 @@ class shm:
 
         unregister(self.close)
 
-    def updateSems(self):
+    def postSems(self):
         '''------------------------------------------------------------------
-        Checks the semaphores in self.semaphores. If any have been unlinked,
-           close them. If there are any new ones, add them.
+        Connects to any semaphores in SEM_DIR named with this shm's imname
+           and updates them.
 
-        Note: This assumes the naming convention used by CentOS. Before using
+        NOTE: This assumes the naming convention used by CentOS. Before using
            check that a) SEM_DIR is correct and b) if a semaphore is named
            '/xyz' then it is stored as 'sem.xyz'
+
+        The reason that semaphores are opened and closed rather than stored is
+           to ensure that semaphores recycled between postings are handled
+           correctly. 
         -------------------------------------------------------------------'''
 
-        #look for any files in the semaphore directory following the convention
-        #  for naming based on the name of this image
+        # look for any files in the semaphore directory following the convention
+        #    for naming based on the name of this image
         sems = glob(SEM_DIR+"/sem."+self.mtdata["imname"]+"_sem*")
-        #create an array to track semaphores to remove while adding new ones
-        tmp = [sem.name for sem in self.semaphores]
-        
-        #add any new semaphores and check if current semaphores are still used
-        for sem in sems:
-            #strip directories, leaving just file name
-            sem = sem[sem.rfind("/")+1:]
-            #remove the sem. at the beginning and add '/' to translate to the
-            #  name of the semaphore
-            sem = "/"+sem[sem.find(".")+1:]
-            #check if the semaphore is already being tracked
-            try: 
-                idx = tmp.index(sem)
-                #update tmp to say that this semaphore is still active
-                tmp[idx] = None;
-            except ValueError:
-                #add this semaphore to our list
-                self.semaphores.append(posix_ipc.Semaphore(sem, \
-                    posix_ipc.O_CREAT))
 
-        #remove any semaphores no longer being used
-        #note we iterate in reverse so pops don't affect indices
-        for idx, sem in list(enumerate(tmp))[::-1]:
-            if not sem is None: self.semaphores.pop(idx).close()
+        # connect to sem, increment it, close it
+        for sem in sems:
+            # strip directories from filename
+            sem_nm = sem[sem.rfind("/")+1:]
+            # remove sem. at beginning and add '/'
+            sem_nm = "/"+sem_nm[4:]
+            # connect to semaphore
+            sem = posix_ipc.Semaphore(sem_nm, posix_ipc.O_CREAT)
+            # increment semaphore
+            sem.release()
+            # close semaphore
+            sem.close()
 
     def read_meta_data(self):
         ''' --------------------------------------------------------------
@@ -570,9 +544,7 @@ class shm:
                 msg = "     data: {}".format(data)
                 return
 
-        self.updateSems()
-        for sem in self.semaphores:
-            sem.release()
+        self.postSems()
 
         return
 
