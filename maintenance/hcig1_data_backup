@@ -1,0 +1,22 @@
+#!/usr/bin/env kpython3
+
+from time import gmtime
+import os
+
+gmt = gmtime()
+
+# we want to back up the data folder made with yesterday's date
+year = gmt.tm_year
+mon = gmt.tm_mon
+day = gmt.tm_mday - 1
+
+# folder name is YYMMDD
+dir_nm = "{}{:02d}{:02d}".format(str(year)[-2:], mon, day)
+path = "/nfiudata/{}".format(dir_nm)
+
+# check for folder existence
+if not os.path.isdir(path): exit()
+
+# if we get past check, directory exists, so rsync it
+cmd = "rsync -r {} hcig1:/scr3/kpic/Data".format(path)
+os.system(cmd)
