@@ -43,10 +43,9 @@ endif
 include $(RELDIR)/etc/rules.mk
 ################################################################################
 
-libflags = -c -fpic -Werror -Wall
 
 #C compilations
 linksem: linksem.c
 	$(CC) -o linksem linksem.c -lpthread
-libshmlib.so: shmlib.o
-    $(CC) $(libflags) -o libshmlib.so shmlib.o
+libshmlib.so: shmlib.cpp
+    $(CC) -shared -o libshmlib.so -fPIC shmlib.cpp

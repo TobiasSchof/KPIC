@@ -482,12 +482,14 @@ class shm:
         - reform: boolean, if True, reshapes the array in a 2-3D format
         -------------------------------------------------------------- '''
 
+        #wait for new data
+        if check: self.sem.acquire()
+
+        self.load()
+        
         i0 = self.im_offset                                  # image offset
         i1 = i0 + self.img_len                               # image end
 
-        #wait for new data
-        if check: self.sem.acquire()
-        
         #Use a context manager so lock is released if process is killed
         with self.lock:
             data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
@@ -556,7 +558,7 @@ class shm:
         ----------
         - fitsname: a filename (clobber=True)
         -------------------------------------------------------------- '''
-#        pf.writeto(fitsname, self.get_data(), clobber=True)
+        pf.writeto(fitsname, self.get_data(), clobber=True)
         return(0)
 
 # =================================================================
