@@ -2,19 +2,20 @@
  * This class implements the shared memory class defined in shmlib.hpp
  */
 
-#include <semaphore.h> // adds POSIX semaphores
-#include <fcntl.h>     // adds O POSIX tags (O_CREAT)
-#include <thread>      // adds threading
-#include <sys/mman.h>  // adds mmap
-#include <sys/stat.h>  // adds mmap tags
-#include <time.h>      // adds timespec and enables getting the time
-#include <string>      // adds string
-#include <cstring>     // adds strcpy
-#include <fstream>     // adds file reading/writing
-#include <stdint.h>    // adds uxxx_t types
-#include <dirent.h>    // adds directory inspection
+#include <semaphore.h>             // adds POSIX semaphores
+#include <fcntl.h>                 // adds O POSIX tags (O_CREAT)
+#include <thread>                  // adds threading
+#include <sys/mman.h>              // adds mmap
+#include <sys/stat.h>              // adds mmap tags
+#include <time.h>                  // adds timespec and enables getting the time
+#include <string>                  // adds string
+#include <cstring>                 // adds strcpy
+#include <fstream>                 // adds file reading/writing
+#include <stdint.h>                // adds uxxx_t types
+#include <experimental/filesystem> // adds directory inspection
+namespace fs = std::experimental::filesystem;
 
-#include <iostream>    // printing for debugging
+#include <iostream>
 
 #include "shmlib.hpp"
 
@@ -30,22 +31,23 @@
  * Inputs:
  *    sem_fnm = the file name for a semaphore
  * Returns:
- *    int = -1 if SEM_DIR isn't found or if directory can't be closed, else 0
+ *    int = -1 if SEM_DIR isn't found, else 0
  */
 int postSems(std::string sem_fnm){
-    // open the semaphore directory (from shmlib header)
-    DIR *dr = opendir(SEM_DIR);
 
-    if (dr == NULL){ return -1; }
+    // Return with error if directory can't be found
+    if (!fs::exists(SEM_DIR) | !fs::is_directory(SEM_DIR)){
+        return -1;
+    }
 
-    // dirent structure will reveal the files within the directory
-    struct dirent *de;
-
-    while ((de = readdir(dr)) != NULL){
+    // Look through semaphore directory
+    for (const auto & entry : fs::directory_iterator(SEM_DIR)){
+        std::string f_nm = entry.path();
+        f_nm.erase(0, 9);
         // check if this semaphore's name matches this shm's semaphores' names
-        if (strncmp(sem_fnm.c_str(), de->d_name, sem_fnm.length()) == 0){
+        if (strncmp(sem_fnm.c_str(), f_nm.c_str(), sem_fnm.length()) == 0){
             // replace 'sem.' in file name with '/' to get semaphore name
-            std::string sem_nm(de->d_name);
+            std::string sem_nm = f_nm;
             sem_nm.erase(0, 4);
             sem_nm = "/" + sem_nm;
 
@@ -59,7 +61,8 @@ int postSems(std::string sem_fnm){
             sem_close(sem);
         } 
     }
-    return closedir(dr);
+
+    return 0;
 }
 
 int get_size(size_t* size, int enc)
@@ -146,7 +149,11 @@ Shm::Shm(std::string filepath)
     // remove '.im.shm'
     sempref.erase(sempref.find("."), sempref.length());
 
-    lock = sem_open((sempref + "_lock").c_str(), O_CREAT, 0644, 0);
+    lock = sem_open((sempref + "_lock").c_str(), O_CREAT, 0644, 1);
+    if (lock == SEM_FAILED){
+        perror("lock opening failed.");
+        exit(EXIT_FAILURE);
+    }
     // remove starting '/' from sempref and add prepend 'sem.' and append '_sem'
     sem_fnm = sempref + "_sem";
     sem_fnm.erase(0, 1);
@@ -160,15 +167,10 @@ Shm::Shm(std::string filepath)
     if (buf == MAP_FAILED){ perror("mmap"); exit(EXIT_FAILURE); }
     // close file
     fclose(backing);
-
-    // copy data in the shm
-    data = calloc(mtdata.nel, UNIT_SIZE);
-
-    memcpy(data, buf + DATA_OFFSET, DATA_SIZE);
 }
 
 Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-        char *seed)
+        void *seed)
 {
     // set data type and data size
     mtdata.dtype = dtype;
@@ -189,8 +191,14 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     // remove '.im.shm'
     sempref.erase(sempref.find("."), sempref.length());
 
-    lock = sem_open((sempref + "_lock").c_str(), O_CREAT, 0644, 0);
+    lock = sem_open((sempref + "_lock").c_str(), O_CREAT, 0644, 1);
+    if (lock == SEM_FAILED){
+        perror("lock opening failed.");
+        exit(EXIT_FAILURE);
+    }
     sem_fnm = sempref + "_sem";
+    sem_fnm.erase(0, 1);
+    sem_fnm = "sem." + sem_fnm;
 
     // set times in metadata
     timespec_get(&mtdata.crtime, TIME_UTC);
@@ -220,12 +228,8 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     // copy in metadata
     fwrite(&mtdata, sizeof(mtdata), 1, backing);
 
-    // copy in data
-    data = calloc(mtdata.nel, UNIT_SIZE);
-    memcpy(data, seed, DATA_SIZE);
-
     // write data to file
-    fwrite(data, UNIT_SIZE, mtdata.nel, backing); 
+    fwrite(seed, UNIT_SIZE, mtdata.nel, backing); 
 
     // open shm
     buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
@@ -233,6 +237,11 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
 
     // close file
     fclose(backing);
+
+    // start a thread to post semaphores
+    std::thread post(postSems, sem_fnm);
+    
+    post.detach();
 }
 
 void Shm::getMetaData(){
@@ -245,21 +254,18 @@ uint64_t Shm::getCounter(){
     return mtdata.cnt0;
 }
 
-void Shm::setData(void *new_data){
+void Shm::set_data(void *new_data){
     struct timespec time;
     timespec_get(&time, TIME_UTC);
 
     size_t edit = sizeof(mtdata.latime) + sizeof(mtdata.atime) + 
         sizeof(mtdata.cnt0);
 
-    // copy the data to out local data
-    memcpy(data, new_data, DATA_SIZE);
-    
     // grab the lock
     sem_wait(lock);
 
     // copy the data to the shared memory
-    memcpy(buf+DATA_OFFSET, data, DATA_SIZE);
+    memcpy(buf+DATA_OFFSET, new_data, DATA_SIZE);
 
     // update metadata
     mtdata.atime = time;
@@ -272,34 +278,13 @@ void Shm::setData(void *new_data){
     // release the lock
     sem_post(lock);
 
-    // updatd cnt0
-    getCounter();
-
     // start a thread to post semaphores
     std::thread post(postSems, sem_fnm);
-
+    
     post.detach();
 }
 
-void* Shm::getData(){
-    // grab lock
-    sem_wait(lock);
-
-    // copy the data from the mmapping
-    memcpy(data, buf+DATA_OFFSET, DATA_SIZE);
-    // update latime
-    timespec_get(&mtdata.latime, TIME_UTC);
-    // updated latime in shm
-    memcpy(buf+LATIME_OFFSET, &mtdata.latime, sizeof(mtdata.latime));
-
-    //release lock
-    sem_post(lock);
-
-    // return a pointer to the copy
-    return data;
-}
-
-void* Shm::getData(bool wait){
+void Shm::get_data(void *loc, bool wait){
     if (wait){
         // connect to an unused semaphore if we don't already have one
         if (!has_sem){
@@ -331,26 +316,45 @@ void* Shm::getData(bool wait){
         // otherwise wait on our semaphore
         sem_wait(sem); 
     }
+
     // grab lock
     sem_wait(lock);
 
+    // Make sure we have the right data size
+    memcpy(&mtdata.nel, buf+NEL_OFFSET, sizeof(mtdata.nel)+sizeof(mtdata.size));
+    DATA_SIZE = mtdata.nel * UNIT_SIZE;
+
     // copy the data from the mmapping
-    memcpy(data, buf+DATA_OFFSET, DATA_SIZE);
+    memcpy(loc, buf+DATA_OFFSET, DATA_SIZE);
     // update latime
     timespec_get(&mtdata.latime, TIME_UTC);
-    // updated latime in shm
+    // update latime in shm
     memcpy(buf+LATIME_OFFSET, &mtdata.latime, sizeof(mtdata.latime));
+
+    // get latest counter
+    getCounter();
 
     //release lock
     sem_post(lock);
+}
 
-    // return a pointer to the copy
-    return data;
+void Shm::resize(uint16_t size[3]){
+
+    mtdata.size[0] = size[0];
+    mtdata.size[1] = size[1];
+    mtdata.size[2] = size[2];
+
+    mtdata.nel = 1;
+    for (int i=0; i<3; i++){
+        if (mtdata.size[i] > 0){ mtdata.nel *= mtdata.size[i]; }
+    }
+
+    DATA_SIZE = mtdata.nel * UNIT_SIZE;
+
+    memcpy(buf+NEL_OFFSET, &mtdata.nel, sizeof(mtdata.nel)+sizeof(mtdata.size));
 }
 
 Shm::~Shm(){
-    // free memory calloced for data
-    free(data);
     // if this shm has a semaphore, unlink and close it
     if (has_sem) { 
         sem_unlink(sem_nm.c_str());

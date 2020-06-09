@@ -109,7 +109,7 @@ class Shm{
          *   data     = a pointer to the data meant to be used to create shm
          */
         Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-            char *data);
+            void *data);
 
         // Loads all metadata
         void getMetaData();
@@ -126,34 +126,31 @@ class Shm{
          * Sets the data in the shm.
          *   Note: a basic pointer is used for the data to make the method
          *         independant of dtype. The method may not check that data
-         *         is valid, so ensure that the start of the full data is
-         *         pointed to by new_data.
+         *         is valid, so ensure that the pointer points to an area of
+         *         memory at least DATA_SIZE in size.
          *
          * Inputs:
          *   new_data = a pointer to the start of the data to be written.
          */
-        void setData(void *new_data);
+        void set_data(void *new_data);
 
         /*
          * Gets the current data from the shm and returns a pointer to it.
          *
-         * Returns:
-         *   char* = a pointer to a copy of the current data in the shared 
-         *           memory (does not expose the underlying mmap)
+         * Inputs:
+         *   loc  = a pointer to somewhere to store the data. The size of the
+         *         area pointed to by loc should be AT LEAST DATA_SIZE
+         *   wait = whether a semaphore should be waited on before fetching 
          */
-        void* getData();
+        void get_data(void *loc, bool wait=false);
 
         /*
-         * Optionally waits for new data then updates and returns data.
+         * Updates size in the metadata, as well as the DATA_SIZE variable
          *
          * Inputs:
-         *   wait = if True, waits for new data
-         *         NOTE: this method with wait = False is the same as the above
-         * Returns:
-         *   char* = a pointer to a copy of the current data in the shared 
-         *           memory (does not expose the underlying mmap)
+         *   size = how to resize this data
          */
-        void* getData(bool wait);
+        void resize(uint16_t size[3]);
 
         // destructor
         ~Shm();
@@ -162,11 +159,13 @@ class Shm{
 
         // metadata structure
         im_metadata mtdata;
-        // last acquired data (calloc'd)
-        void *data;
         // the name of the semaphore belonging to this shm.
         // if this shm doesn't have a semaphore, this will be an empty string
         std::string sem_nm = "";
+        // semaphore to add wait for updates
+        sem_t *sem; 
+        // size of entire data
+        size_t DATA_SIZE;
 
     private:
         // private methods
@@ -175,8 +174,6 @@ class Shm{
 
         // lock to protect the shm
         sem_t *lock;
-        // semaphore to add wait for updates
-        sem_t *sem; 
         // boolean to represent whether this shm already has a semaphore
         bool has_sem = false;
         /* file name beginning of a sempahore for this shm.
@@ -196,6 +193,4 @@ class Shm{
         const uint8_t DATA_OFFSET = sizeof(im_metadata);
         // size of a single piece of data
         size_t UNIT_SIZE;
-        // size of entire data
-        size_t DATA_SIZE;
 };

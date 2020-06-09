@@ -48,4 +48,4 @@ include $(RELDIR)/etc/rules.mk
 linksem: linksem.c
 	$(CC) -o linksem linksem.c -lpthread
 libshmlib.so: shmlib.cpp
-    $(CC) -shared -o libshmlib.so -fPIC shmlib.cpp
+    $(CC) -shared -o libshmlib.so -fPIC shmlib.cpp -lstdc++fs
