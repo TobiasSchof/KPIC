@@ -106,7 +106,7 @@ void FliObserver::ImageReceiver(){
         else if(strncmp("FPS_D:", word.c_str(), 6) == 0){ conf >> fps_cf; }
         else if(strncmp("Exp_D:", word.c_str(), 6) == 0){ conf >> exp_cf; }
         else if(strncmp("NDR_D:", word.c_str(), 6) == 0){ conf >> ndr_cf; }
-        else if(strncmp("Crop_D:", word.c_str(), 6) == 0){conf >> crop_cf;}
+        else if(strncmp("Crop_D:", word.c_str(), 7) == 0){conf >> crop_cf;}
     }
  
     // close config file
@@ -158,28 +158,28 @@ void FliObserver::ImageReceiver(){
     catch (NoShm) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        img = new Shm(fps_fc, &size, 3, 10, &data); 
+        fps = new Shm(fps_fc, &size, 3, 10, &data); 
     }
     
     try { exp = new Shm(exp_fc); }
     catch (NoShm) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        img = new Shm(exp_fc, &size, 3, 10, &data); 
+        exp = new Shm(exp_fc, &size, 3, 10, &data); 
     }
     
     try { ndr = new Shm(ndr_fc); }
     catch (NoShm) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        img = new Shm(ndr_fc, &size, 3, 1, &data); 
+        ndr = new Shm(ndr_fc, &size, 3, 1, &data); 
     }
  
     try { crop = new Shm(crop_fc); }
     catch (NoShm) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        img = new Shm(crop_fc, &size, 3, 3, &data); 
+        crop = new Shm(crop_fc, &size, 3, 3, &data); 
     }
 }
 
