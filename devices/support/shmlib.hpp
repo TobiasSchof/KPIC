@@ -40,9 +40,6 @@ typedef struct
     // the time this memory was created
     struct timespec crtime;
 
-    // the last time this memory was accessed
-    struct timespec latime;
-
     // the time that the image was acquired from the frame grabber
     struct timespec atime;
 
@@ -76,7 +73,7 @@ typedef struct
     uint8_t dtype = 0;
 
     //  keeps track of the last updated slice in the buffer
-    uint8_t cnt1 = 0;
+    uint8_t mmap = 1;
 
 } im_metadata;
 
@@ -107,9 +104,11 @@ class Shm{
          *   dtype    = the type of data to be stored
          *             Should be an encoding defined by im_metadata
          *   data     = a pointer to the data meant to be used to create shm
+         *   mmap     = whether this shm should be marked as one to mmap or 
+         *             just to be read/written as a normal file 
          */
         Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-            void *data);
+            void *data, bool mmap);
 
         // Loads all metadata
         void getMetaData();
@@ -166,6 +165,8 @@ class Shm{
         sem_t *sem; 
         // size of entire data
         size_t DATA_SIZE;
+        // shm file name
+        std::string fname;
 
     private:
         // private methods
@@ -186,8 +187,7 @@ class Shm{
         // mmap location
         char *buf;
         // offsets for quick access
-        const uint8_t LATIME_OFFSET = sizeof(mtdata.name)+sizeof(mtdata.crtime);
-        const uint8_t ATIME_OFFSET = LATIME_OFFSET + sizeof(mtdata.latime);
+        const uint8_t ATIME_OFFSET = sizeof(mtdata.name)+sizeof(mtdata.crtime);
         const uint8_t CNT0_OFFSET = ATIME_OFFSET + sizeof(mtdata.atime);
         const uint8_t NEL_OFFSET = CNT0_OFFSET + sizeof(mtdata.cnt0);
         const uint8_t DATA_OFFSET = sizeof(im_metadata);

@@ -120,21 +120,21 @@ class CorruptSharedMemory: public std::exception{
 
 Shm::Shm(std::string filepath)
 {
-    // open file as read only to check existence
-    FILE* backing = fopen(filepath.c_str(), "r");
+    fname = filepath;
 
-    // check for file existence
-    if (!backing){ throw NoShm; } 
-
+    // open file
+    FILE* backing = fopen(fname.c_str(), "rb+");
+    // check that file was opened successfully
+    if (!backing) { throw NoShm; }
     // read in metadata
-    fread(&mtdata, DATA_OFFSET, 1, backing); 
-
+    fread(&mtdata, sizeof(mtdata), 1, backing);
+    // close file
     fclose(backing);
 
     if (get_size(&UNIT_SIZE, mtdata.dtype) == -1) { throw CorruptShm; } 
     DATA_SIZE = UNIT_SIZE*mtdata.nel;
 
-    std::string sempref = filepath;
+    std::string sempref = fname;
     // remove root-level directory
     size_t cut = sempref.find("/", 1);
     if (cut != std::string::npos) { 
@@ -159,24 +159,29 @@ Shm::Shm(std::string filepath)
     sem_fnm.erase(0, 1);
     sem_fnm = "sem." + sem_fnm;
 
-    // open file as read and write to mmap
-    backing = fopen(filepath.c_str(), "a+");
-    // open the shm
-    buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
-        MAP_SHARED, fileno(backing), 0); 
-    if (buf == MAP_FAILED){ perror("mmap"); exit(EXIT_FAILURE); }
-    // close file
-    fclose(backing);
+    // mmap or set buffer pointer to null
+    if (mtdata.mmap == 1){
+        // open file as read and write to mmap
+        backing = fopen(fname.c_str(), "rb+");
+        // open the shm
+        buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
+            MAP_SHARED, fileno(backing), 0); 
+        if (buf == MAP_FAILED){ perror("mmap"); exit(EXIT_FAILURE); }
+        // close file
+        fclose(backing);
+    } else { buf = NULL; }
 }
 
 Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-        void *seed)
+        void *seed, bool do_mmap)
 {
+    fname = filepath;
+
     // set data type and data size
     mtdata.dtype = dtype;
     if (get_size(&UNIT_SIZE, mtdata.dtype) == -1) { throw CorruptShm; } 
 
-    std::string sempref = filepath;
+    std::string sempref = fname;
     // remove root-level directory
     size_t cut = sempref.find("/", 1);
     if (cut != std::string::npos) { 
@@ -202,10 +207,10 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
 
     // set times in metadata
     timespec_get(&mtdata.crtime, TIME_UTC);
-    mtdata.latime = mtdata.crtime;
     mtdata.atime = mtdata.crtime;
 
     // set name in metadata based on filename
+    sempref.erase(0, 1);
     strcpy(mtdata.name, sempref.c_str());
 
     // set nel, naxis, and size in metadata from size parameter
@@ -222,18 +227,23 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
 
     DATA_SIZE = UNIT_SIZE*mtdata.nel;
 
-    // create file backing
-    FILE* backing = fopen(filepath.c_str(), "a+");
-
-    // copy in metadata
+    // set mmap in metadata
+    mtdata.mmap = (uint8_t) do_mmap;
+    
+    // open file
+    FILE* backing = fopen(fname.c_str(), "wb+");
+    // write in metadata
     fwrite(&mtdata, sizeof(mtdata), 1, backing);
+    // write in data
+    fwrite(seed, UNIT_SIZE, mtdata.nel, backing);
 
-    // write data to file
-    fwrite(seed, UNIT_SIZE, mtdata.nel, backing); 
-
-    // open shm
-    buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
-        MAP_SHARED, fileno(backing), 0); 
+    // mmap if desired
+    if (mmap){
+        fseek(backing, 0, SEEK_SET);
+        // create mmap
+        buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
+            MAP_SHARED, fileno(backing), 0); 
+    } else { buf = NULL; }
 
     // close file
     fclose(backing);
@@ -245,11 +255,30 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
 }
 
 void Shm::getMetaData(){
-    memcpy(&mtdata, buf, sizeof(mtdata)); 
+    if (buf) {
+        memcpy(&mtdata, buf, sizeof(mtdata)); 
+    } else {
+        // open file as read only to check existence
+        FILE* backing = fopen(fname.c_str(), "rb");
+        // check for file existence
+        if (!backing){ throw NoShm; } 
+        // read in metadata
+        fread(&mtdata, DATA_OFFSET, 1, backing); 
+        fclose(backing);
+    }
 }
 
 uint64_t Shm::getCounter(){
-    memcpy(&mtdata.cnt0, buf + CNT0_OFFSET, sizeof(mtdata.cnt0));
+    if (buf) {
+        memcpy(&mtdata.cnt0, buf + CNT0_OFFSET, sizeof(mtdata.cnt0));
+    } else {
+        FILE* backing = fopen(fname.c_str(), "rb");
+        if (!backing){ throw NoShm; } 
+        // move to cnt0 position
+        fseek(backing, CNT0_OFFSET, SEEK_SET);
+        fread(&mtdata.cnt0, sizeof(mtdata.cnt0), 1, backing); 
+        fclose(backing);
+    }
 
     return mtdata.cnt0;
 }
@@ -258,23 +287,32 @@ void Shm::set_data(void *new_data){
     struct timespec time;
     timespec_get(&time, TIME_UTC);
 
-    size_t edit = sizeof(mtdata.latime) + sizeof(mtdata.atime) + 
-        sizeof(mtdata.cnt0);
+    // update metadata
+    mtdata.atime = time;
+    mtdata.cnt0++;
+
+    size_t edit = sizeof(mtdata.atime) + sizeof(mtdata.cnt0);
 
     // grab the lock
     sem_wait(lock);
 
-    // copy the data to the shared memory
-    memcpy(buf+DATA_OFFSET, new_data, DATA_SIZE);
-
-    // update metadata
-    mtdata.atime = time;
-    timespec_get(&mtdata.latime, TIME_UTC);
-    mtdata.cnt0++;
-
-    // copy new metadata to shm
-    memcpy(buf+LATIME_OFFSET, &mtdata.latime, edit);
-
+    if (buf) {
+        // copy the data to the shared memory
+        memcpy(buf+DATA_OFFSET, new_data, DATA_SIZE);
+        // copy new metadata to shm
+        memcpy(buf+ATIME_OFFSET, &mtdata.atime, edit);
+    } else {
+        FILE* backing = fopen(fname.c_str(), "rb+");
+        if (!backing){ throw NoShm; }
+        // write atime
+        fseek(backing, ATIME_OFFSET, SEEK_SET);
+        fwrite(&mtdata.atime, edit, 1, backing);
+        // write data
+        fseek(backing, DATA_OFFSET, SEEK_SET);
+        fwrite(new_data, DATA_SIZE, 1, backing);
+        // close file
+        fclose(backing);
+    }
     // release the lock
     sem_post(lock);
 
@@ -320,20 +358,23 @@ void Shm::get_data(void *loc, bool wait){
     // grab lock
     sem_wait(lock);
 
-    // Make sure we have the right data size
-    memcpy(&mtdata.nel, buf+NEL_OFFSET, sizeof(mtdata.nel)+sizeof(mtdata.size));
-    DATA_SIZE = mtdata.nel * UNIT_SIZE;
-
-    // copy the data from the mmapping
-    memcpy(loc, buf+DATA_OFFSET, DATA_SIZE);
-    // update latime
-    timespec_get(&mtdata.latime, TIME_UTC);
-    // update latime in shm
-    memcpy(buf+LATIME_OFFSET, &mtdata.latime, sizeof(mtdata.latime));
-
-    // get latest counter
-    getCounter();
-
+    if (buf) {
+        // copy the data from the mmapping
+        memcpy(loc, buf+DATA_OFFSET, DATA_SIZE);
+        // get latest counter
+        getCounter();
+    } else {
+        FILE* backing = fopen(fname.c_str(), "rb");
+        if (!backing){ throw NoShm; }
+        // get CNT0 (we avoid using getCounter() to only open file once)
+        fseek(backing, CNT0_OFFSET, SEEK_SET);
+        fread(&mtdata.cnt0, sizeof(mtdata.cnt0), 1, backing);
+        // get the data
+        fseek(backing, DATA_OFFSET, SEEK_SET);
+        fread(loc, DATA_SIZE, 1, backing);
+        // close the file
+        fclose(backing);
+    }
     //release lock
     sem_post(lock);
 }
@@ -351,7 +392,18 @@ void Shm::resize(uint16_t size[3]){
 
     DATA_SIZE = mtdata.nel * UNIT_SIZE;
 
-    memcpy(buf+NEL_OFFSET, &mtdata.nel, sizeof(mtdata.nel)+sizeof(mtdata.size));
+    size_t len = sizeof(mtdata.nel)+sizeof(mtdata.size);
+    if (buf){
+        memcpy(buf+NEL_OFFSET, &mtdata.nel, len);
+    } else {
+        FILE* backing = fopen(fname.c_str(), "rb+");
+        if(!backing){ throw NoShm; }
+        // update nel and size at once
+        fseek(backing, NEL_OFFSET, SEEK_SET);
+        fwrite(&mtdata.nel, len, 1, backing);
+        // close the file
+        fclose(backing);
+    }
 }
 
 Shm::~Shm(){
