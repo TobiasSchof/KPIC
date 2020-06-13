@@ -9,8 +9,7 @@ override VERNUM = 1.0
 
 RELLIB = 
 RELBIN = 
-RELDAT = 
-##FILES = $(RELBIN)
+RELDAT = Track_Cam.ini 
 
 
 ################################################################################
