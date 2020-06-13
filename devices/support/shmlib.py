@@ -1,35 +1,20 @@
 
 '''---------------------------------------------------------------------------
-Read and write access to shared memory (SHM) structures used by SCExAO
+Read and write access to shared memory (SHM) structures used by KPIC
+---------------------------------------------------------------------------'''
 
-- Author : Frantz Martinache
-- Date   : July 12, 2017
-
-Improved version of the original SHM structure used by SCExAO and friends.
----------------------------------------------------------------------------
-
-Named semaphores seems to be something missing from the python API and may 
-require the use of an external package.
-
-A possibility:
-http://semanchuk.com/philip/posix_ipc/
-
-More info on semaphores:
-https://www.mkssoftware.com/docs/man3/sem_open.3.asp
-https://docs.python.org/2/library/threading.html#semaphore-objects
-'''
-
-import os, sys, mmap, struct
-import numpy as np
-import astropy.io.fits as pf
+import os, sys, struct
+from mmap import mmap as Mmap, MAP_SHARED
 from time import time
-#import pdb
-import posix_ipc
-from logging import info #replacing print statements with info 
+from logging import info
 from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
-from glob import glob #used for finding semaphores
+from glob import glob
 
+# installs
+import posix_ipc as ipc
+import numpy as np
+import astropy.io.fits as pf
 
 #The directory where semaphores are stored (set by system, this variable is 
 #   used for checking, not for creation.
@@ -42,50 +27,42 @@ all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16,
               np.uint32,    np.int32,   np.uint64,    np.int64,
               np.float32,   np.float64, np.complex64, np.complex128]
 
+# Dictionaries to translate between metadata type and numpy type
+atod = { 1 : np.dtype("uint8"), 2 : np.dtype("int8"), 3 : np.dtype("uint16"), 
+         4 : np.dtype("int16"), 5 : np.dtype("uint32"), 6 : np.dtype("int32"),
+         7 : np.dtype("uint64"), 8 : np.dtype("int64"), 9 : np.dtype("float32"),
+         10 : np.dtype("float64"), 11 : np.dtype("complex64"), 
+         12 : np.dtype("complex128") }  
+
+dtoa = { value : key for (key, value) in atod.items() } 
+
+# the size of each of the data types
+asize = { 1 : 1, 2 : 1, 3 : 2, 4 : 2, 5 : 4, 6 : 4, 7 : 8, 8 : 8, 9 : 8, 
+          10 : 16, 11 : 16, 12 : 32 } 
+
 # ------------------------------------------------------
 # list of metadata keys for the shm structure (global)
 # ------------------------------------------------------
-mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'latime_sec', 'latime_nsec', 
-            'atime_sec', 'atime_nsec', 'cnt0', 'nel', 'size', 'naxis', 'atype', 
-            'cnt1']
+mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'atime_sec', 'atime_nsec', 
+          'cnt0', 'nel', 'size', 'naxis', 'atype', 'mmap']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
-hdr_fmt = '80s Q Q Q Q Q Q Q I 3H B B B3x' # aligned style
+# See the following link for format character translation:
+#    https://docs.python.org/2/library/struct.html#format-characters
+hdr_fmt = '80s Q Q Q Q Q I 3H B B B3x'
 
+class Shm:
 
-''' 
----------------------------------------------------------
-Table taken from Python 2 documentation, section 7.3.2.2.
----------------------------------------------------------
+    class ExistentialError(Exception):
+        pass
 
-|--------+--------------------+----------------+----------|
-| Format | C Type             | Python type    | Std size |
-|--------+--------------------+----------------+----------|
-| x      | pad byte           | no value       |          |
-| c      | char               | string (len=1) |        1 |
-| b      | signed char        | integer        |        1 |
-| B      | unsigned char      | integer        |        1 |
-| ?      | _Bool              | bool           |        1 |
-| h      | short              | integer        |        2 |
-| H      | unsigned short     | integer        |        2 |
-| i      | int                | integer        |        4 |
-| I      | unsigned int       | integer        |        4 |
-| l      | long               | integer        |        4 |
-| L      | unsigned long      | integer        |        4 |
-| q      | long long          | integer        |        8 |
-| Q      | unsigned long long | integer        |        8 |
-| f      | float              | float          |        4 |
-| d      | double             | float          |        8 |
-| s      | char[]             | string         |          |
-| p      | char[]             | string         |          |
-| P      | void *             | integer        |          |
-|--------+--------------------+----------------+----------| 
-'''
+    class SemaphoreError(Exception):
+        pass
 
-class shm:
-    def __init__(self, fname:str, data=None, sem:bool=False):
+    def __init__(self, fname:str, data:np.ndarray=None, mmap:bool=False,
+                 sem:bool=False):
         ''' --------------------------------------------------------------
         Constructor for a SHM (shared memory) object.
 
@@ -94,13 +71,16 @@ class shm:
         - fname: name of the shared memory file structure
         - data: some array (1, 2 or 3D of data). If an existing file backing is
             pointed to by fname, data will be ignored
+        - mmap: whether this shm should be mmapped. Mmapping speeds up read
+            and write but takes up memory.
         - sem: whether this instance of the shm should create a semaphore
 
-        Depending on whether the file already exists, and/or some new
-        data is provided, the file will be created or overwritten.
+        If data is provided, but a file with the given name already exists,
+           the data will be ignored and the existing file will be used.
         -------------------------------------------------------------- '''
 
         self.fname = fname
+        self.mmap = None
 
         # --------------------------------------------------------------------
         #                dictionary containing the metadata
@@ -108,8 +88,6 @@ class shm:
         self.mtdata = {'imname': '',
                        'crtime_sec': 0,
                        'crtime_nsec': 0,
-                       'latime_sec': 0, 
-                       'latime_nsec': 0,
                        'atime_sec' : 0,
                        'atime_nsec': 0,
                        'cnt0'  : 0,
@@ -117,77 +95,86 @@ class shm:
                        'size'  : (0,0,0),
                        'naxis' : 0,
                        'atype': 0,
-                       'cnt1'  : 0,}
+                       'mmap'  : 0,}
 
-        # if this file backing already exists, load metadata
+        # if the file doesn't already exist, make it
+        if not os.path.isfile(fname):
+            if data is not None:
+                info("{} will be created".format(fname))
+                self.create(fname, data, mmap)
+            # if there's no file, no data, and no semaphore, this class is
+            #   probably a mistake
+            elif not sem:
+                msg = "Either file must exist, data must be provided, or a" +\
+                      " semaphore must be created."
+                raise Shm.ExistentialError(msg)
+
+        # if the file exists, load info
         if os.path.isfile(fname):
             info("reading from existing %s" % (fname,))
-            self.fd      = os.open(fname, os.O_RDWR)
-            self.stats   = os.fstat(self.fd)
-            self.buf_len = self.stats.st_size
-            self.buf     = mmap.mmap(self.fd, self.buf_len, mmap.MAP_SHARED)
+            # read metadata
             self.read_meta_data()
-            self.select_dtype()        # identify main data-type 
-        # otherwise, make name for semaphores
+
+            # mmap or dont, as requested
+            if self.mmap:
+                with open(self.fname, "rb+") as file_:
+                    # get size of file to mmap
+                    buf_len = os.fstat(file_.fileno()).st_size
+                    self.buf = Mmap(file_.fileno(), buf_len, MAP_SHARED)
+        # otherwise, we want a semaphore so make imname
         else:
-            spl = fname.split("/")
-            if len(spl) > 1: self.mtdata["imname"] = spl[-2]+spl[-1].split(".")[0]
+            spl = self.fname.split("/")
+            # We make image name from the directory and filename w/o extension
+            if len(spl) > 1: 
+                self.mtdata["imname"] = spl[-2]+spl[-1].split(".")[0]
+            # unless there is no directory
             else: self.mtdata["imname"] = spl[-1].split(".")[0]
-        
-        #find name of shm for semaphores
-        singleName = self.mtdata["imname"]
 
         #Create lock semaphore
-        self.lock = posix_ipc.Semaphore("/"+singleName+"_lock",\
-            flags=posix_ipc.O_CREAT, initial_value=1)
+        self.lock = ipc.Semaphore("/"+self.mtdata["imname"]+"_lock",
+            flags=ipc.O_CREAT, initial_value=1)
 
         #If requested, make semaphore for this instance
-        if not sem: self.sem = None
-        else: 
-            free = None
-            #find an unused semaphore
-            for x in range(0, 100):
-                sempath = SEM_DIR + "/sem." + singleName + "_sem"
-                if x < 10: sempath += "0"
-                sempath += str(x)
-
-                if not os.path.isfile(sempath): 
-                    free = x
-                    break
-
-            if free is None:
-                raise Exception("No free Semaphores. Please clean")
-
-            semName = "/" + singleName + "_sem"
-            if free < 10: semName += "0"
-            semName += str(free)
-
-            self.sem = posix_ipc.Semaphore(semName, flags = posix_ipc.O_CREAT)
-
-        # next create the shm if we have data (we do this after semaphore
-        #   creation to alert any waiting processes that this has been created
-        if (data is not None) and (not os.path.isfile(fname)):
-            info("%s will be created or overwritten" % (fname,))
-            self.create(fname, data)
-
-        if (data is None) and (not os.path.isfile(fname)) and (not sem):
-            msg = "Either file must exist, data must be provided, or a" + \
-                " semaphore must be created."
-            raise Exception(msg)
+        self.sem = None
+        if sem: self.find_sem()
 
         #automatically perform cleanup
         register(self.close) #handles ctrl-c and exceptions
         signal(SIGHUP, self.close) #handles tmux kill-ses
         signal(SIGTERM, self.close) #handles terminate calls
 
-    def create(self, fname, data):
+    def find_sem(self):
+        '''--------------------------------------------------------------
+        Tries to connect to an unused semaphore of this shm if this shm 
+        doesn't already have a semaphore.
+        --------------------------------------------------------------'''
+
+        #find an unused semaphore
+        for x in range(0, 100):
+            semName = "/" + self.mtdata["imname"] + "_sem"
+            if x < 10: semName += "0"
+            semName += str(x)
+
+            # the CREX tag tries to create a semaphore and throws an
+            #   error if a semaphore with the given name already exists 
+            try:
+                self.sem = ipc.Semaphore(semName, flags=ipc.O_CREX)
+                break
+            except ipc.ExistentialError: pass
+
+        if self.sem is None:
+            msg = "No free Semaphore available. Please clean processes."
+            raise Shm.SemaphoreError(msg)
+
+    def create(self, fname:str, data:np.ndarray, mmap:bool):
         ''' --------------------------------------------------------------
-        Create a shared memory data structure
+        Creates a file backing for a shared memory structure
 
         Parameters:
         ----------
         - fname: name of the shared memory file structure
         - data: some array (1, 2 or 3D of data)
+        - mmap: whether this shm should be marked as one to mmap
         
         Called by the constructor if the provided file-name does not
         exist: a new structure needs to be created, and will be populated
@@ -197,23 +184,23 @@ class shm:
         # ---------------------------------------------------------
         # feed the relevant dictionary entries with available data
         # ---------------------------------------------------------
-        self.npdtype                = data.dtype
-
-        spl = fname.split("/")
-        if len(spl) > 1: self.mtdata["imname"] = spl[-2]+spl[-1].split(".")[0]
+        spl = self.fname.split("/")
+        # We make image name from the directory and filename w/o extension
+        if len(spl) > 1: 
+            self.mtdata["imname"] = spl[-2]+spl[-1].split(".")[0]
+        # unless there is no directory
         else: self.mtdata["imname"] = spl[-1].split(".")[0]
-
+        
         self.mtdata['naxis']        = data.ndim
         self.mtdata['size']         = data.shape+((0,)*(3-len(data.shape)))
         self.mtdata['nel']          = data.size
-        self.mtdata['atype']        = self.select_atype()
+        self.mtdata['atype']        = dtoa[data.dtype] 
         cur_t = time()
         self.mtdata['crtime_sec']   = int(cur_t)
         self.mtdata['crtime_nsec']  = int((cur_t%1) * 1000000000)
         self.mtdata['cnt0']         = 0
+        self.mtdata['mmap']         = mmap
         
-        self.select_dtype()
-
         # ---------------------------------------------------------
         #          reconstruct a SHM metadata buffer
         # ---------------------------------------------------------
@@ -231,43 +218,48 @@ class shm:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]].encode())
                 else:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]])
-                
-            #set offsets
-            if i+1 < len(mtkeys):
-                if mtkeys[i+1] == "cnt0": self.c0_offset = len(minibuf)
-                if mtkeys[i+1] == "latime_sec": self.latime_offset = len(minibuf)
-                if mtkeys[i+1] == "atime_sec": self.atime_offset = len(minibuf)
 
-        self.im_offset = len(minibuf)
+        with open(self.fname, "wb+") as backing:
+            backing.write(minibuf+data.astype(data.dtype).tostring())
 
-        # ---------------------------------------------------------
-        #             allocate the file and mmap it
-        # ---------------------------------------------------------
-        fsz = self.im_offset + self.img_len # file size
-        npg = int(fsz / mmap.PAGESIZE) + 1                 # nb pages
-        self.fd = os.open(fname, os.O_CREAT | os.O_TRUNC | os.O_RDWR)
-        os.write(self.fd, ('\x00' * npg * mmap.PAGESIZE).encode())
-        self.buf = mmap.mmap(self.fd, npg * mmap.PAGESIZE, 
-                             mmap.MAP_SHARED, mmap.PROT_WRITE)
+        self.post_sems()
 
-        # ---------------------------------------------------------
-        #              write the information to SHM
-        # ---------------------------------------------------------
-        self.buf[:self.im_offset] = minibuf # the metadata
-        self.set_data(data)
-        return(0)
-
-    def rename_img(self, newname):
+    def read_meta_data(self):
         ''' --------------------------------------------------------------
-        Gives the user a chance to rename the image.
-
-        Parameter:
-        ---------
-        - newname: a string (< 80 char) with the name
+        Read the metadata fraction of the SHM file.
+        Populate the shm object mtdata dictionary.
+        Sets offsets based on the format variable above
         -------------------------------------------------------------- '''
-        
-        self.mtdata['imname'] = newname.ljust(80, ' ')
-        self.buf[0:80]        = struct.pack('80s', self.mtdata['imname'])
+        offset = 0
+        fmts = hdr_fmt.split(' ')
+        with open(self.fname, "rb") as backing:
+            buf = backing.read()
+            for i, fmt in enumerate(fmts):
+                if mtkeys[i] == "cnt0": self.c0_offset = offset
+                elif mtkeys[i] == "atime_sec": self.atime_offset = offset
+
+                hlen = struct.calcsize(fmt)
+                # we have to handle name differently because unpacking doesn't
+                #   work correctly on unused bits
+                if i == 0:
+                    #copy the name part of the metadata except 0 bits 
+                    name = [c for c in buf[:int(fmt[:fmt.find("s")])] if c!=0]
+                    dec = struct.unpack("{}s".format(len(name)), bytes(name))
+                    self.mtdata['imname'] = dec[0].decode()
+                else:
+                    item = struct.unpack(fmt, buf[offset:offset+hlen])
+                    #if the length is only one, we just want value
+                    if len(item) == 1: self.mtdata[mtkeys[i]] = item[0]
+                    #otherwise we want the whole tuple
+                    else: self.mtdata[mtkeys[i]] = item
+                
+                offset += hlen
+
+        # offset for data
+        self.im_offset = offset
+
+        self.mmap = bool(self.mtdata["mmap"])
+        self.npdtype = atod[self.mtdata["atype"]]
 
     def close(self):
         ''' --------------------------------------------------------------
@@ -276,30 +268,24 @@ class shm:
         Clean close of buffer, release the file descriptor.
         -------------------------------------------------------------- '''
 
-        #try closing the buffer (the shared memory itself) 
-        try: self.buf.close()
-        except Exception as ouch: info("Exception on close: {}".format(ouch))
+        # if we mmapped, close the mmap buffer
+        if self.mmap:
+            try: self.buf.close()
+            except Exception as ouch: 
+                info("Exception on close: {}".format(ouch))
 
-        #if a semaphore was created for this process, unlink it
+        # if a semaphore was created for this process, unlink it
         if self.sem is not None: 
             try: 
                 self.sem.unlink()
                 self.sem.close()
-            except Exception as ouch: info("Exception on close: {}".format(ouch))
+            except Exception as ouch: 
+                info("Exception on close: {}".format(ouch))
 
-        #close the lock semaphore
-        try: self.lock.close()
-        except Exception as ouch: info("Exception on close: {}".format(ouch))
-
-        #close the underlying file
-        try:
-            os.close(self.fd)
-            self.fd = 0
-        except Exception as ouch: info("Exception on close: {}".format(ouch))
-
+        # unregister this method to avoid duplicate closes
         unregister(self.close)
 
-    def postSems(self):
+    def post_sems(self):
         '''------------------------------------------------------------------
         Connects to any semaphores in SEM_DIR named with this shm's imname
            and updates them.
@@ -324,42 +310,12 @@ class shm:
             # remove sem. at beginning and add '/'
             sem_nm = "/"+sem_nm[4:]
             # connect to semaphore
-            sem = posix_ipc.Semaphore(sem_nm, posix_ipc.O_CREAT)
+            sem = ipc.Semaphore(sem_nm, ipc.O_CREAT)
             # increment semaphore
             sem.release()
             # close semaphore
             sem.close()
 
-    def read_meta_data(self):
-        ''' --------------------------------------------------------------
-        Read the metadata fraction of the SHM file.
-        Populate the shm object mtdata dictionary.
-        -------------------------------------------------------------- '''
-        offset = 0
-        fmts = hdr_fmt.split(' ')
-        for i, fmt in enumerate(fmts):
-            if mtkeys[i] == "cnt0": self.c0_offset = offset
-            elif mtkeys[i] == "latime_sec": self.latime_offset = offset
-            elif mtkeys[i] == "atime_sec": self.atime_offset = offset
-
-            hlen = struct.calcsize(fmt)
-            #we have to handle name differently because unpacking doesn't work
-            #  correctly on unused bits
-            if i == 0:
-                #copy the name part of the metadata except 0 bits 
-                tmpbuf = [c for c in self.buf[:int(fmt[:fmt.find("s")])] if c!=0]
-                dec = struct.unpack("{}s".format(len(tmpbuf)), bytes(tmpbuf))
-                self.mtdata['imname'] = dec[0].decode()
-            else:
-                mdata_bit = struct.unpack(fmt, self.buf[offset:offset+hlen])
-                #if the length is only one, we just want to value
-                if len(mdata_bit) == 1: self.mtdata[mtkeys[i]] = mdata_bit[0]
-                #otherwise we want the whole tuple
-                else: self.mtdata[mtkeys[i]] = mdata_bit
-            
-            offset += hlen
-
-        self.im_offset = offset # offset for the image content
 
     def load(self) -> bool:
         '''___________________________________________________________________
@@ -376,100 +332,52 @@ class shm:
         # file backing doesn't exist
         if not os.path.isfile(self.fname): return False
 
-        # otherwise the load should be successful.
-        info("reading from existing %s" % (self.fname,))
-        self.fd      = os.open(self.fname, os.O_RDWR)
-        self.stats   = os.fstat(self.fd)
-        self.buf_len = self.stats.st_size
-        self.buf     = mmap.mmap(self.fd, self.buf_len, mmap.MAP_SHARED)
+        # read metadata
         self.read_meta_data()
-        self.select_dtype()
+
+        # mmap or dont, as metadata reflects
+        if self.mmap:
+            with open(self.fname, "rb+") as file_:
+                # get size of file to mmap
+                buf_len = os.fstat(file_.fileno()).st_size
+                self.buf = Mmap(file_.fileno(), buf_len, MAP_SHARED)
 
         return True
 
-    def print_meta_data(self):
-        ''' --------------------------------------------------------------
-        Basic printout of the content of the mtdata dictionary.
-        -------------------------------------------------------------- '''
-        fmts = hdr_fmt.split(' ')
-        for i, fmt in enumerate(fmts):
-            info(mtkeys[i], self.mtdata[mtkeys[i]])
-
-    def select_dtype(self):
-        ''' --------------------------------------------------------------
-        Based on the value of the 'atype' code used in SHM, determines
-        which numpy data format to use.
-        -------------------------------------------------------------- '''
-        atype        = self.mtdata['atype']
-        self.npdtype = all_dtypes[atype-1]
-        self.img_len = self.mtdata['nel'] * self.npdtype().itemsize
-
-    def select_atype(self):
-        ''' --------------------------------------------------------------
-        Based on the type of numpy data provided, sets the appropriate
-        'atype' value in the metadata of the SHM file.
-        -------------------------------------------------------------- '''
-        for i, mydt in enumerate(all_dtypes):
-            if mydt == self.npdtype:
-                self.mtdata['atype'] = i+1
-        return(self.mtdata['atype'])
-
-    def get_time(self):
+    def get_time(self) -> float:
         ''' --------------------------------------------------------------
         Read the time the data in the SHM was acquired (UNIX epoch seconds)
         -------------------------------------------------------------- '''
-        offset = self.atime_offset
-        time = struct.unpack('Q', self.buf[offset:offset+8])[0]
-        self.mtdata['atime_sec'] = time
-        return(time)
+        sec_o = self.atime_offset
+        nsec_o = sec_o + 8
+        if self.mmap:
+            with self.lock:
+                sec = struct.unpack('Q', self.buf[sec_o:nsec_o])[0]
+                nsec = struct.unpack("Q", self.buf[nsec_o:nsec_o+8])[0]
+        else:
+            with self.lock, open(self.fname, "rb") as file_:
+                buf = file_.read()
+                sec = struct.unpack('Q', buf[sec_o:nsec_o])[0]
+                nsec = struct.unpack("Q", buf[nsec_o:nsec_o+8])[0]
 
-    def set_time(self, latime:float = None, atime:float = None):
-        '''--------------------------------------------------------------
-        Updates the requested time values in the SHM (atime is write time)
-        --------------------------------------------------------------'''
-        if not atime is None:
-            #rename offset for concision
-            off = self.atime_offset
-
-            #get the seconds part of the time
-            sec = int(atime)
-            #get the nanoseconds part of the time
-            nsec = int((atime%1)*1000000000)
-
-            #write the two time parts
-            self.buf[off:off+8] = struct.pack('Q', sec)
-            self.buf[off+8:off+16] = struct.pack('Q', nsec)
-
-            #update metadata
-            self.mtdata['atime_sec'] = sec
-            self.mtdata['atime_nsec'] = nsec
-
-        if not latime is None:
-            off = self.latime_offset
-            sec = int(latime)
-            nsec = int((latime%1)*1000000000)
-            self.buf[off:off+8] = struct.pack('Q', sec)
-            self.buf[off+8:off+16] = struct.pack('Q', nsec)
-            self.mtdata['latime_sec'] = sec
-            self.mtdata['latime_nsec'] = nsec
+        self.mtdata['atime_sec'] = sec
+        self.mtdata['atime_nsec'] = nsec
+        return sec + (nsec / (10**(-9))) 
 
     def get_counter(self,):
         ''' --------------------------------------------------------------
         Read the image counter from SHM
         -------------------------------------------------------------- '''
-        c0   = self.c0_offset                           # counter offset
-        cntr = struct.unpack('Q', self.buf[c0:c0+8])[0] # read from SHM
-        self.mtdata['cnt0'] = cntr                      # update object mtdata
-        return(cntr)
+        c0   = self.c0_offset
+        if self.mmap: 
+            with self.lock:
+                cntr = struct.unpack('Q', self.buf[c0:c0+8])[0]
+        else:
+            with self.lock, open(self.fname, "rb") as file_:
+                buf = file_.read()
+                cntr = struct.unpack('Q', buf[c0:c0+8])[0]
 
-    def increment_counter(self,):
-        ''' --------------------------------------------------------------
-        Increment the image counter. Called when writing new data to SHM
-        -------------------------------------------------------------- '''
-        c0                  = self.c0_offset         # counter offset
-        cntr                = self.get_counter() + 1 # increment counter
-        self.buf[c0:c0+8]   = struct.pack('Q', cntr) # update SHM file
-        self.mtdata['cnt0'] = cntr                   # update object mtdata
+        self.mtdata['cnt0'] = cntr
         return(cntr)
 
     def get_data(self, check=False, reform=False):
@@ -483,70 +391,106 @@ class shm:
         -------------------------------------------------------------- '''
 
         #wait for new data
-        if check: self.sem.acquire()
+        if check: 
+            if self.sem is None: self.find_sem()
 
-        self.load()
-        
-        i0 = self.im_offset                                  # image offset
-        i1 = i0 + self.img_len                               # image end
+            self.sem.acquire()
+
+        # try to get beginning of image
+        try:
+            i0 = self.im_offset
+        # Attribute Error means we haven't loaded the shm
+        except AttributeError:
+            self.load()
+            i0 = self.im_offset
+
+        # short name for the end of the data
+        i1 = i0 + self.mtdata["nel"]*asize[self.mtdata["atype"]]
+        # short name for the cnt0 offset
+        c0   = self.c0_offset
 
         #Use a context manager so lock is released if process is killed
-        with self.lock:
-            data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype) # read img
-        #Set last access time to current time
-        self.set_time(latime=time())
-        
+        if self.mmap:
+            with self.lock:
+                data = np.fromstring(self.buf[i0:i1],dtype=self.npdtype)
+                cntr = struct.unpack('Q', self.buf[c0:c0+8])[0]
+        else:
+            with self.lock, open(self.fname, "rb") as file_:
+                buf = file_.read()
+                data = np.fromstring(buf[i0:i1],dtype=self.npdtype)
+                cntr = struct.unpack('Q', buf[c0:c0+8])[0]
+
+        # update counter
+        self.mtdata["cnt0"] = cntr
+
+        # if requested, reshape data
         if reform:
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
             data = np.reshape(data, rsz)
-        return(data)
 
-    def set_data(self, data, check_dt=False, atime:float=None):
+        return data
+
+    def set_data(self, data:np.ndarray, atime:float=None):
         ''' --------------------------------------------------------------
         Upload new data to the SHM file.
 
         Parameters:
         ----------
-        - data: the array to upload to SHM
-        - check_dt: boolean (default: false) recasts data
-        - time: the time (UNIX epoch seconds) that the data was acquired
+        - data:  the array to upload to SHM
+        - time:  the time (UNIX epoch seconds) that the data was acquired
         Note:
         ----
-
-        The check_dt is available here for comfort. For the sake of
-        performance, data should be properly cast to start with, and
-        this option not used!
         -------------------------------------------------------------- '''
         #We want to keep acquired time current so get time if none was provided
         if atime is None: atime = time()
+        #get the seconds part of the time
+        sec = int(atime)
+        #get the nanoseconds part of the time
+        nsec = int((atime%1) * 10**9)
 
-        i0 = self.im_offset                                      # image offset
-        i1 = i0 + self.img_len                                   # image end
-        if check_dt is True:
-            #Use context manager so lock is released if process ends
+        # start of the data
+        i0 = self.im_offset
+        # end of the data
+        i1 = i0 + self.mtdata["nel"]*asize[self.mtdata["atype"]] 
+        # start of cnt0
+        c0 = self.c0_offset
+        # start of atime
+        at = self.atime_offset
+
+        if self.mmap:
             with self.lock:
-                self.buf[i0:i1] = data.astype(self.npdtype()).tostring()
-                self.increment_counter()
-                #Set last access time to current time and acquired time to the
-                #  passed time 
-                self.set_time(latime=time(), atime=atime)
+                # write the data
+                self.buf[i0:i1] = data.tostring()
+                # write the two atime parts
+                self.buf[at:at+8] = struct.pack('Q', sec)
+                self.buf[at+8:at+16] = struct.pack('Q', nsec)
+                # get last cnt0
+                cntr = struct.unpack('Q', self.buf[c0:c0+8])[0] + 1
+                # write cnt0 increment
+                self.buf[c0:c0+8]   = struct.pack('Q', cntr)
         else:
-            try:
-                #Use context manager so lock is released if process ends
-                with self.lock:
-                    self.buf[i0:i1] = data.tostring()
-                    self.increment_counter()
-                    #Set last access time to current time and acquired time to 
-                    #  the passed time 
-                    self.set_time(latime=time(), atime=atime)
-            except:
-                info("Warning: writing wrong data-type to shared memory")
-                msg = "     shm name: {}".format(self.fname)
-                info(msg)
-                msg = "     data: {}".format(data)
-                return
+            with self.lock, open(self.fname, "rb+") as file_:
+                # get file contents
+                buf = list(file_.read())
+                # write the data
+                buf[i0:i1] = data.tostring()
+                # write the two atime parts
+                buf[at:at+8] = struct.pack('Q', sec)
+                buf[at+8:at+16] = struct.pack('Q', nsec)
+                # get last cnt0
+                cntr = struct.unpack('Q', bytes(buf)[c0:c0+8])[0] + 1
+                # write cnt0 increment
+                buf[c0:c0+8]   = struct.pack('Q', cntr)
+                # write updates
+                file_.seek(0)
+                file_.write(bytes(buf))
 
-        self.postSems()
+        #update metadata
+        self.mtdata['atime_sec'] = sec
+        self.mtdata['atime_nsec'] = nsec
+        self.mtdata["cnt0"] = cntr
+
+        self.post_sems()
 
         return
 
