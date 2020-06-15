@@ -10,12 +10,12 @@ from argparse import ArgumentParser
 import sys, io, os, threading, logging
 
 #installs
-from Conex import Conex_Device
 import numpy as np
 import posix_ipc
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
+from Conex import Conex_Device
 from NPS_cmds import NPS_cmds
 
 """
@@ -150,7 +150,7 @@ def connect_device():
     
     #Do nothing if device is off or already connected
     with dev_lock:
-        if not q_pow() or dev.ser.isOpen(): return 
+        if not q_pow() or dev.isOpen: return 
 
     info("Connecting TTM Conex controller.")
     with dev_lock: dev.open()
@@ -198,7 +198,7 @@ def device_off():
     """Turns off the TTM using the NPS"""
 
     info("Checking if TTM is connected.")
-    if dev is None or not dev.ser.isOpen():
+    if dev is None or not dev.isOpen:
         return
 
     #update position
@@ -309,7 +309,7 @@ def close():
 
     info("Checking if TTM is connected.")
     try:    
-        if dev.ser.isOpen():
+        if dev.isOpen:
             info("Turning off TTM.")
             device_off()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
@@ -380,7 +380,7 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
 #for now we just want to connect to shm to see if there's already a script
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]): 
-    Stat_D = shm(Stat_D[0])
+    Stat_D = Shm(Stat_D[0])
     status=Stat_D.get_data()[0]
 
     if status in [2, 1, 0]:
@@ -391,24 +391,27 @@ else:
     info("No state shared memory file. Creating file.")
     Stat_D = config.get("Shm_Info", "Stat_D").split(",") +\
         config.get("Shm_Init", "Stat_D").split(",")
-    Stat_D = shm(Stat_D[0], data=np.array([Stat_D[2:]], dtype=type_[Stat_D[1]]))
+    Stat_D = Shm(Stat_D[0], data=np.array([Stat_D[3:]], 
+                 dtype=type_[Stat_D[1]]), mmap=(Stat_D[2] == "1"))
 
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-if os.path.isfile(Pos_D[0]): Pos_D = shm(Pos_D[0])
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No state shared memory file. Creating file.")
     Pos_D = config.get("Shm_Info", "Pos_D").split(",") +\
         config.get("Shm_Init", "Pos_D").split(",")
-    Pos_D = shm(Pos_D[0], data=np.array([Pos_D[2:]], dtype=type_[Pos_D[1]]))
+    Pos_D = Shm(Pos_D[0], data=np.array([Pos_D[3:]], dtype=type_[Pos_D[1]]),\
+                mmap=(Pos_D[2] == "1"))
 
 Error = config.get("Shm_Info", "Error").split(",")
-if os.path.isfile(Error[0]): Error = shm(Error[0])
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else:
     info("No state shared memory file. Creating file.")
     Error = config.get("Shm_Info", "Error").split(",") +\
         config.get("Shm_Init", "Error").split(",")
-    Error = shm(Error[0], data=np.array([Error[2:]], dtype=type_[Error[1]]))
+    Error = Shm(Error[0], data=np.array([Error[3:]], dtype=type_[Error[1]]),\
+                mmap=(Error[2] == "1"))
 
 info("No duplicate control script, continuing with initialization.")
 
@@ -431,14 +434,14 @@ Sem_Listeners = []
 
 Stat_P = config.get("Shm_Info", "Stat_P").split(",") +\
     config.get("Shm_Init", "Stat_P").split(",")
-Stat_P = shm(Stat_P[0], data=np.array([Stat_P[2:]], dtype=type_[Stat_P[1]]),\
-     sem=True)
+Stat_P = Shm(Stat_P[0], data=np.array([Stat_P[3:]], dtype=type_[Stat_P[1]]),\
+     sem=True, mmap=(Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",") +\
     config.get("Shm_Init", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], data=np.array([Pos_P[2:]], dtype=type_[Pos_P[1]]),\
-    sem=True)
+Pos_P = Shm(Pos_P[0], data=np.array([Pos_P[3:]], dtype=type_[Pos_P[1]]),\
+    sem=True, mmap=(Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
 def Punlink():
@@ -462,6 +465,8 @@ signal(SIGTERM, Punlink)
 
 info("Command shared memories successfully created.")
 
+# The FEU TTM is not currently connected to the NPS
+"""
 info("Initializing NPS")
 NPS=NPS_cmds()
 info("Finding TTM port")
@@ -478,6 +483,11 @@ if NPS.TTM_port is None:
 turn_on = lambda: NPS.turnOn(NPS.TTM_port)
 turn_off = lambda: NPS.turnOff(NPS.TTM_port)
 q_pow = lambda: NPS.getStatusAll()[NPS.TTM_port]
+"""
+
+turn_on = lambda: pass
+turn_off = lambda: pass
+q_pow = lambda: pass
 
 #set up PI device.
 dev=Conex_Device()

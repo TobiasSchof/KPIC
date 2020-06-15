@@ -177,7 +177,7 @@ def update(updates:list):
 
     gmt = gmtime()
     year = str(gmt.tm_year)[-2:]
-    date="{:04d}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
+    date="{}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
     cur_path = "{}/{}".format(DATA, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
