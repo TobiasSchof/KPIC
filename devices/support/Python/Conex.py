@@ -63,16 +63,19 @@ class Conex_Device:
             #Request Device Information
             self.reqInfo()
         
-            if self.TY == "M100D":
+            if self.TY.find("M100D") != -1:
                 self.axes = {1:"V", 2:"U"}
-            elif self.TY == "LS25":
+            elif self.TY.find("LS25") != -1:
                 self.axes = {1:""}
             else:
-                raise Exception("Controller type not recognized")
+                raise Exception("Controller type not "+\
+                                "recognized: {}".format(self.TY))
 
             debug('Device is a   : %s \n'   %self.TY +
                   'Serial Number : %s \n'   %self.SN +
                   'Frameware vs. : %s \n'   %self.FW )
+
+            self.reqLim()
               
     def close(self):
         '''Closes the device connection'''
@@ -310,7 +313,7 @@ class Conex_Device:
             return -1
         
         #get positioner error and controller state
-        self.write('1TS', self.axes[axis])
+        self.write('1TS{}'.format(self.axes[axis]))
         rd = self.read()
 
         # state is in last two characters
@@ -331,7 +334,7 @@ class Conex_Device:
             return -1
         
         #get positioner error and controller state
-        self.write('1TS', self.axes[axis])
+        self.write('1TS{}'.format(self.axes[axis]))
         rd = self.read()
 
         # state is in last two characters
@@ -352,7 +355,7 @@ class Conex_Device:
             return -1
         
         #get positioner error and controller state
-        self.write('1TS', self.axes[axis])
+        self.write('1TS{}'.format(self.axes[axis]))
         rd = self.read()
 
         # state is in last two characters
@@ -453,14 +456,14 @@ class Conex_Device:
             return -1
 
         #Check that all axes are valid
-        if not all([1 if axis in self.axes else 0 for axis in relMOV]):
+        if not all([1 if axis in self.axes else 0 for axis in newPOS]):
             msg = "Invalid axis. Available axes: " + str(list(self.axes.keys()))
             raise ValueError(msg)
 
         err = {}
         for axis in self.axes:
-            #move relative
-            self.write('1PA', self.axes[axis], relMOV[axis])
+            #move absolute
+            self.write('1PA{}{}'.format(self.axes[axis], newPOS[axis]))
         
             #Check for errors
             erFlg, erCd = self.isError()
@@ -509,7 +512,7 @@ class Conex_Device:
         err = {}
         for axis in self.axes:
             #move relative
-            self.write('1PR', self.axes[axis], relMOV[axis])
+            self.write('1PR{}{}'.format(self.axes[axis], relMOV[axis]))
         
             #Check for errors
             erFlg, erCd = self.isError()
@@ -570,7 +573,7 @@ class Conex_Device:
             return erCd
         
         #Send error code to device for translation
-        self.write('1TB', erCd)   #get command error string
+        self.write('1TB{}'.format(erCd))   #get command error string
         rd = self.read()    
         
         if rd[3:4] != erCd:
@@ -598,8 +601,9 @@ class Conex_Device:
         ret = {}
         err = {}
         for axis in self.axes:
-            self.write('1TH', self.axes[axis])     #get target position
-            rd = self.read()
+            self.write('1TH{}'.format(self.axes[axis]))    #get target position
+            rd = self.read()[3:]
+            rd = rd[len(self.axes[axis]):]
         
             #Check for errors
             erFlg, erCd = self.isError()
@@ -608,7 +612,7 @@ class Conex_Device:
                     '  ' + self.errorStr(erCd))
                 ret[axis] = -9999
                 err[axis] = erCd
-            else: ret[axis] = float(rd[3:])
+            else: ret[axis] = float(rd)
 
         if len(err) > 0: return ret, err
         else: return ret
@@ -631,8 +635,9 @@ class Conex_Device:
         ret = {}
         err = {}
         for axis in self.axes:
-            self.write('1TP', self.axes[axis])     #get current position
-            rd = self.read()
+            self.write('1TP{}'.format(self.axes[axis]))  #get current position
+            rd = self.read()[3:]
+            rd = rd[len(self.axes[axis]):]
         
             #Check for errors
             erFlg, erCd = self.isError()
@@ -641,7 +646,7 @@ class Conex_Device:
                     '  ' + self.errorStr(erCd))
                 ret[axis] = -9999
                 err[axis] = erCd
-            else: ret[axis] = float(rd[3:])
+            else: ret[axis] = float(rd)
         
         if len(err) > 0: return ret, err
         else: return ret
@@ -695,18 +700,20 @@ class Conex_Device:
         
         for axis in self.axes: 
             #Request and read lower limit
-            self.write('1SL', self.axes[axis], '?')     #Get negative software limit
-            rd  = self.read()
+            self.write('1SL{}?'.format(self.axes[axis]))
+            rd  = self.read()[3:]
+            rd = rd[len(self.axes[axis]):]
         
             #Format and set MNPS instance variable
-            temp_lim = [float(rd[3:])]
+            temp_lim = [float(rd)]
         
             #Request and read upper limit
-            self.write('1SR', self.axes[axis], '?')     #Get positive software limit
-            rd  = self.read()
+            self.write('1SR{}?'.format(self.axes[axis]))
+            rd  = self.read()[3:]
+            rd = rd[len(self.axes[axis]):]
         
             #Format and set MXPS instance variable     
-            temp_lim.append(float(rd[3:]))
+            temp_lim.append(float(rd))
 
             self.lims[axis] = temp_lim
         

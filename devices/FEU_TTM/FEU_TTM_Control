@@ -32,8 +32,8 @@ if __name__ != "__main__":
     print("FEU_TTM_Control is not meant to be used as an import.")
     sys.exit()
 
-# ip address for the PI device
-IP = "10.136.1.45"
+# a flag to tell the whole script to end if a signal is passed
+alive = True
 
 #a flag to tell the update thread to stop what it's doing
 STOP=False
@@ -60,54 +60,42 @@ def update(error:int=0):
 
     #continuously check device info
     while not STOP:
-        with dev_lock: qMOV=dev.IsMoving()
+        with dev_lock: qMOV=dev.isMoving()
         # a value of -1 means that the serial coms aren't open
         if qMOV == -1:
             if Stat_D.get_data()[0] != 0:
                 Stat_D.set_data(np.array([0], np.int8))
-                Error.set_data(np.array([error], np.uint8))
+                Error.set_data(np.array([error], np.int8))
             break
-        # in this case we have an error
-        elif type(qMOV) is tuple:
-            if error == 0:
-                # if we haven't had an error yet, take one from device errors
-                error = qMOV[1].values()[0]
-                # convert error to an int
-                error = -1*(ord(error)-64)
-            Error.set_data(np.array([error], np.int8))
         #if we are moving or just finished moving, update shm
-        elif qMOV["1"] or qMOV["2"] or Stat_D.get_data()[0] == 2:
-            with dev_lock: curpos=dev.getPosAct()
+        elif qMOV or Stat_D.get_data()[0] == 2:
+            with dev_lock: curpos=dev.reqPosAct()
             # if we got a list, it means there was no error
             if type(curpos) is dict:
-                cur_t = time()
-                Pos_D.set_data(np.array([curpos["1"], curpos["2"]],\
-                    np.float32), atime=cur_t)
+                Pos_D.set_data(np.array([curpos[1], curpos[2]], np.float32))
             # here we have an error
             elif type(curpos) is tuple and error == 0:
                 # if we haven't had an error yet, take one from device errors
-                error = curpos[1].values()[0]
+                error = list(curpos[1].values())[0]
                 # convert error to an int
                 error = -1*(ord(error)-64)
             
-            stat = 2 if (qMOV["1"] or qMOV["2"]) else 1
-            Stat_D.set_data(np.array([stat], np.int8), atime=cur_t)
+            stat = 2 if qMOV else 1
+            Stat_D.set_data(np.array([stat], np.int8))
 
             Error.set_data(np.array([error], np.int8))
         #otherwise, make sure status is set correctly
         else:
             if Stat_D.get_data()[0] != 1: 
                 Stat_D.set_data(np.array([1], np.int8))
-            with dev_lock: curpos=dev.getPosAct()
-            cur_t = time()
+            with dev_lock: curpos=dev.reqPosAct()
             if type(curpos) is dict:
-                Pos_D.set_data(np.array([curpos["1"], curpos["2"]],\
-                    np.float32), atime=cur_t)
+                Pos_D.set_data(np.array([curpos[1], curpos[2]], np.float32))
             elif type(curpos) is tuple and error == 0:
-                error = curpos[1].values()[0]
+                error = list(curpos[1].values())[0]
                 error = -1*(ord(error)-64)    
             if error != 0 or Error.get_data()[0] != error:
-                Error.set_data(np.array([error], np.uint8))
+                Error.set_data(np.array([error], np.int8))
             break
 
 def move(target:list) -> int:
@@ -125,19 +113,20 @@ def move(target:list) -> int:
     #check whether target is valid before moving
     for idx in axes:
         req = target[int(idx)-1]
-        if req < limits["min_"+idx] or req > limits["max_"+idx]:
+        if req < limits["min_{}".format(idx)] or\
+           req > limits["max_{}".format(idx)]:
             info("Movement requested outside of motion range")
             return 1
 
     #perform movement
     #TODO: don't send move if TTM is already in position (have to check
         #precision of encoder)
-    req = {"1":target[0], "2":target[1]}
+    req = {1:target[0], 2:target[1]}
     info("Moving axis {} to {}.".format(idx, req))
     with dev_lock: err = dev.moveAbs(newPOS=req)
     
     # if moveAbs returns a dict, it's populated with errors.
-    if type(err) is dict: return -1*(ord(err.values()[0])-64)
+    if type(err) is dict: return -1*(ord(list(err.values())[0])-64)
     else: return 0
 
 def connect_device():
@@ -149,16 +138,20 @@ def connect_device():
     """
     
     #Do nothing if device is off or already connected
+    """
     with dev_lock:
         if not q_pow() or dev.isOpen: return 
+    """
+
+    if dev.isOpen: return
 
     info("Connecting TTM Conex controller.")
     with dev_lock: dev.open()
 
     info("Extracting limits from config file.")
     global limits
-    limits = {name:config.getfloat("TTM_Limits", name) for name in \
-        config.options("TTM_Limits")}
+    limits = {name:config.getfloat("Limits", name) for name in \
+        config.options("Limits")}
     info("Config limits: {}".format(limits))
 
     info("Checking that config limits are within software limits.")
@@ -188,11 +181,15 @@ def connect_device():
     else:
         info("Cannot move to initial positions. Changing command shared " +\
          "memory values.")
-        with dev_lock: cur_pos = dev.getPosAct()
+        with dev_lock: cur_pos = dev.reqPosAct()
         #get values for each axis
-        for axis in axes: pos[int(axis)-1] = cur_pos[axis]
-        
-        Pos_P.set_data(pos)
+        if type(cur_pos) is dict:
+            for axis in axes: pos[int(axis)-1] = cur_pos[axis]
+            Pos_P.set_data(pos)
+        else:
+            error = list(curpos[1].values())[0]
+            error = -1*(ord(error)-64)
+            Error.set_data(np.array([error], np.int8))
 
 def device_off():
     """Turns off the TTM using the NPS"""
@@ -216,7 +213,7 @@ def device_off():
     turn_off()
 
     info("Waiting for TTM to turn off.")
-    while q_pow(): sleep(.5)
+    #while q_pow(): sleep(.5)
         
     update()
 
@@ -224,13 +221,13 @@ def device_on():
     """Waits for NPS to turn on device and then connects"""
 
     # if the device is already on, do nothing
-    if q_pow(): return
+    #if q_pow(): return
 
     info("Sending on command to NPS")
     turn_on()
 
     info("Waiting for NPS to turn on device.")
-    while not q_pow(): sleep(.1)
+    #while not q_pow(): sleep(.1)
 
     info("Opening connection to TTM.")
     connect_device()
@@ -240,16 +237,16 @@ def listener():
     updated, and spawns a thread that updates the position of the TTM in shm.
     """
 
+    Pos_P.get_counter()
+    Stat_P.get_counter()
+
     #we put the listening process in an infinite loop
-    while True:
+    while alive:
+        info("command shared memory updated")
         #here we look at metadata instead of reading new metadata to ensure
         #  we're getting the count of the last time we updated 
         pos_cnt = Pos_P.mtdata["cnt0"]
         stat_cnt = Stat_P.mtdata["cnt0"]
-
-        ShmP.acquire()
-    
-        info("command shared memory updated")
         
         error=0
         
@@ -279,6 +276,8 @@ def listener():
         #start a new update thread with the new error value
         cur_thread = threading.Thread(target=update, args=(error,), daemon=True)
         cur_thread.start()
+
+        ShmP.acquire()
 
 def close():
     """A cleanup method.
@@ -333,7 +332,14 @@ def close():
     except Exception as ouch: info("Exception on close: {}".format(ouch))
         
     info("Closing tmux session.")
-    Popen(config.get("Environment", "end_command").split(" "))
+    unregister(close)
+    os.system(config.get("Environment", "end_command"))
+
+def signal_handler(signum, stack):
+    global alive
+    alive = False
+    try: ShmP.release()
+    except: pass
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
@@ -420,8 +426,8 @@ info("No duplicate control script, continuing with initialization.")
 #signal handles tmux kill-ses, and terminate
 info("Registering cleanup.")
 register(close)
-signal(SIGHUP, close)
-signal(SIGTERM, close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
 
 info("Initializing command shared memory from config file.")
 
@@ -485,21 +491,21 @@ turn_off = lambda: NPS.turnOff(NPS.TTM_port)
 q_pow = lambda: NPS.getStatusAll()[NPS.TTM_port]
 """
 
-turn_on = lambda: pass
-turn_off = lambda: pass
-q_pow = lambda: pass
+turn_on = lambda: 0
+turn_off = lambda: 0
 
 #set up PI device.
-dev=Conex_Device()
+dev=Conex_Device(config.get("Communication", "address"),\
+                 config.get("Communication", "port"))
 #the controller actually has 4 axis but the latter 2 are for calibration,
 #etc so should never be touched. Therefore, we limit our axes to 1 and 2.
-axes=["1", "2"]
+axes=[1, 2]
 #since we will have multiple threads accessing the PI device, we need to 
 #  avoid interruption during communication
 dev_lock = threading.Lock()
 
 #if the device is already on, connect to it
-if q_pow(): connect_device()
+#if q_pow(): connect_device()
     
 info("Starting display drawer")        
 #we use popen to start the drawing script separately to prevent blocking

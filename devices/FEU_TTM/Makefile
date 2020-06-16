@@ -4,7 +4,7 @@ override SYSNAM = kss/nirspec/nsfiu/devices/FEU_TTM
 override VERNUM = 1.0
 
 # If I knew that code would not work with Python 2 I would:
-##override ENABLE_PYTHON2 = False
+override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
 RELLIB = FEU_TTM_cmds.py

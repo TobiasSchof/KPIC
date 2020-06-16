@@ -5,7 +5,7 @@ from subprocess import Popen
 import sys, os
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 #various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 
@@ -49,14 +49,13 @@ class FEU_TTM_cmds:
         self.Error = config.get("Shm_Info", "Error").split(",")[0]
         self.Pos_P = config.get("Shm_Info", "Pos_P").split(",")[0]
         self.Stat_P = config.get("Shm_Info", "Stat_P").split(",")[0]
-        self.Svos = config.get("Shm_Info", "Svos").split(",")[0]
 
         #NOTE: center is loaded here. If this changes, class will have to
         #   be reinitialized.
-        self.mid_1=config.getfloat("TTM_Limits", "min_1") +\
-            config.getfloat("TTM_Limits", "max_1")/2
-        self.mid_2=config.getfloat("TTM_Limits", "min_2") +\
-            config.getfloat("TTM_Limits", "max_2")/2
+        self.mid_1=(config.getfloat("Limits", "min_1") +\
+            config.getfloat("Limits", "max_1"))/2
+        self.mid_2=(config.getfloat("Limits", "min_2") +\
+            config.getfloat("Limits", "max_2"))/2
 
         #for examples on how to use semaphores, see FEU_TTM_draw or _Control 
         self._handleShms()
@@ -138,7 +137,7 @@ class FEU_TTM_cmds:
             except AttributeError:
                 raise ShmError("Shm states out of sync. Restart control script.")
         #otherwise, we just need Pos_D
-        elif type(Pos_D) is str: self._handleShms()
+        elif type(self.Pos_D) is str: self._handleShms()
 
         #in case there's no file backing, self.Pos_D won't have get_data()
         try:
@@ -170,7 +169,8 @@ class FEU_TTM_cmds:
 
         self._setStatus(1)
 
-        while not self.is_On(): sleep(1)
+        if block:
+            while not self.is_On(): sleep(1)
 
     def off(self):
         """Turns the device off."""
@@ -258,12 +258,12 @@ class FEU_TTM_cmds:
         if type(self.Stat_D) is str:
             #the shm constructor throws an error if no data is provided, no
             #   semaphore is requested, and no file backing exists.
-            try: self.Stat_D = shm(self.Stat_D)
+            try: self.Stat_D = Shm(self.Stat_D)
             except: return
 
         #the following two shms should exist if Stat_D does
         if type(self.Pos_D) is str:
-            try: self.Pos_D = shm(self.Pos_D)
+            try: self.Pos_D = Shm(self.Pos_D)
             #if there's no file backing but the control script is alive, states
             #   somehow fell out of sync, so the system should be restarted
             except:
@@ -271,7 +271,7 @@ class FEU_TTM_cmds:
                 raise ShmError(msg)
 
         if type(self.Error) is str:
-            try: self.Error = shm(self.Error)
+            try: self.Error = Shm(self.Error)
             except: 
                 msg = "Shm state out of sync. Please restart control script."
                 raise ShmError(msg)
@@ -279,12 +279,12 @@ class FEU_TTM_cmds:
         #the following shared memories will only exist if control is active
         if self.is_Active():
             if type(self.Pos_P) is str:
-                try: self.Pos_P = shm(self.Pos_P)
+                try: self.Pos_P = Shm(self.Pos_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
                     raise ShmError(msg)
             if type(self.Stat_P) is str:
-                try: self.Stat_P = shm(self.Stat_P)
+                try: self.Stat_P = Shm(self.Stat_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
                     raise ShmError(msg)

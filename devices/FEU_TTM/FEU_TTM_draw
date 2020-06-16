@@ -4,7 +4,7 @@
 from configparser import ConfigParser
 from time import sleep, gmtime, time
 from subprocess import Popen
-from atexit import register
+from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
 import sys, io, os
 
@@ -12,7 +12,7 @@ import sys, io, os
 import posix_ipc
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 
 """
 A script to continuously maintain a display of shm values in the TTM tmux 
@@ -25,6 +25,9 @@ if __name__ != "__main__":
     print("FEU_TTM_draw.py is not meant to be used as an import")
     sys.exit()
 
+# a flag to tell the whole script to stop if a signal is passed
+alive = True
+
 DATA = os.environ.get("DATA") #the path to the data directory
 try:
     if DATA[-1] == "/": DATA=DATA[:-1]
@@ -34,7 +37,8 @@ except TypeError:
 
 # Where log files are stored on nsfiu
 LOG = DATA + "/LOG"
-LOG_FILE = "FEU_TTM.log" #the name of the log file (appended to DATA/LOGS/YYMMDD/)
+#the name of the log file (appended to DATA/LOGS/YYMMDD/)
+LOG_FILE = "FEU_TTM.log" 
 
 
 RELDIR = os.environ.get("RELDIR")
@@ -50,23 +54,23 @@ Sem_Listeners=[]
 
 #all the info we need to connect to a shm is in Shm_Info
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
-Stat_D = shm(Stat_D[0], sem=True)
+Stat_D = Shm(Stat_D[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-Pos_D = shm(Pos_D[0], sem=True)
+Pos_D = Shm(Pos_D[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
 
 Error = config.get("Shm_Info", "Error").split(",")
-Error = shm(Error[0], sem=True)
+Error = Shm(Error[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
 
 Stat_P = config.get("Shm_Info", "Stat_P").split(",")
-Stat_P = shm(Stat_P[0], sem=True)
+Stat_P = Shm(Stat_P[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], sem=True)
+Pos_P = Shm(Pos_P[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
 
 def close():
@@ -83,9 +87,17 @@ def close():
         shm_update.close()
     except Exception as ouch: print("Exception on close: {}".format(ouch))
 
+    unregister(close)
+
+def signal_handler(signum, stack):
+    global alive
+    alive = False
+    try: shm_update.release()
+    except: pass
+
 register(close)
-signal(SIGHUP, close)
-signal(SIGTERM, close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
 
 def loop():
     """A method that performs one iteration of the loop.
@@ -132,7 +144,7 @@ def draw():
 
     #translate the error for user
     derror = Error.get_data()[0]
-    if derror < 0: derror = "Conex error: {}".format(chr(-1*err +64))
+    if derror < 0: derror = "Conex error: {}".format(chr(-1*derror +64))
     else: derror={0:"No error", 1:"Move requested beyond limits",\
             3:"Device off"}[derror]
     derror=[derror, Error.get_time()]
@@ -142,7 +154,7 @@ def draw():
         gmt = gmtime(time)
         date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
         ftime = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
-        return "{} {}".format(date, ftime)
+        return "{} {} GMT".format(date, ftime)
 
     fmt = u"\u2503"" {:<37}"*2+u"\u2503"
     print("\033c", end="")
@@ -209,4 +221,4 @@ def update(updates:list):
 draw()
 
 #continuously run the process loop
-while True: loop()
+while alive: loop()
