@@ -140,8 +140,8 @@ class Shm:
 
         #automatically perform cleanup
         register(self.close) #handles ctrl-c and exceptions
-        signal(SIGHUP, self.close) #handles tmux kill-ses
-        signal(SIGTERM, self.close) #handles terminate calls
+        signal(SIGHUP, self.signal_handler) #handles tmux kill-ses
+        signal(SIGTERM, self.signal_handler) #handles terminate calls
 
     def find_sem(self):
         '''--------------------------------------------------------------
@@ -285,6 +285,11 @@ class Shm:
         # unregister this method to avoid duplicate closes
         unregister(self.close)
 
+    def signal_handler(self, signum, stack):
+        if self.sem is not None:
+            try: self.sem.release()
+            except: pass 
+
     def post_sems(self):
         '''------------------------------------------------------------------
         Connects to any semaphores in SEM_DIR named with this shm's imname
@@ -362,7 +367,7 @@ class Shm:
 
         self.mtdata['atime_sec'] = sec
         self.mtdata['atime_nsec'] = nsec
-        return sec + (nsec / (10**(-9))) 
+        return sec + (nsec * (10**(-9))) 
 
     def get_counter(self,):
         ''' --------------------------------------------------------------

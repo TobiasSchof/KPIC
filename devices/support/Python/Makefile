@@ -1,12 +1,12 @@
-# NIRSPEC fiber injection unit. Build device support scripts
+# NIRSPEC fiber injection unit. Build device support (python) scripts
 
-override SYSNAM = kss/nirspec/nsfiu/devices/support
+override SYSNAM = kss/nirspec/nsfiu/devices/support/Python
 override VERNUM = 1.0
 
-SOURCE = linksem.c shmlib.cpp
+override ENABLE_PYTHON2 = False
 
-RELLIB = libshmlib.so shmlib.hpp
-RELBIN = linksem
+RELLIB = dev_Exceptions.py shmlib.py Conex.py
+LIBSUB = python
 
 ################################################################################
 # KROOT boilerplate:
@@ -35,10 +35,3 @@ endif
 ################################################################################
 include $(RELDIR)/etc/rules.mk
 ################################################################################
-
-
-#C compilations
-linksem: linksem.c
-	$(CC) -o linksem linksem.c -lpthread
-libshmlib.so: shmlib.cpp
-    $(CC) -shared -o libshmlib.so -fPIC shmlib.cpp -lstdc++fs

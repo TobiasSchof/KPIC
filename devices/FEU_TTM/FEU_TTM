@@ -11,7 +11,7 @@ import sys, io, os
 import numpy as np
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 
 if __name__ != "__main__": sys.exit()
 
@@ -101,7 +101,7 @@ if "disable" in args:
     sys.exit()
 
 #for anything else we will want shared memory so enable it as needed
-try: Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+try: Pos_D=Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
 except:
     print()
     print("NO SHARED MEMORY. PLEASE USE 'FEU_TTM enable'")
@@ -118,7 +118,7 @@ if "status" in args and not args.push:
     sys.exit()
 
 #Now we need Stat_D to tell if the script is on
-Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+Stat_D = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
 DStat = Stat_D.get_data()[0]
 
 #if control script is off, tell user to turn it on
@@ -129,7 +129,7 @@ if DStat in [-1, -2]:
     sys.exit()
 
 #at this point, we need Stat_P shm
-try: Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
+try: Stat_P = Shm(config.get("Shm_Info", "Stat_P").split(",")[0])
 except:
     print()
     print("NO SHARED MEMORY. PLEASE USE 'FEU_TTM enable' OR 'FEU_TTM status'")
@@ -161,6 +161,9 @@ if DStat == 0:
     print()
     sys.exit()
 
+# at this point, we need Error
+Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
+
 #we checked for status without push earlier, so this one has it
 if "status" in args:
     #Get the counter for the position before requesting an update
@@ -183,15 +186,14 @@ if "status" in args:
 
     error = Error.get_data()[0]
     if error < 0:
-        print("CONEX error {}. See user manual.".format(chr(-1*error+64))
+        print("CONEX error {}. See user manual.".format(chr(-1*error+64)))
         sys.exit()
 
     print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
     sys.exit()
 
-#at this point, we need Pos_P and Error
-Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+#at this point, we need Pos_P
+Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
 
 if "goto" in args and not args.ax1 is None:
     pos = Pos_P.get_data()
@@ -228,7 +230,7 @@ if "goto" in args and not args.ax1 is None:
         if error == 1:
             print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
         elif error < 0:
-            print("CONEX error {}. See user manual.".format(chr(-1*error+64))
+            print("CONEX error {}. See user manual.".format(chr(-1*error+64)))
             sys.exit()
         elif error != 0:
             print("ERROR: {}. See config file for translation.".format(error))
@@ -276,10 +278,10 @@ Type man FEU_TTM for comprehensive command list
 """.format(*cmds, b=""))
     sys.exit()
             
-min1=config.getfloat("TTM_Limits", "min_1")
-max1=config.getfloat("TTM_Limits", "max_1")
-min2=config.getfloat("TTM_Limits", "min_2")
-max2=config.getfloat("TTM_Limits", "max_2")
+min1=config.getfloat("Limits", "min_1")
+max1=config.getfloat("Limits", "max_1")
+min2=config.getfloat("Limits", "min_2")
+max2=config.getfloat("Limits", "max_2")
 
 if "center" in args:
     pos = Pos_P.get_data()
