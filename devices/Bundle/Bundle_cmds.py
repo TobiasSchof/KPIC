@@ -5,7 +5,7 @@ from subprocess import Popen
 import sys, os
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 #various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 
@@ -73,12 +73,14 @@ class FIU_TTM_cmds:
             bool = True if control script is active, False otherwise
         """
 
-        #If Stat_D isn't loaded, load shms
+        #if Stat_D isn't loaded, load it
         if type(self.Stat_D) is str: self._handleShms()
 
-        if type(self.Stat_D) is str or self.Stat_D.get_data()[0] in [-1, -2]:
-            return False
-        else: return True
+        try: stat = format(self.Stat_D.get_data[0], "08b")
+        except:
+            raise ShmError("No Stat_D shm. Please restart control script.")
+
+        return stat[-1] == "1"
 
     def is_On(self) -> bool:
         """Checks whether device is on
@@ -90,16 +92,11 @@ class FIU_TTM_cmds:
         #if Stat_D isn't loaded, load it
         if type(self.Stat_D) is str: self._handleShms()
 
-        #if Stat_D didn't load, we can't get device state
-        #   NOTE: we could use NPS here but we want to avoid direct
-        #   communication with hardware on user side. If a user has the need
-        #   the need to check for power status of device even when there's no
-        #   Stat_D shm, see q_pow in FIU_TTM_Control.py
-        if type(self.Stat_D) is str: 
+        try: stat = format(self.Stat_D.get_data[0], "08b")
+        except:
             raise ShmError("No Stat_D shm. Please restart control script.")
 
-        #otherwise return based on Stat_D
-        return (self.Stat_D.get_data()[0] in [4, 3, 2, 1, -1])
+        return stat[-2] == "1"
 
     def get_error(self) -> int:
         """Returns the error currently stored in the shared memory.
@@ -108,9 +105,10 @@ class FIU_TTM_cmds:
             int = the error message. See FIU_TTM.ini for translation
         """
 
-        self._checkOnAndAlive()
+        self._checkAlive()
+        if type(Error) is str: self._handleShms()
 
-        #if self.Error is a string, this will throw an AttributeError
+        # if self.Error is a string, this will throw an AttributeError
         try: return self.Error.get_data()[0]
         except AttributeError:
             raise ShmError("Shm states out of sync. Restart control script.")
@@ -123,10 +121,13 @@ class FIU_TTM_cmds:
         """
 
         self._checkOnAndAlive()
+        if type(Stat_D) is str: self._handleShms()
         
-        stat = self.Stat_D.get_data()[0]
+        try: stat = format(self.Stat_D.get_data()[0], "08b")
+        except AttributeError:
+            raise ShmError("Shm states out of sync. Restart control script.")
 
-        return stat in [4, 1]
+        return stat[-4] == "1"
 
     def is_AB_on(self) -> bool:
         """Checks whether Anti-Backlash is on
@@ -136,13 +137,15 @@ class FIU_TTM_cmds:
         """
         
         self._checkOnAndAlive()
+        if type(Stat_D) is str: self._handleShms()
         
-        stat = self.Stat_D.get_data()[0]
+        try: stat = format(self.Stat_D.get_data()[0], "08b")
+        except AttributeError:
+            raise ShmError("Shm states out of sync. Restart control script.")
 
-        return stat in [1, 2]
+        return stat[-3] == "1"
         
-    union = "list OR list, float"
-    def get_pos(self, time:bool=True, push:bool=True) -> union:
+    def get_pos(self, time:bool=True, push:bool=True):
         """Returns the current position in the device's shared memory.
 
         Inputs:
@@ -150,6 +153,7 @@ class FIU_TTM_cmds:
             push = whether shared memory should be updated first (takes longer)
         Returns:
             if time == False: list, else: list, float
+
             list = indices: [axis 1, axis 2], values: float - the position
             float = the time in UNIX epoch time that the position was recorded
         """
@@ -157,12 +161,15 @@ class FIU_TTM_cmds:
         #if push is required, we need control script.
         if push:
             self._checkOnAndAlive()
+            if type(Stat_P) is str: self._handleShms()
+
             #this will throw an Attribute error if Stat_P is a string
             try: self.Stat_P.set_data(self.Stat_P.get_data())
             except AttributeError:
                 raise ShmError("Shm states out of sync. Restart control script.")
-        #otherwise, we just need Pos_D
-        elif type(Pos_D) is str: self._handleShms()
+
+        # Check that Pos_D is set up correctly
+        if type(Pos_D) is str: self._handleShms()
 
         #in case there's no file backing, self.Pos_D won't have get_data()
         try:
@@ -179,6 +186,7 @@ class FIU_TTM_cmds:
         """
 
         self._checkOnAndAlive()
+        if type(self.Pos_P) is str: self._handleShms()
 
         #if shm isn't loaded, Pos_P won't have get_data attribute
         try: return list(self.Pos_P.get_data())
@@ -192,57 +200,38 @@ class FIU_TTM_cmds:
             block = if True, blocks program until device is on
         """
 
-        self._setStatus(1)
+        self._setStatus(1, True)
 
-        while not self.is_On(): sleep(1)
+        if block:
+            while not self.is_On(): sleep(1)
 
     def off(self):
         """Turns the device off."""
 
-        self._setStatus(0)
+        self._setStatus(1, False)
 
-    def set_AS(self, val:bool):
+    def set_AS(self, set_v:bool):
         """Turns Anti-Sticktion on or off
 
         Inputs:
-            val = True to turn AS on, False to turn if off
+            set_v = True to turn AS on, False to turn if off
         """
+        
+        self._setStatus(3, set_v)
 
-        # do nothing if status is already correct (also checks for on/alive)
-        if (self.is_AS_on() == val): return
-
-        stat = self.Stat_P.get_data()
-
-        # turn AS on
-        if val: stat[0] = 1 if self.is_AB_on() else -4
-        # turn AS off
-        else: stat[0] = -2 if self.is_AB_on() else -3
-
-    def set_AB(self, val:bool):
+    def set_AB(self, set_v:bool):
         """Turns Anti-Backlash on or off
 
         Inputs:
-            val = True to turn AB on, False to turn if off
+            set_v = True to turn AB on, False to turn if off
         """
 
-        # do nothing if status is already correct (also checks for on/alive)
-        if (self.is_AB_on() == val): return
-
-        stat = self.Stat_P.get_data()
-
-        # turn AB on
-        if val: stat[0] = 1 if self.is_AS_on() else -2
-        # turn AB off
-        else: stat[0] = -4 if self.is_AS_on() else -3
+        self._setStatus(2, set_v)
 
     def home(self):
         """Homes the device"""
 
-        self._checkOnAndAlive()
-
-        stat = self.Stat_P.get_data()
-        stat[0] = 1
-        self.Stat_P.set_data(stat)
+        self._setStatus(4, True)
 
     def set_pos(self, ax1:float, ax2:float, ax3:float) -> list:
         """Sets target position to [ax1, ax2]
@@ -257,6 +246,7 @@ class FIU_TTM_cmds:
         """
 
         self._checkOnAndAlive()
+        if type(self.Pos_P) is str: self._handleShms()
 
         try: pos = self.Pos_P.get_data()
         except AttributeError:
@@ -326,12 +316,12 @@ class FIU_TTM_cmds:
         if type(self.Stat_D) is str:
             #the shm constructor throws an error if no data is provided, no
             #   semaphore is requested, and no file backing exists.
-            try: self.Stat_D = shm(self.Stat_D)
+            try: self.Stat_D = Shm(self.Stat_D)
             except: return
 
         #the following two shms should exist if Stat_D does
         if type(self.Pos_D) is str:
-            try: self.Pos_D = shm(self.Pos_D)
+            try: self.Pos_D = Shm(self.Pos_D)
             #if there's no file backing but the control script is alive, states
             #   somehow fell out of sync, so the system should be restarted
             except:
@@ -339,7 +329,7 @@ class FIU_TTM_cmds:
                 raise ShmError(msg)
 
         if type(self.Error) is str:
-            try: self.Error = shm(self.Error)
+            try: self.Error = Shm(self.Error)
             except: 
                 msg = "Shm state out of sync. Please restart control script."
                 raise ShmError(msg)
@@ -347,12 +337,12 @@ class FIU_TTM_cmds:
         #the following shared memories will only exist if control is active
         if self.is_Active():
             if type(self.Pos_P) is str:
-                try: self.Pos_P = shm(self.Pos_P)
+                try: self.Pos_P = Shm(self.Pos_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
                     raise ShmError(msg)
             if type(self.Stat_P) is str:
-                try: self.Stat_P = shm(self.Stat_P)
+                try: self.Stat_P = Shm(self.Stat_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
                     raise ShmError(msg)
@@ -367,18 +357,32 @@ class FIU_TTM_cmds:
                 self.Stat_P.close()
                 self.Stat_P = name
 
-    def _setStatus(self, status:int):
-        """Sets Stat_P."""
+    def _setStatus(self, bit:int, set_v:bool):
+        """Tries to set bit <bit> to value <set_v>
 
-        try: assert status in [1, 0]
-        except AssertionError: raise ValueError("Status must be 1, or 0")
+        Inputs:
+            bit   = which bit to set (0 = LSB)
+            set_v = the value to set the bit to 
+        """
 
-        self._checkAlive()
+        try:
+            assert type(bit) is int
+            assert bit in range(0, 8)
+        except AssertionError:
+            raise ValueError("Bit must be an int between 0 and 7")
 
-        #if shm isn't loaded correctly, we'll get an attribute error
+        self._checkOnAndAlive()
+        if type(self.Stat_P) is str: self._handleShms()
+
         try: stat = self.Stat_P.get_data()
-        except AttributeError:
+        except AttributeError: 
             raise ShmError("Shm states out of sync. Restart control script.")
 
-        stat[0] = status
-        self.Stat_P.set_data(stat)
+        val = format(stat, "08b")
+        set_v = str(int(set_v))
+        # if the desired bit doesn't reflect the desired state, change it
+        if val[-1 - bit] != set_v:
+            val[-1 - bit] = set_v
+            stat[0] = int(val, 2)
+            self.Stat_P.set_data(stat)
+

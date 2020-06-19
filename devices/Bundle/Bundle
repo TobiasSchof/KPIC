@@ -11,7 +11,7 @@ import sys, io, os
 import numpy as np
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 
 if __name__ != "__main__": sys.exit()
 
@@ -127,7 +127,7 @@ if "disable" in args:
     sys.exit()
 
 #for anything else we will want shared memory so enable it as needed
-try: Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+try: Pos_D=Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
 except:
     print()
     print("NO SHARED MEMORY. PLEASE USE 'Bundle enable'")
@@ -144,31 +144,31 @@ if "status" in args and not args.push:
     sys.exit()
 
 #Now we need Stat_D to tell if the script is on
-Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
-DStat = Stat_D.get_data()[0]
+Stat_D = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+DStat = format(Stat_D.get_data()[0], "08b")
 
 #if control script is off, tell user to turn it on
-if DStat in [-1, -2]:
+if DStat[-1] == "0":
     print()
     print("CONTROL SCRIPT OFF. PLEASE USE 'Bundle enable'")
     print()
     sys.exit()
 
 #at this point, we need Stat_P shm
-try: Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
+try: Stat_P = Shm(config.get("Shm_Info", "Stat_P").split(",")[0])
 except:
     print()
     print("NO SHARED MEMORY. PLEASE USE 'Bundle enable' OR 'Bundle status'")
     print()
     sys.exit()
 
-PStat = Stat_P.get_data()
+PStat = format(Stat_P.get_data()[0], "08b")
 
 if "on" in args:
-    PStat[0] = 1
-    Stat_P.set_data(PStat)
+    PStat[-2] = "1"
+    Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
     _ = -1
-    while Stat_D.get_data()[0] not in [2, 1]: 
+    while format(Stat_D.get_data()[0], "08b")[-2] != "1": 
         _ = (_+1)%3
         print("Turning on device{:<4}".format("."*(_+1)), end="\r")
         sleep(1)
@@ -176,36 +176,36 @@ if "on" in args:
     sys.exit()
 
 if "off" in args:
-    PStat[0] = 0
-    Stat_P.set_data(PStat)
+    PStat[-2] = "0"
+    Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
     sys.exit()
 
 #Now we need the device on
-if DStat == 0:
+if DStat[-2] == "0":
     print()
     print("DEVICE OFF. PLEASE USE 'Bundle on'")
     print()
     sys.exit()
 
 if "qhome" in args:
-    if PStat[0] == -1: print("Device is not homed")
-    else: print("Device is homed")
+    if DStat[-5] == "1": print("Device is homed")
+    else: print("Device is not homed")
     sys.exit()
 
 if "home" in args:
-    PStat[0] = 1
-    Stat_P.set_data(PStat)
+    PStat[-5] = "1"
+    Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
     sys.exit()
 
 #Now we need the device homed
-if DStat == -1:
+if DStat[-5] != -"1":
     print()
     print("DEVICE NOT HOMED. PLEASE USE 'Bundle home'.")
     print()
 
 if "qAS" in args:
-    if DStat in [2, 3]: print("Anti-Sticktion is off.")
-    else: print("Anti-Sticktion is on.")
+    if DStat[-4] == "1": print("Anti-Sticktion is on.")
+    else: print("Anti-Sticktion is off.")
     sys.exit()
 
 if "AS" in args:
@@ -215,23 +215,23 @@ if "AS" in args:
     args.val = args.val.lower().strip()
     if args.val == "off":
         # if anti-sticktion is alread off, just exit
-        if PStat in [-2, -3]: sys.exit()
-        PStat[0] = -3 if PStat == -4 else -2
-        Stat_P.set_data(PStat)
+        if DStat[-4] == "0": sys.exit()
+        PStat[-4] = "0"
+        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
         sys.exit()
     elif args.val == "on":
         # if anti-sticktion is alread on, just exit
-        if PStat in [1, -4]: sys.exit()
-        PStat[0] = -4 if PStat == -3 else 1
-        Stat_P.set_data(PStat)
+        if DStat[-4] == "1": sys.exit()
+        PStat[-4] = "1"
+        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
         sys.exit()
     else:
         print("Invalid option. Use 'Bundle AS on' or 'Bundle AS off'.")
         sys.exit()
         
 if "qAB" in args:
-    if DStat in [4, 3]: print("Anti-Backlash is off.")
-    else: print("Anti-Backlash is on.")
+    if DStat[-3] == "1": print("Anti-Backlash is on.")
+    else: print("Anti-Backlash is off.")
     sys.exit()
 
 if "AB" in args:
@@ -241,15 +241,15 @@ if "AB" in args:
     args.val = args.val.lower().strip()
     if args.val == "off":
         # if anti-backlash is alread off, just exit
-        if PStat in [-4, -3]: sys.exit()
-        PStat[0] = -3 if PStat == -2 else -4
-        Stat_P.set_data(PStat)
+        if DStat[-3] == "0": sys.exit()
+        PStat[-3] = "0"
+        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
         sys.exit()
     elif args.val == "on":
         # if anti-backlash is alread on, just exit
-        if PStat in [1, -2]: sys.exit()
-        PStat[0] = -2 if PStat == -3 else 1
-        Stat_P.set_data(PStat)
+        if DStat[-3] == "1": sys.exit()
+        PStat[-3] = "1"
+        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
         sys.exit()
     else:
         print("Invalid option. Use 'Bundle AB on' or 'Bundle AB off'.")
@@ -274,8 +274,8 @@ if "status" in args:
     sys.exit()
 
 #at this point, we need Pos_P and Error
-Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
 
 if "goto" in args and not args.ax1 is None:
     pos = Pos_P.get_data()

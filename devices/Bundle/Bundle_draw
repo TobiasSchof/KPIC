@@ -12,7 +12,7 @@ import sys, io, os
 import posix_ipc
 
 #nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 
 """
 A script to continuously maintain a display of shm values in the Bundle tmux 
@@ -50,23 +50,23 @@ Sem_Listeners=[]
 
 #all the info we need to connect to a shm is in Shm_Info
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
-Stat_D = shm(Stat_D[0], sem=True)
+Stat_D = Shm(Stat_D[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-Pos_D = shm(Pos_D[0], sem=True)
+Pos_D = Shm(Pos_D[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
 
 Error = config.get("Shm_Info", "Error").split(",")
-Error = shm(Error[0], sem=True)
+Error = Shm(Error[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
 
 Stat_P = config.get("Shm_Info", "Stat_P").split(",")
-Stat_P = shm(Stat_P[0], sem=True)
+Stat_P = Shm(Stat_P[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], sem=True)
+Pos_P = Shm(Pos_P[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
 
 def close():
@@ -121,18 +121,19 @@ def draw():
     #convert numpy array to list for proper printing
     ppos = [list(Pos_P.get_data()), Pos_P.get_time()]
         
+    dstatus = format(Stat_D.get_data()[0], "08b")
     #translate the state status for user
-    dstatus={4:"Anti-Backlash: off | Anti-Sticktion: on",\
-        3:"Anti-Backlash: off | Anti-Sticktion: off",\
-        2:"Anti-Backlash: on | Anti-Sticktion: off",\
-        1:"Anti-Backlash: on | Anti-Sticktion: on", 0:"Device: off"}
-    dstatus=[dstatus[Stat_D.get_data()[0]], Stat_D.get_time()]
+    dstatus = "Script: {} | device: {} | AB: {} | AS: {}".format(dstatus[-1],\
+              dstatus[-2], dstatus[-3], dstatus[-4]).replace("1",\
+              "on").replace("0", "off") + " homed: {}".format(dstatus[-5]=="1")
+    dstatus=[dstatus, Stat_D.get_time()]
 
-    #translate the command status for user
-    pstatus={1:"Device on", 0:"Device off", -1:"Device not homed",\
-        -2:"Anti-Sticktion off", -3:"Anti-Sticktion and Anti-Backlash off",\
-        -4:"Anti-Backlash off"}
-    pstatus=[pstatus[Stat_P.get_data()[0]], Stat_P.get_time()]
+    pstatus = format(Stat_P.get_data()[0], "08b")
+    #translate the state status for user
+    pstatus = "Script: {} | device: {} | AB: {} | AS: {}".format(pstatus[-1],\
+              pstatus[-2], pstatus[-3], pstatus[-4]).replace("1",\
+              "on").replace("0", "off") + " homed: {}".format(pstatus[-5]=="1")
+    pstatus=[pstatus, Stat_P.get_time()]
 
     #translate common errors for user
     derror={0:"No error", 1:"Cannot move - Check device",\
@@ -146,7 +147,7 @@ def draw():
         gmt = gmtime(time)
         date="{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
         ftime = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
-        return "{} {}".format(date, ftime)
+        return "{} {} GMT".format(date, ftime)
 
     fmt = u"\u2503"" {:<37}"*2+u"\u2503"
     print("\033c", end="")

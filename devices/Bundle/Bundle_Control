@@ -1,8 +1,10 @@
 #!/usr/bin/env kpython3
 
+# NOTE: NPS is not implemented as it is not currently connected to device
+
 # inherent python libraries
 from configparser import ConfigParser
-from atexit import register
+from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
 from subprocess import Popen
 import logging, os
@@ -11,10 +13,13 @@ import logging, os
 import numpy as np
 
 # nfiuserver libraries
-from shmlib import shm
+from shmlib import Shm
 
 # Connection information for the Zabers
 DEVNM   = "/tmp/zabertty"    # local link name
+
+# global tag to indicate whether this script should die
+alive = True
 
 class AlreadyAlive(Exception):
     """An exception to be thrown if a second control script is started"""
@@ -415,11 +420,8 @@ def update(error:int = 0):
     """Updates the shared memory"""
 
     resp = zabers.getPos()
-    stat = 1
     # in this case, there was an error
     if type(resp) is int:
-        # check if device is off
-        if not q_pow(): stat = 0 
         # keep error if one was passed, otherwise store this error
         elif error == 0: error = resp
     else:
@@ -427,18 +429,40 @@ def update(error:int = 0):
         Pos_D.set_data(np.array([resp["x"],resp["y"],resp["f"]],\
             Pos_D.get_data().dtype))
 
-    if stat != 0 and not zabers.isAntiSticktionOn(): stat = 2
-    if stat != 0 and not zabers.isAntiBacklashOn():
-        stat = 4 if stat == 1 else 3
+    stat_old = format(Stat_D.get_data()[0], "08b")
 
-    stat_old = Stat_D.get_data()
+    b4 = zabers.isHomed()
+    if type(b4) is not bool: 
+        if error == 0: error = b4
+        b4 = stat_old[-5]
+    else: b4 = str(int(b4))
+
+    b3 = zabers.isAntiSticktionOn()
+    if type(b3) is not bool: 
+        if error == 0: error = b3
+        b3 = stat_oldd[-4]
+    else: b3 = str(int(b3)
+
+    b2 = zabers.isAntibacklashOn()
+    if type(b2) is not bool: 
+        if error == 0: error = b2
+        b2 = stat_old[-3]
+    else: b2 = str(int(b2))
+
+    # TODO: NPS power check
+    b1 = stat_old[-2]
+
+    b0 = "1"
+
+    stat = int(b4+b3+b2+b1+b0, 2)
+
     # update status if there's a new value
-    if stat 1= stat_old[0]: Stat_D.set_data(np.array([stat], stat_old.dtype))
+    if stat != int(stat_old, 2): Stat_D.set_data(np.array([stat], Stat_D.npdtype))
 
-    err_old = Error.get_data()
+    err_old = Error.get_data()[0]
     # update error if there's a new value
-    if error != 0 or error != err_old[0]:
-        Error.set_data(np.array([error], err_old.dtype)
+    if error != 0 or error != err_old:
+        Error.set_data(np.array([error], Error.npdtype)
 
 def move() -> int:
     """Makes the requested move
@@ -469,75 +493,36 @@ def doStatus() -> int:
     """
 
     stat = Stat_P.get_data()[0]
+    stat = format(stat, '08b')
     error = 0
-    resp = None
-    if stat == 1:
-        # home device
-        homed = zabers.isHomed()
-        if type(homed) is not bool or not homed: 
+
+    # home or reset device if needed
+    b4 = bool(int(stat[-5]))
+    if b4 != zabers.isHomed():
+        if b4:
             resp = zabers.home()
             if resp is not None: error = resp
-
-        # turn on anti-backlash
-        AB = zabers.isAntiBacklashOn()
-        if type(AB) is not bool or not AB: 
-            resp = zabers.setAntiBacklash()
-            if resp is not None: error = resp
-
-        # turn on anti-sticktion
-        AS = zabers.isAntiSticktionOn()
-        if type(AS) is not bool or not AS: 
-            resp = zabers.setAntiSticktion()
-            if resp is not None: error = resp
-
-    elif stat == 0:
-        off()
-
-    elif stat == -1:
-        # reset device (unhome)
-        homed = zabers.isHomed()
-        if type(homed) is not bool or homed: 
+        else:
             resp = zabers.reset()
             if resp is not None: error = resp
 
-    elif stat == -2:
-        # turn off anti-sticktion
-        AS = zabers.isAntiSticktionOn()
-        if (type(AS) is not bool) or AS: 
-            resp = zabers.setAntiSticktion(False)
-            if resp is not None: error = resp
+    # turn AS on or off if needed
+    b3 = bool(int(stat[-4]))
+    if b3 != zabers.isAntiSticktionOn():
+       resp = zabers.setAntiSticktion(b3)
+       if resp is not None: error = resp 
 
-        # turn on anti-backlash
-        AB = zabers.isAntiBacklashOn()
-        if (type(AB) is not bool) or not AB: 
-            resp = zabers.setAntiBacklash()
-            if resp is not None: error = resp
+    # turn AB on or off if needed
+    b2 = bool(int(stat[-3]))
+    if b3 != zabers.isAntiBacklashOn():
+       resp = zabers.setAntiBacklash(b2)
+       if resp is not None: error = resp 
 
-    elif stat == -3:
-        # turn off anti-sticktion
-        AS = zabers.isAntiSticktionOn()
-        if (type(AS) is not bool) or AS: 
-            resp = zabers.setAntiSticktion(False)
-            if resp is not None: error = resp
 
-        # turn off anti-backlash
-        AB = zabers.isAntiBacklashOn()
-        if (type(AB) is not bool) or AB: 
-            resp = zabers.setAntiBacklash(False)
-            if resp is not None: error = resp
-                
-    elif stat == -4
-        # turn anti-backlash off
-        AB = zabers.isAntiBacklashOn()
-        if (type(AB) is not bool) or AB: 
-            resp = zabers.setAntiBacklash(False)
-            if resp is not None: error = resp
+    # TODO: do NPS power commands for bit 1
 
-        # turn on anti-sticktion
-        AS = zabers.isAntiSticktionOn()
-        if (type(AS) is not bool) or not AS: 
-            resp = zabers.setAntiSticktion()
-            if resp is not None: error = resp
+    # end script if requested
+    signal_handler(None, None)
 
     return error
 
@@ -548,34 +533,39 @@ def loop():
     pos_cnt = Pos_P.mtdata["cnt0"]
     stat_cnt = Stat_P.mtdata["cnt0"]
 
-    # wait for a command shared memory to be updated
-    ShmP.acquire()
+    while alive:
+        error = 0
 
-    error = 0
+        # if the status has been updated, perform request
+        if stat_cnt != Stat_P.get_counter():
+            resp = doStatus()
+            if resp != 0: error = resp
+        # if the position has been updated, perform request
+        if pos_cnt != Pos_P.get_counter():
+            resp = move()
+            if resp != 0: error = resp
 
-    # if the status has been updated, perform request
-    if stat_cnt != Stat_P.get_counter():
-        resp = doStatus()
-        if resp != 0: error = resp
-    # if the position has been updated, perform request
-    if pos_cnt != Pos_P.get_counter():
-        resp = move()
-        if resp != 0: error = resp
+        update(error)
 
-    update(error)
+        # get counts of each command shm on last read
+        pos_cnt = Pos_P.mtdata["cnt0"]
+        stat_cnt = Stat_P.mtdata["cnt0"]
+
+        # wait for a command shared memory to be updated
+        ShmP.acquire()
 
 def on():
     """Turns on the device via the NPS and performs any required boot-up 
     actions"""
 
     # do nothing if device is already on
-    if q_pow(): return
+    #if q_pow(): return
 
     # otherwise turn on device
-    turn_on()
+    #turn_on()
 
     # wait for device to turn on
-    while not q_pow(): sleep(1)
+    #while not q_pow(): sleep(1)
 
     # try to open connection to zabers
     connect_device()
@@ -585,17 +575,17 @@ def off():
     actions"""
 
     # do nothing if device is already off
-    if not q_pow(): return
+    #if not q_pow(): return
 
     # otherwise update shm
     update()
 
     # close connection to device and turn it off
     zabers.close()
-    tunr_off()
+    #turn_off()
 
     # wait for device to power off
-    while q_pow(): sleep(1)
+    #while q_pow(): sleep(1)
 
     # update shm again (for status)
     update()
@@ -618,32 +608,24 @@ def connect_device():
             info("Changing max limit for axis {} to {}".format(lim, soft_max))
             limits[lim][1] = soft_max 
 
+    # since we might be moving, update last
     if CAN_MOVE:
         doStatus()
         move()
+        update()
+    # we want to copy P values to D values so update first
     else:
-        # decide on status to put into shm
-        stat = 0
-        if q_pow():
-            homed = zabers.isHomed()
-            AS = zabers.isAntiSticktionOn()
-            AB = zabers.isAntiBacklashOn()
-            if not homed: stat = -1
-            elif not AS and not AB: stat = -3
-            elif not AS: stat = -2
-            elif not AB: stat = -4
-            else: stat = 1
-
-        _ = Stat_P.get_data()
-        _[0] = stat
-        Stat_P.set_data(np.array([stat], np.int8)
+        update()
 
         # set Pos_P to reflect Pos_D
-        d = Pos_D.get_data()
-        Pos_P.set_data(d)
-        
-    # update shared memory
-    update()
+        Stat_P.set_data(Stat_D.get_data())
+        Pos_P.set_data(Pos_D.get_data())
+
+def signal_handler(signum, stack):
+    """A function to handle when a SIGHUP or SIGTERM is called"""
+    global alive
+    alive = False
+    ShmP.release()
 
 def close():
     """Performs a clean close of the program, releasing resources as necessary"""
@@ -657,21 +639,25 @@ def close():
     #    accidentally connect
     try:
         for shm in [Stat_P, Pos_P]:
+            try: shm.lock.unlink()
+            except Exception as ouch: 
+                info("Exception on close: {}".format(ouch))
             try: os.remove(shm.fname)
-            except Exception as ouch: info("Exception on close: {}".format(ouch))
+            except Exception as ouch: 
+                info("Exception on close: {}".format(ouch))
     except Exception as ouch: info("Exception on close: {}".foramt(ouch))
 
     info("Turning off device")
     try: off()
-    except Exception as ouch: info("Exception on close: {}".format(ouch)
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    try: update(error = 0)
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Updating state shared memory file.")
     try:
-        # define how the status should change
-        change = {1:-1, 0:-2, -1:-1, -2:-2}
         # set state status based on above change
-        old = Stat_D.get_data()
-        Stat_D.set_data(np.array([change[old[0]], old.dtype))
+        Stat_D.set_data(np.array([0], Stat_D.npdtype))
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Killing semaphore listening processes.")
@@ -684,6 +670,8 @@ def close():
     info("Unlinking ShmP service semaphore")
     try: ShmP.unlink()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    unregister(close)
 
     info("Closing tmux session.")
     Popen(config.get("Environment", "end_command").split(" ")
@@ -741,31 +729,36 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
 # Connect to shm to check if control script is alive
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]):
-    Stat_D = shm(Stat_D[0])
+    Stat_D = Shm(Stat_D[0])
     status = Stat_D.get_data()[0]
 
-    if status in [2, 1, 0]:
+    status = format(status, '08b')
+
+    if status[-1] == "1":
         info("Active control script exists. Raising exception.")
         msg = "State shared memory status {}".format(status)
         raise AlreadyAlive(msg)
 else:
     info("No status state shared memory. Creating file.")
     Stat_D += config.get("Shm_Init", "Stat_D").split(",")
-    Stat_D = shm(Stat_D[0], data=np.array([Stat_D[2:]], dtype=type_[Stat_D[1]]))
+    Stat_D = Shm(Stat_D[0], data=np.array([Stat_D[3:]], dtype=type_[Stat_D[1]]),
+                 mmap = (Stat_D[2] == "1"))
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-if os.path.isfile(Pos_D[0]): Pos_D = shm(Pos_D[0])
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No position state shared memory. Creating file.")
     Pos_D += config.get("Shm_Init", "Pos_D").split(",")
-    Pos_D = shm(Pos_D[0], data=np.array([Pos_D[2:]], dtype=type_[Pos_D[1]]))
+    Pos_D = Shm(Pos_D[0], data=np.array([Pos_D[3:]], dtype=type_[Pos_D[1]]),
+                mmap = (Pos_D[2] == "1"))
 
 Error = config.get("Shm_Info", "Error").split(",")
-if os.path.isfile(Error[0]): Error = shm(Error[0])
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else:
     info("No state error shared memory. Creating file.")
     Error += config.get("Shm_Init", "Error").split(",")
-    Error = shm(Error[0], data=np.arra([Error[2:]], dtype=type_[Error[1]]))
+    Error = Shm(Error[0], data=np.arra([Error[3:]], dtype=type_[Error[1]]),
+                mmap = (Error[2] == "1"))
 
 info("No duplicate control script, continuing with initialization.")
 
@@ -774,8 +767,8 @@ info("No duplicate control script, continuing with initialization.")
 # signal handles tmux kill-ses and os terminate
 info("Registering cleanup")
 register(close)
-signal(SIGHUP, close)
-signal(SIGTERM, close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
 
 info("Initializing command shared memory from config file.")
 
@@ -788,32 +781,15 @@ Sem_Listeners = []
 
 Stat_P = config.get("Shm_Info", "Stat_P").split(",") +\
     config.get("Shm_Init", "Stat_P").split(",")
-Stat_P = shm(Stat_P[0], data=np.array([Stat_P[2:]], dtype=type_[Stat_P[1]]), \
-    sem=True)
+Stat_P = Shm(Stat_P[0], data=np.array([Stat_P[3:]], dtype=type_[Stat_P[1]]), \
+    sem=True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",") +\
     config.get("Shm_Init", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], data=np.array([Pos_P[2:]], dtype=type_[Pos_P[1]]), \
-    sem=True)
+Pos_P = Shm(Pos_P[0], data=np.array([Pos_P[3:]], dtype=type_[Pos_P[1]]), \
+    sem=True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
-
-def Punlink():
-    """Tries to unlink the lock semaphores on the P shms"""
-
-    try: Stat_P.lock.unlink()
-    except Exception as ouch: 
-        info("Exception on close: {}".format(ouch))
-        info("Exception on close: {}".format(ouch))
-
-    try: Pos_P.lock.unlink()
-    except Exception as ouch: 
-        info("Exception on close: {}".format(ouch))
-        info("Exception on close: {}".format(ouch))
-
-register(Punlink)
-signal(SIGHUP, Punlink)
-signal(SIGTERM, Punlink)
 
 info("Command shared memories successfully created.")
 
