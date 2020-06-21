@@ -39,7 +39,7 @@ class Zaber():
                 :"f"}
 
     def init(self, devnm:str):
-        """Constructure for the zaber class
+        """Constructor for the zaber class
 
         Inputs:
             devnm = the serial port where the zaber is connected
@@ -55,7 +55,7 @@ class Zaber():
         debug("{} axes found.".format(len(self.axes)))
 
     def open(self):
-        """Opens connection tozo the Zabers
+        """Opens connection to the Zabers
         
         Returns:
             int = error code if an error occurs
