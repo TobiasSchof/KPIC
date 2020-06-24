@@ -11,7 +11,7 @@ import sys, io, os
 import numpy as np
 
 #nfiuserver libraries
-from KPIC_shmlib import Shm
+from KPIC_shmlib import shm
 
 if __name__ != "__main__": sys.exit()
 
@@ -25,7 +25,7 @@ RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 config=ConfigParser()
-config.read(RELDIR+"/data/FEU_TTM.ini")
+config.read(RELDIR+"/data/Q545.ini")
 
 _debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
 _logDefault=config.get("Communication", "debug_log")
@@ -56,16 +56,25 @@ disable.add_argument("-disable")
 #Moves TTM to the given position.
 moveAbs=dev.add_parser("goto")
 moveAbs.add_argument("-goto")
-moveAbs.add_argument("ax1", nargs="?", default=None)
-moveAbs.add_argument("val1", nargs="?", default=None)
-moveAbs.add_argument("ax2", nargs="?", default=None)
-moveAbs.add_argument("val2", nargs="?", default=None)
+moveAbs.add_argument("val", nargs="?", default=None)
 moveAbs.add_argument("-move")
 
 #Moves TTM to the center of its range.
 center=dev.add_parser("center")
 center.add_argument("-center")
 center.add_argument("-move")
+
+#Displays whether axes are in open loop
+qol=dev.add_parser("ol?")
+qol.add_argument("-qol")
+
+#Opens the loop (turns servo off)
+open_=dev.add_parser("open")
+open_.add_argument("-open")
+
+#Closes the loop (turns servos on)
+close_=dev.add_parser("close")
+close_.add_argument("-close")
 
 #Turns the TTM on
 on=dev.add_parser("on")
@@ -101,10 +110,10 @@ if "disable" in args:
     sys.exit()
 
 #for anything else we will want shared memory so enable it as needed
-try: Pos_D=Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+try: Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
 except:
     print()
-    print("NO SHARED MEMORY. PLEASE USE 'FEU_TTM enable'")
+    print("NO SHARED MEMORY. PLEASE USE 'Q545 enable'")
     print()
     sys.exit()
     
@@ -118,21 +127,21 @@ if "status" in args and not args.push:
     sys.exit()
 
 #Now we need Stat_D to tell if the script is on
-Stat_D = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
 DStat = Stat_D.get_data()[0]
 
 #if control script is off, tell user to turn it on
 if DStat in [-1, -2]:
     print()
-    print("CONTROL SCRIPT OFF. PLEASE USE 'FEU_TTM enable'")
+    print("CONTROL SCRIPT OFF. PLEASE USE 'Q545 enable'")
     print()
     sys.exit()
 
 #at this point, we need Stat_P shm
-try: Stat_P = Shm(config.get("Shm_Info", "Stat_P").split(",")[0])
+try: Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
 except:
     print()
-    print("NO SHARED MEMORY. PLEASE USE 'FEU_TTM enable' OR 'FEU_TTM status'")
+    print("NO SHARED MEMORY. PLEASE USE 'Q545 enable' OR 'Q545 status'")
     print()
     sys.exit()
 
@@ -157,15 +166,40 @@ if "off" in args:
 #Now we need the device on
 if DStat == 0:
     print()
-    print("DEVICE OFF. PLEASE USE 'FEU_TTM on'")
+    print("DEVICE OFF. PLEASE USE 'Q545 on'")
     print()
     sys.exit()
 
-# at this point, we need Error
-Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-
+#Open servo status shm
+Svos = shm(config.get("Shm_Info", "Svos").split(",")[0])
+SvoStat = Svos.get_data()
+ 
+if "qol" in args:
+    print(["Loop closed" if axis else "Loop open" for axis in SvoStat])
+    sys.exit()
+         
+if "open" in args:
+    if not any(SvoStat): sys.exit()
+    SvoStat[0] = 0
+    SvoStat[1] = 0
+    Svos.set_data(SvoStat)
+    sys.exit()
+        
+if "close" in args:
+    if all(SvoStat): sys.exit()
+    SvoStat[0] = 1
+    SvoStat[1] = 1
+    Svos.set_data(SvoStat)
+    sys.exit()
+        
 #we checked for status without push earlier, so this one has it
 if "status" in args:
+    #warn the user if the stage is in open loop.
+    if not all(SvoStat):
+        print("WARNING, STAGE HAS AT LEAST ONE AXIS IN OPEN LOOP." + \
+            " POSITION MAY BE UNRELIABLE.")
+        print()
+
     #Get the counter for the position before requesting an update
     cnt = Pos_D.get_counter()
 
@@ -184,42 +218,20 @@ if "status" in args:
         print("WARNING, STAGE IS CURRENTLY IN MOTION.")
         print()
 
-    error = Error.get_data()[0]
-    if error < 0:
-        print("CONEX error {}. See user manual.".format(chr(-1*error+64)))
-        sys.exit()
-
     print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
     sys.exit()
 
-#at this point, we need Pos_P
-Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+#at this point, we need Pos_P and Error
+Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+Error = shm(config.get("Shm_Info", "Error").split(",")[0])
 
-if "goto" in args and not args.ax1 is None:
+if "goto" in args:
     pos = Pos_P.get_data()
     try:
-        #validate first parameter
-        assert args.ax1 in ["x", "y"]
-        assert args.val1 is not None
-        #convert val1 to a float
-        try: args.val1 = float(args.val1)
+        args.val = float(args.val)
         except: assert 1==0
 
-        ax = {"x":0, "y":1}
-        
-        pos[ax[args.ax1]] = args.val1
-
-        if args.ax2 is not None:
-            #validate second parameter
-            assert args.ax2 in ["x", "y"]
-            assert args.val2 is not None
-            #convert val2 to a float
-            try: args.val2 = float(args.val2)
-            except: assert 1==0
-            #validate that the same axis was not passed twice
-            assert args.ax1 != args.ax2
-            
-            pos[ax[args.ax2]] = args.val2
+        pos[0] = args.val
 
         Pos_P.set_data(pos)
 
@@ -229,11 +241,10 @@ if "goto" in args and not args.ax1 is None:
         error = Error.get_data()[0] 
         if error == 1:
             print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
-        elif error < 0:
-            print("CONEX error {}. See user manual.".format(chr(-1*error+64)))
-            sys.exit()
-        elif error != 0:
-            print("ERROR: {}. See config file for translation.".format(error))
+        elif error == 2:
+            print()
+            print("LOOP OPEN, CANNOT MOVE.")
+            print()
             sys.exit()
         else: sys.exit()
 
@@ -249,17 +260,17 @@ if not "move" in args:
 --------------------------------------------
 Movement:
       - - - - - - - - - - - - - - - -      
-FEU_TTM <CMD> <-x/-y <ARG>>
+Q545 <CMD> <ARG>
 --------------------------------------------
 CMD:
 {b:3}{:<8}move to an absoluate position
 {b:3}{:<8}move to center of range
 
-Type FEU_TTM <CMD> for examples and limits
+Type Q545 <CMD> for examples and limits
 --------------------------------------------
 Query:
       - - - - - - - - - - - - - - - -      
-FEU_TTM <CMD> [-push]
+Q545 <CMD> [-push]
 --------------------------------------------
 CMD:
 {b:3}{:<8}get position and time from
@@ -269,24 +280,21 @@ CMD:
 {b:11}updates shared memory before
 {b:11}returning.
 EXAMPLES:
-{b:3}FEU_TTM status
-{b:3}FEU_TTM status -push
+{b:3}Q545 status
+{b:3}Q545 status -push
 --------------------------------------------
 
-Type man FEU_TTM for comprehensive command list
+Type man Q545 for comprehensive command list
 
 """.format(*cmds, b=""))
     sys.exit()
             
-min1=config.getfloat("Limits", "min_1")
-max1=config.getfloat("Limits", "max_1")
-min2=config.getfloat("Limits", "min_2")
-max2=config.getfloat("Limits", "max_2")
+min1=config.getfloat("Limits", "min")
+max1=config.getfloat("Limits", "max")
 
 if "center" in args:
     pos = Pos_P.get_data()
     pos[0] = (min1+max1)/2
-    pos[1] = (min2+max2)/2
 
     #save counter so we know when shm has been updated
     cnt = Pos_D.get_counter()
@@ -297,32 +305,33 @@ if "center" in args:
     #wait for shared memory to be updated
     sleep(1)
 
+    error = Error.get_data()[0] 
+    if error == 2:
+        print()
+        print("LOOP OPEN, CANNOT MOVE.")
+        print()
+
     sys.exit()
 
 
-lim_msgx="(x: must be between {} and {})".format(min1, max1)
-lim_msgy="(y: must be between {} and {})".format(min2, max2)
+lim_msgx="(pos must be between {} and {})".format(min1, max1)
 thirdx=(max1-min1)/3
-thirdy=(max2-min2)/3
-use1="x {:.2f} y {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
-use2="x {:.0f}".format(min1+2*thirdx)
-use3="y {:.3f}".format(min2+.5*thirdy) 
+use1="{:.2f}".format(min1+thirdx)
 
 print("""
 --------------------------------------------
-Usage: FEU_TTM goto <-x/-y <ARG>>
+Usage: Q545 goto <ARG>
 --------------------------------------------
 x/y:
 {b:3}the axis to move (can use one or both)
 ARG:
 {b:3}the absolute position to move to
 {b:5}{lim_msgx}
-{b:5}{lim_msgy}
 
 EXAMPLES:
-{b:3}FEU_TTM goto {use1}
-{b:3}FEU_TTM goto {use2}
-{b:3}FEU_TTM goto {use3}
+{b:3}Q545 goto {use1}
+{b:3}Q545 goto {use2}
+{b:3}Q545 goto {use3}
 --------------------------------------------
 
 ERROR: invalid ARG. Please see above.

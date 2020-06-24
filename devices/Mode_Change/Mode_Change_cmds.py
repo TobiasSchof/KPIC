@@ -8,7 +8,7 @@ import os
 import numpy as np
 
 #nfiuserver libraries
-from shmlib import shm
+from KPIC_shmlib import shm
 from dev_Exceptions import *
 
 RELDIR = os.environ.get("RELDIR")

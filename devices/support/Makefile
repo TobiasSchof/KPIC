@@ -3,9 +3,9 @@
 override SYSNAM = kss/nirspec/nsfiu/devices/support
 override VERNUM = 1.0
 
-SOURCE = linksem.c shmlib.cpp
+SOURCE = linksem.c KPIC_shmlib.cpp
 
-RELLIB = libshmlib.so shmlib.hpp
+#RELLIB = libshmlib.so KPIC_shmlib.hpp
 RELBIN = linksem
 
 ################################################################################
@@ -40,5 +40,5 @@ include $(RELDIR)/etc/rules.mk
 #C compilations
 linksem: linksem.c
 	$(CC) -o linksem linksem.c -lpthread
-libshmlib.so: shmlib.cpp
-    $(CC) -shared -o libshmlib.so -fPIC shmlib.cpp -lstdc++fs
+#libKPIC_shmlib.so: KPIC_shmlib.cpp
+#    $(CC) -shared -o libKPIC_shmlib.so -fPIC KPIC_shmlib.cpp -lstdc++fs

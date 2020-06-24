@@ -1,0 +1,133 @@
+#!/usr/bin/env kpython3
+
+# ================================= #
+#   _______ __________  _________   #
+#   \      \\______   \/   _____/   #
+#   /   |   \|     ___/\_____  \    #
+#  /    |    \    |    /        \   #
+#  \____|__  /____|   /_______  /   #
+#          \/                 \/    #
+#                                   #
+# ================================= #
+
+'''
+____Change Log:____
+
+  __12/06/2018__
+  NJ & DE:
+   * Wrote the script 
+     
+'''
+
+import sys
+
+#nfiuserver libraries
+from NPS_cmds import NPS_cmds
+
+nps = NPS_cmds()
+
+def usage():
+    print ("""----------------------------------------------------------
+Usage: {0} <command> <arg>
+----------------------------------------------------------
+COMMAND:
+    status     displays status of all ports
+    on         turns on selected ports
+    off        turns off selected ports
+    devices    lists which ports devices are connected to
+    help       offers help with the {0} library
+ARG:
+    port # - accepts an integer between 1 and 8. 
+             Minimum # of channels that can be 
+             specified is 1, and maximum is 8. 
+EXAMPLES:
+    {0} status
+    {0} on 1
+    {0} on 2 3
+    {0} off 2 3
+    {0} devices
+----------------------------------------------------------""".format("NPS"))
+    sys.exit()
+
+def main():
+    args = sys.argv[1:]
+
+    #displays usage
+    if len(args) < 1: usage()
+
+    #Get help on class and functions
+    if "help" == args[0].lower(): help(nps)
+
+    #displays usage
+    elif "-h" == args[0].lower(): usage()
+    
+    #displays which devices are connected to which ports
+    elif ("devices" == args[0].lower()):
+        state = nps.devices        #Checks what is connected to the NPS
+        for port in state:
+            print("Port %1d: %s"%(port, state[port])) #Print port assignment
+        sys.exit()
+        
+    #prints the status of each port
+    elif ("status" == args[0].lower() or "st" == args[0].lower()):
+        print("Fetching device status...", end="\r") 
+        state = nps.getStatusAll()   #Check status
+        devs = nps.devices
+        # Get length of longest device name
+        wth = len(max(list(devs.values()), key=len))
+
+        for port in devs:
+            stat = "on" if state[port] else "off"
+            kwds={"port":port, "dev":devs[port], "w":wth, "stat":stat}
+            print("\033[KPort {port} {dev:^{w}} {stat}".format(**kwds))
+        sys.exit()
+    
+    #turns the specified ports on
+    elif "on" == args[0].lower():
+        msg = "WARNING: devices should be turned on via shared memory, "+\
+            "not via NPS.\n To continue with NPS command, enter 'y'. To "+\
+            "cancel, enter anything else. "
+        ans = input(msg) 
+        if ans != "y": sys.exit()
+
+        outlet = []               
+        try:
+            for out in args[1:]:
+                #check that out is an integer
+                n_out = int(out)
+                #check that out is a valid port
+                assert 1 <= n_out <= 8
+                outlet.append(n_out)
+        except (ValueError, AssertionError):
+            print("Invalid port. Please enter only integers between 1 and 8")
+            sys.exit()
+        for out in outlet:
+            nps.turnOn(out)
+            
+    #turns the specified ports off
+    elif "off" == args[0].lower():
+        msg = "WARNING: devices should be turned on via shared memory, "+\
+            "not via NPS.\n To continue with NPS command, enter 'y'. To "+\
+            "cancel, enter anything else. "
+        ans = input(msg) 
+        if ans != "y": sys.exit()
+
+        outlet = []               
+        try:
+            for out in args[1:]:
+                #check that out is an integer
+                n_out = int(out)
+                #check that out is a valid port
+                assert 1 <= n_out <= 8
+                outlet.append(n_out)
+        except (ValueError, AssertionError):
+            print("Invalid port. Please enter only integers between 1 and 8")
+            sys.exit()
+        for out in outlet:
+            nps.turnOff(out)
+
+    #if argument is none of the above, it's invalid     
+    else: usage()
+        
+# =====================================================================
+if __name__ == "__main__": main()

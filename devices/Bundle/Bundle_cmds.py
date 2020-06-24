@@ -5,7 +5,7 @@ from subprocess import Popen
 import sys, os
 
 #nfiuserver libraries
-from shmlib import Shm
+from KPIC_shmlib import Shm
 #various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 

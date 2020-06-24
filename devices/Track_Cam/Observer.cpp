@@ -10,7 +10,7 @@
 #include <stdlib.h> // for getting environmental variables
 
 #include "FliSdk.h"
-#include "shmlib.hpp"
+#include "KPIC_shmlib.hpp"
 
 class FliObserver : public IFliCameraObserver, 
                     public IRawImageReceivedObserver(){

@@ -12,7 +12,7 @@ from dev_Exceptions import *
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
-class FIU_TTM_cmds:
+class Q545_cmds:
     """Class for controlling the tip tilt mirror via shared memory.
     
     method list:
@@ -39,11 +39,11 @@ class FIU_TTM_cmds:
     """
     
     def __init__(self):
-        """Constructor for FIU_TTM_cmds"""
+        """Constructor for Q545_cmds"""
         
         #the config file has all the info needed to connect to shared memory
         config = ConfigParser()
-        config.read(RELDIR+"/data/FIU_TTM.ini")
+        config.read(RELDIR+"/data/Q545.ini")
 
         #Stat_D will give us info on device and script status
         self.Stat_D = config.get("Shm_Info", "Stat_D").split(",")[0]
@@ -55,12 +55,10 @@ class FIU_TTM_cmds:
 
         #NOTE: center is loaded here. If this changes, class will have to
         #   be reinitialized.
-        self.mid_1=config.getfloat("TTM_Limits", "min_1") +\
-            config.getfloat("TTM_Limits", "max_1")/2
-        self.mid_2=config.getfloat("TTM_Limits", "min_2") +\
-            config.getfloat("TTM_Limits", "max_2")/2
+        self.mid=(config.getfloat("Limits", "min") +\
+            config.getfloat("Limits", "max"))/2
 
-        #for examples on how to use semaphores, see FIU_TTM_draw or _Control 
+        #for examples on how to use semaphores, see Q545_draw or _Control 
         self._handleShms()
 
     def is_Active(self) -> bool:
@@ -91,7 +89,7 @@ class FIU_TTM_cmds:
         #   NOTE: we could use NPS here but we want to avoid direct
         #   communication with hardware on user side. If a user has the need
         #   the need to check for power status of device even when there's no
-        #   Stat_D shm, see q_pow in FIU_TTM_Control.py
+        #   Stat_D shm, see q_pow in Q545_Control.py
         if type(self.Stat_D) is str: 
             raise ShmError("No Stat_D shm. Please restart control script.")
 
@@ -102,7 +100,7 @@ class FIU_TTM_cmds:
         """Returns the error currently stored in the shared memory.
 
         Returns:
-            int = the error message. See FIU_TTM.ini for translation
+            int = the error message. See Q545.ini for translation
         """
 
         self._checkOnAndAlive()
@@ -112,17 +110,17 @@ class FIU_TTM_cmds:
         except AttributeError:
             raise ShmError("Shm states out of sync. Restart control script.")
 
-    def is_svo_on(self) -> list:
+    def is_svo_on(self) -> bool:
         """Returns on status of servos.
 
         Returns:
-            list = indices: [axis 1, axis 2]. values: 1=on, 0=off
+            bool = whether the servo is on
         """
 
         self._checkOnAndAlive()
 
         #if self.Error is a string, this will throw an AttributeError
-        try: return list(self.Svos.get_data()) 
+        try: return bool(self.Svos.get_data()[0]) 
         except AttributeError:
             raise ShmError("Shm states out of sync. Restart control script.")
 
@@ -186,18 +184,16 @@ class FIU_TTM_cmds:
 
         self._setStatus(0)
 
-    def set_svo(self, ax1:int=None, ax2:int=None):
+    def set_svo(self, ax1:bool):
         """Sets servo values in the shared memory
 
         Inputs:
-            ax1 = 1 to turn axis 1 servo on, 0 to turn it off
-            ax2 = 1 to turn axis 2 servo on, 0 to turn it off
+            ax1 = True to turn axis 1 servo on, False to turn it off
         """
 
         #make sure input is valid
         try:
             assert ax1 in [0, 1, None]
-            assert ax2 in [0, 1, None]
         except AssertionError:
             raise ValueError("Only values of 1, 0, and None are valid.")
 
@@ -208,20 +204,18 @@ class FIU_TTM_cmds:
             raise ShmError("Shm states out of sync. Restart control script.")
 
         #it's easier to modify returns rather than format a numpy array
-        if ax1 is not None: svo[0] = ax1
-        if ax2 is not None: svo[1] = ax2
+        if ax1 is not None: svo[0] = int(ax1)
 
         self.Svos.set_data(svo)
 
-    def set_pos(self, ax1:float, ax2:float) -> list:
-        """Sets target position to [ax1, ax2]
+    def set_pos(self, ax1:float) -> float:
+        """Sets target position to <ax1>
 
         Throws errors if they any are posted by the control script
         Inputs:
             ax1 = the value for axis 1
-            ax2 = the value for axis 2
         Returns:
-            list = indices: [axis 1, axis 2]. values: the requested positions
+            float = the requested position
         """
 
         self._checkOnAndAlive()
@@ -232,7 +226,6 @@ class FIU_TTM_cmds:
 
         #it's easier to modify returns rather than format a numpy array
         pos[0] = ax1
-        pos[1] = ax2
 
         self.Pos_P.set_data(pos)
 
@@ -246,7 +239,7 @@ class FIU_TTM_cmds:
     def center(self):
         """Moves the TTM to the center of its range"""
         
-        self.set_pos(ax1=self.mid_1, ax2=self.mid_2)
+        self.set_pos(ax1=self.mid)
 
     def activate_Control_Script(self):
         """Activates the control script if it's not already active."""
@@ -256,7 +249,7 @@ class FIU_TTM_cmds:
             raise ScriptAlreadActive(msg)
 
         config = ConfigParser()
-        config.read("FIU_TTM.ini")
+        config.read("Q545.ini")
 
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that

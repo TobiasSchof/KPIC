@@ -9,7 +9,7 @@
 #include <cstring>
 
 #include "FliSdk.h"
-#include "shmlib.hpp"
+#include "KPIC_shmlib.hpp"
 
 // Shared memories and the sdk which threads will need
 FliSdk *fli;

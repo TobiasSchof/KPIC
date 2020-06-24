@@ -11,7 +11,7 @@ import sys, io, os
 import numpy as np
 
 #nfiuserver libraries
-from shmlib import Shm
+from KPIC_shmlib import Shm
 
 if __name__ != "__main__": sys.exit()
 

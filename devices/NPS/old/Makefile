@@ -1,12 +1,18 @@
-# NIRSPEC fiber injection unit. Build device support (python) scripts
+# NIRSPEC fiber injection unit. Build Network Power Strip
 
-override SYSNAM = kss/nirspec/nsfiu/devices/support/Python
+override SYSNAM = kss/nirspec/nsfiu/devices/NPS
 override VERNUM = 1.0
 
-override ENABLE_PYTHON2 = False
+# If I knew that code would not work with Python 2 I would:
+##override ENABLE_PYTHON2 = False
+## DIRS = designer
 
-RELLIB = dev_Exceptions.py KPIC_shmlib.py Conex.py
+RELLIB = NPS_cmds.py
+RELDAT = NPS.ini
+RELBIN = NPS
 LIBSUB = python
+##FILES = $(RELBIN)
+
 
 ################################################################################
 # KROOT boilerplate:

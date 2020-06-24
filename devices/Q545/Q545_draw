@@ -22,7 +22,7 @@ than once per 5 seconds
 
 #this script should not be used as an import
 if __name__ != "__main__":
-    print("Mode_Change_draw is not meant to be used as an import")
+    print("Q545_draw.py is not meant to be used as an import")
     sys.exit()
 
 DATA = os.environ.get("DATA") #the path to the data directory
@@ -31,16 +31,17 @@ try:
 except TypeError:
     DATA = "/nfiudata"
     print("No DATA environment variable, using '/nfiudata'")
+LOG_FILE = "Q545.log" #the name of the log file (appended to DATA/YYYMMDD/)
 
-LOG = DATA + "/LOG"
-LOG_FILE = "Mode_Change.log" #the name of the log file (appended to DATA/LOGS/YYMMDD/)
+# folder in nfiudata to put logs
+LOGS = DATA + "/LOGS"
 
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 config=ConfigParser()
-config.read(RELDIR+"/data/Mode_Change.ini")
+config.read(RELDIR+"/data/Q545.ini")
 
 #create a semaphore to combine all shm sems
 shm_update = posix_ipc.Semaphore(None, flags=posix_ipc.O_CREX)
@@ -60,9 +61,17 @@ Error = config.get("Shm_Info", "Error").split(",")
 Error = shm(Error[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
 
+Stat_P = config.get("Shm_Info", "Stat_P").split(",")
+Stat_P = shm(Stat_P[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
+
 Pos_P = config.get("Shm_Info", "Pos_P").split(",")
 Pos_P = shm(Pos_P[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
+
+Svos = config.get("Shm_Info", "Svos").split(",")
+Svos = shm(Svos[0], sem=True)
+Sem_Listeners.append(Popen(["linksem", Svos.sem.name, shm_update.name]))
 
 def close():
     """Cleanup method to release semaphores and kill processes."""
@@ -93,6 +102,7 @@ def loop():
     Dstat_cnt = Stat_D.mtdata["cnt0"]
     Dpos_cnt = Pos_D.mtdata["cnt0"]
     Error_cnt = Error.mtdata["cnt0"]
+    Svo_cnt = Svos.mtdata["cnt0"]
 
     #wait for one of the shms to be updated
     shm_update.acquire()
@@ -101,6 +111,7 @@ def loop():
     if Stat_D.get_counter() != Dstat_cnt: updates.append(1)
     if Pos_D.get_counter() != Dpos_cnt: updates.append(2)
     if Error.get_counter() != Error_cnt: updates.append(3)
+    if Svos.get_counter() != Svo_cnt: updates.append(4)
 
     update(updates)
     draw()
@@ -115,17 +126,24 @@ def draw():
        
     #convert numpy array to list for proper printing
     ppos = [Pos_P.get_data()[0], Pos_P.get_time()]
-    if ppos[0] == -1: ppos[0] = "Pupil mode"
-    elif ppos[0] == -2: ppos[0] = "Focal mode"
-    elif ppos[0] == -3: ppos[0] = "Zernike mode"
         
     #translate the state status for user
-    dstatus={1:"Script: on | Device: on", 0:"Script: on | Device: off"}
+    dstatus={2:"Script: on | Device: moving", 1:"Script: on | Device: on", \
+        0:"Script: on | Device: off"}
     dstatus=[dstatus[Stat_D.get_data()[0]], Stat_D.get_time()]
 
+    #translate the command status for user
+    pstatus={True:"Device on", False:"Device off"}
+    pstatus=[pstatus[Stat_P.get_data()[0]], Stat_P.get_time()]
+
     #translate the error for user
-    derror = {0:"None", 1:"Requested move out of limits", 4:"Controller error"}
+    derror={0:"No error", 1:"Move requested beyond limits", 2:"Loop open",\
+        3:"Device off"}
     derror=[derror[Error.get_data()[0]], Error.get_time()]
+
+    #translate servo status for user
+    servostat = {True:"on", False:"off"}
+    servostat = [servostat(bool(svos.get_data()[0])), Svos.get_time()]
 
     def t(time:float):
         """Returns a printable string for a UNIX epoch time, formatted in GMT"""
@@ -137,7 +155,7 @@ def draw():
     fmt = u"\u2503"" {:<37}"*2+u"\u2503"
     print("\033c", end="")
     print(u"\u250F""{:<77}"u"\u2513".format(u"\u2501"*77))
-    print(u"\u2503""{:^77}"u"\u2503".format("Viewing Mode Controller"))
+    print(u"\u2503""{:^77}"u"\u2503".format("TTM Controller"))
     print(u"\u2523""{0:<38}"u"\u2533""{0:<38}"u"\u252B".format(u"\u2501"*38))
     print(fmt.format("Device state:", "Requests:"))
     print(fmt.format("", ""))
@@ -145,13 +163,13 @@ def draw():
     print(fmt.format(str(dpos[0]), str(ppos[0])))
     print(fmt.format(t(dpos[1]), t(ppos[1])))
     print(fmt.format("", ""))
-    print(fmt.format("Status:", ""))
-    print(fmt.format(dstatus[0], ""))
-    print(fmt.format(t(dstatus[1]),""))
+    print(fmt.format("Status:", "Status:"))
+    print(fmt.format(dstatus[0], pstatus[0]))
+    print(fmt.format(t(dstatus[1]), t(pstatus[1])))
     print(fmt.format("", ""))
-    print(fmt.format("Error message:", ""))
-    print(fmt.format(derror[0], ""))
-    print(fmt.format(t(derror[1]), ""))
+    print(fmt.format("Error message:", "Servo status:"))
+    print(fmt.format(derror[0], str(servostat[0])))
+    print(fmt.format(t(derror[1]), t(servostat[1])))
     print(fmt.format("", ""))
     print(u"\u2517"+u"\u2501"*38+u"\u253B"+u"\u2501"*38+u"\u251B")
 
@@ -163,13 +181,15 @@ def update(updates:list):
             1 = Stat_D
             2 = Pos_D
             3 = Error
+            4 = Svos
     """
 
     gmt = gmtime()
+    # nirspec, etc. only take the last two digits of the year, so match this
     year = str(gmt.tm_year)[-2:]
-    date="{:04d}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
+    date="{}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
-    cur_path = "{}/{}".format(DATA, date.replace("/", ""))
+    cur_path = "{}/{}".format(LOGS, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
     try:
         if not os.path.isdir(cur_path): os.mkdir(cur_path)
@@ -177,11 +197,11 @@ def update(updates:list):
         print("DATA variable set incorrectly.")
 
     #translate the update list to names and values
-    names = {1:"status", 2:"position", 3:"error"}
+    names = {1:"status", 2:"position", 3:"error", 4:"servo state"}
     vals = {"status":Stat_D.get_data()[0], "error":Error.get_data()[0],\
-        "position":Pos_D.get_data()[0]}
+        "position":list(Pos_D.get_data()), "servo state":list(Svos.get_data())}
     times = {"status":Stat_D.get_time(), "error":Error.get_time(), \
-        "position":Pos_D.get_time()}
+        "position":Pos_D.get_time(), "servo state":Svos.get_time()}
 
     #format log message
     msg="{date:<11}{time:<10}update: {name:>6} = {val}\n"

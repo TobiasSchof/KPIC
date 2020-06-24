@@ -13,7 +13,7 @@ import logging, os
 import numpy as np
 
 # nfiuserver libraries
-from shmlib import Shm
+from KPIC_shmlib import Shm
 
 # Connection information for the Zabers
 DEVNM   = "/tmp/zabertty"    # local link name
