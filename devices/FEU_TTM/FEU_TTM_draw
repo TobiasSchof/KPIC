@@ -22,7 +22,7 @@ than once per 5 seconds
 
 #this script should not be used as an import
 if __name__ != "__main__":
-    print("FEU_TTM_draw.py is not meant to be used as an import")
+    print("FEU_TTM_draw is not meant to be used as an import")
     sys.exit()
 
 # a flag to tell the whole script to stop if a signal is passed
@@ -35,9 +35,7 @@ except TypeError:
     DATA = "/nfiudata"
     print("No DATA environment variable, using '/nfiudata'")
 
-# Where log files are stored on nsfiu
-LOG = DATA + "/LOG"
-#the name of the log file (appended to DATA/LOGS/YYMMDD/)
+#the name of the log file (appended to DATA/YYMMDD/)
 LOG_FILE = "FEU_TTM.log" 
 
 

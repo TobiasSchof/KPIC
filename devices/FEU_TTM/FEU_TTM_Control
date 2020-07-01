@@ -3,11 +3,11 @@
 #inherent python libraries
 from configparser import ConfigParser
 from atexit import register, unregister
-from time import time, ctime, sleep
+from time import sleep
 from signal import signal, SIGHUP, SIGTERM
 from subprocess import Popen
 from argparse import ArgumentParser
-import sys, io, os, threading, logging
+import sys, os, threading, logging
 
 #installs
 import numpy as np
@@ -163,7 +163,7 @@ def connect_device():
         if limits[min_] < softlim[axis][0]:
             info("Changing {} limit to {}.".format(min_, softlim[axis][0]))
             limits[min_] = softlim[axis][0]
-        if limits[max_] < softlim[axis][1]:
+        if limits[max_] > softlim[axis][1]:
             info("Changing {} limit to {}.".format(max_, softlim[axis][1]))
             limits[max_] = softlim[axis][1]
 
@@ -172,12 +172,10 @@ def connect_device():
     pos = Pos_P.get_data()
 
     if CAN_MOVE:
-        info("Setting servos to initial values.")
-        #load the starting servo values into a dict
         info("Moving to initial positions.")
         #load the starting position values into a dict
         pos_i = {axis:pos[int(axis)-1] for axis in axes}
-        with dev_lock: dev.moveAbs(newPOS = pos_i)
+        move(pos_i)
     else:
         info("Cannot move to initial positions. Changing command shared " +\
          "memory values.")
@@ -379,9 +377,8 @@ if not os.path.isdir("/tmp/FEU_TTM"): os.mkdir("/tmp/FEU_TTM")
 #create a dictionary to translate strings into numpy data types
 type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
     "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
-    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
-    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
-    "complex128":np.complex128}
+    "uint64":np.uint64, "float16":np.float16, "float32":np.float32,
+    "float64":np.float64, "complex64":np.complex64, "complex128":np.complex128}
 
 #for now we just want to connect to shm to see if there's already a script
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
@@ -463,11 +460,11 @@ def Punlink():
     except (AttributeError, posix_ipc.ExistentialError) as ouch:
         info("Exception on close: {}".format(ouch))
 
+    unregister(Punlink)
+
 #we want to register P shm unlink before creating shared memory, otherwise
 #  the shm will be cleaned up and we lose access to the lock
 register(Punlink)
-signal(SIGHUP, Punlink)
-signal(SIGTERM, Punlink)
 
 info("Command shared memories successfully created.")
 
@@ -494,13 +491,11 @@ q_pow = lambda: NPS.getStatusAll()[NPS.TTM_port]
 turn_on = lambda: 0
 turn_off = lambda: 0
 
-#set up PI device.
+#set up device.
 dev=Conex_Device(config.get("Communication", "address"),\
                  config.get("Communication", "port"))
-#the controller actually has 4 axis but the latter 2 are for calibration,
-#etc so should never be touched. Therefore, we limit our axes to 1 and 2.
 axes=[1, 2]
-#since we will have multiple threads accessing the PI device, we need to 
+#since we will have multiple threads accessing the device, we need to 
 #  avoid interruption during communication
 dev_lock = threading.Lock()
 

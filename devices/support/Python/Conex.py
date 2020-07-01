@@ -67,6 +67,8 @@ class Conex_Device:
                 self.axes = {1:"V", 2:"U"}
             elif self.TY.find("LS25") != -1:
                 self.axes = {1:""}
+            elif self.TY.find("PR100P") != -1:
+                self.axes = {1:""}
             else:
                 raise Exception("Controller type not "+\
                                 "recognized: {}".format(self.TY))
