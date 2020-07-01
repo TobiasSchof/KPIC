@@ -6,7 +6,6 @@ import sys, os
 
 #nfiuserver libraries
 from KPIC_shmlib import Shm
-#various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 
 RELDIR = os.environ.get("RELDIR")
@@ -32,7 +31,6 @@ class FEU_TTM_cmds:
         _checkAlive
         _checkOnAndAlive
         _handleShms
-        _getData
         _setStatus
     """
     
@@ -268,13 +266,13 @@ class FEU_TTM_cmds:
             #   somehow fell out of sync, so the system should be restarted
             except:
                 msg = "Shm state out of sync. Please restart control script."
-                raise ShmError(msg)
+                raise ShmMissing(msg)
 
         if type(self.Error) is str:
             try: self.Error = Shm(self.Error)
             except: 
                 msg = "Shm state out of sync. Please restart control script."
-                raise ShmError(msg)
+                raise ShmMissing(msg)
 
         #the following shared memories will only exist if control is active
         if self.is_Active():
@@ -282,12 +280,12 @@ class FEU_TTM_cmds:
                 try: self.Pos_P = Shm(self.Pos_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
-                    raise ShmError(msg)
+                    raise ShmMissing(msg)
             if type(self.Stat_P) is str:
                 try: self.Stat_P = Shm(self.Stat_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
-                    raise ShmError(msg)
+                    raise ShmMissing(msg)
         else:
             #if a P shm is alive, extract the file name and close it
             if not type(self.Pos_P) is str:

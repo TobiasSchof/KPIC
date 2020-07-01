@@ -72,10 +72,6 @@ def move(target:float) -> int:
     info("Moving to {}.".format(target))
     err = dev.moveAbs(newPOS={1:target}, isBlocking = True)
 
-    # update Pos_D
-    curpos = dev.reqPosAct()
-    if type(curpos) is dict: Pos_D.set_data(np.array([curpos[1]], Stat_d.npdtype))
-
     # if moveAbs returned a dict, it's an error
     if type(err) is dict: return -1*(ord(err[1])-64)
     else: return 0
