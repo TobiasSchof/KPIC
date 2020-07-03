@@ -1,3 +1,4 @@
+
 # inherent python libraries
 from time import sleep
 
@@ -9,7 +10,7 @@ RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 class PyWFS_cmds:
-    """Class for controlling the pyramid wavefront sensor pickoff via shared memory
+    """Class for controlling the Coronagraph pickoff via shared memory
 
     method list:
     Queries:
@@ -23,7 +24,7 @@ class PyWFS_cmds:
         on
         off
         home
-        reset
+        open_loop
         set_pos
         activate_Control_Script
         load_presets
@@ -106,16 +107,16 @@ class PyWFS_cmds:
         if err < 0: return chr(-1*err + 64)
         else: return err
 
-    def get_pos(self, update:bool=True, time:bool=False) -> float:
+    def get_pos(self, update:bool=True, time:bool=False) -> list:
         """Return the current position of the PyWFS
 
         Args:
             update = whether an update to the position should be requested
             time   = whether the time the shm was last updated should be included
         Returns:
-            float = the position
+            list = [x position, y position]
             or
-            (float, float) = (the position, the time) if time == True
+            (list, float) = ([x position, y position], the time) if time == True
         """
 
         if update: 
@@ -131,10 +132,10 @@ class PyWFS_cmds:
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
-        if time: return self.Pos_D.get_data()[0], self.Pos_D.get_time()
-        else: return self.Pos_D.get_data()[0]
+        if time: return list(self.Pos_D.get_data()), self.Pos_D.get_time()
+        else: return list(self.Pos_D.get_data())
 
-    def get_target(self) -> float:
+    def get_target(self) -> list:
         """Returns the target position from the shm
 
         Returns:
@@ -144,7 +145,7 @@ class PyWFS_cmds:
         # getting target position doesn't make sense unless device is on
         self._checkOnAndAlive()
 
-        return self.Pos_P.get_data()[0]
+        return list(self.Pos_P.get_data())
 
     def on(self):
         """Turns the device on
@@ -179,7 +180,7 @@ class PyWFS_cmds:
             self.Stat_P.set_data(stat)
 
     def home(self):
-        """Homes the PyWFS"""
+        """Homes the device"""
 
         self._checkOnAndAlive()
 
@@ -191,8 +192,8 @@ class PyWFS_cmds:
             stat[0] += 4
             self.Stat_P.set_data(stat)
 
-    def reset(self):
-        """Resets the device (puts it into an unreferenced state)"""
+    def open_loop(self):
+        """Opens the loop on the device"""
 
         self._checkOnAndAlive()
 
@@ -208,9 +209,9 @@ class PyWFS_cmds:
         """Sets a new target position
 
         Args:
-            target = float: the position for the PyWFS to move to
+            target = list: the position for the device to move to
                     or
-                     str:   the name of the preset position to move to
+                     str:  the name of the preset position to move to
             block  = whether program execution should be blocked until Pos_D is updated
         """
 
@@ -228,7 +229,8 @@ class PyWFS_cmds:
 
         # take Pos_P so that we don't need to remake the numpy array
         pos = Pos_P.get_data()
-        pos[0] = target
+        pos[0] = target[0]
+        pos[1] = target[1]
         Pos_P.set_data(pos)
 
         # if we don't block, return
@@ -254,7 +256,7 @@ class PyWFS_cmds:
             raise ScriptAlreadActive(msg)
 
         config = ConfigParser()
-        config.read(RELDIR+"/data/PyWFS.ini")
+        config.read(RELDIR+"/data/Coronagraph.ini")
 
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that
@@ -269,10 +271,11 @@ class PyWFS_cmds:
         """
 
         config = ConfigParser()
-        config.read(RELDIR+"/data/PyWFS.ini")
+        config.read(RELDIR+"/data/Coronagraph.ini")
 
         for name in config.options("Presets"):
-            self.presets[name] = config.getfloat("Presets", name)
+            pos = config.get("Presets", name).split(",")
+            self.presets[name] = [float(pos[0]), float(pos[1])]
 
     def _checkAlive(self):
         """Raises a ScriptOff error if the control script is not alive"""

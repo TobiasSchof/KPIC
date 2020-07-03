@@ -23,8 +23,8 @@ class Conex_Device:
                                 #wait before declaring a move timeout error
     
     def __init__(self, host, port):
-        '''Create serial object and instantiate instance variables
-        '''
+        '''Constructor for Conex device'''
+
         #Create Telnet Object for Communication (keep closed though)
         self.tel = telnetlib.Telnet()
         self.host = host

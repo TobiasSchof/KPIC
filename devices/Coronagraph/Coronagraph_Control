@@ -1,0 +1,404 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from configparser import ConfigParser
+from atexit import register, unregister
+from time import sleep
+from signal import signal, SIGHUP, SIGTERM
+from subprocess import Popen
+from argparse import ArgumentParser
+import sys, os, logging
+
+# installs
+from pipython import GCSDevice
+from pipython.gcserror import gcserror
+import numpy as np
+from posix_ipc import Semaphore, O_CREX, ExistentialError
+
+# nfiuserver libraries
+from KPIC_shmlib import KPIC_shmlib
+from NPS_cmds import NPS_cmds
+
+"""
+THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT'S CHORONAGRAPH
+AND NOT FOR USE BY USER
+
+See Coronagraph_cmds or type Coronagraph in terminal to control the stage
+"""
+
+ips = {"x":"131.215.193.041", "y":"131.215.193.063"}
+
+# This script is not an import
+if __name__ != "__main__":
+    print("Coronagraph_Control is not meant to be used as an import.")
+    sys.exit()
+
+# info is most of what we'll be using from logging, so make a shorter command for it
+info = logging.info
+
+class NPSError(Exception):
+    """An exception to be thrown if there is an error with the NPS"""
+    pass
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice."""
+    pass
+
+def move(target:list) -> int:
+    """Moves device to target position
+
+    Args:
+        target = list of length two. Index 0 is x coordinate, index 1 is y
+    Returns:
+        int = error code
+    """
+
+    err = 0
+
+    if not all([(axes[axis].qSVO()["1"] and axes[axis].qFRF()["1"] for axis in axes]): 
+        info("Movement requested in open loop.")
+        return 2
+
+    reqs = {"x":target[0], "y":target[1]}
+    
+    for axis in reqs:
+        if reqs[axis] < limits[axis][0] or reqs[axis] > limits[axis][1]: 
+            info("Movement {} requested outside limits {}.".format(reqs[axis], limits[axis]))
+            return 3
+
+    for axis in reqs:
+        try: axes[axis].MOV({"1":reqs[axis]})
+        except gcserror: err = 1
+
+    return err
+
+def do_state(desired:str) -> int:
+    """Sends desired state to controller
+
+    Args:
+        desired = a string of the bit representation of the desired state
+    Returns:
+        int = any error
+    """
+
+    # turn device on/off as requested
+    if desired[-2] == "1": err = device_on()
+    else: err = device_off()
+
+    # close the loop and home all axes if requested
+    if desired[-3] == "1":
+        for axis in axes:
+            try
+                if not axes[axis].qSVO()["1"]: axes[axis].SVO({"1":True})
+            except gcserror: err = 1
+            try:
+                if not axes[axis].qFRF()["1"]: axes[axis].FNL()
+            except gcserror: err = 1
+    # open the loop if requested
+    else:
+        for axis in axes:
+            try:
+                if axes[axis].qSVO()["1"]: axes[axis].SVO({"1":False})
+            except gcserror: err = 1
+
+    return err
+
+def device_off() -> int:
+    """Disconnects both axes and turns off controllers
+    
+    Returns:
+        int = error code
+    """
+
+    err = 0
+
+    for axis in axes:
+        try:
+            if axes[axis].connected:
+                axes[axis].SVO({"1":False})
+                axes[axis].close()
+        except gcserror: err = 1
+
+    # TODO: add NPS support
+
+    # get the current status
+    stat = self.Stat_D.get_data()
+    # convert status to bits
+    bits = format(stat[0], "08b")
+    # set device power bit and device ready bit to "0"
+    bits[-2] = "0"
+    bits[-3] = "0"
+    # store new status
+    stat[0] = int(bits, 2)
+    self.Stat_D.set_data(bits)
+
+    return err
+
+def device_on() -> int:
+    """Turns on both axes, connects to both devices, and loads limits
+    
+    Returns:
+        int = any error
+    """
+
+    err = 0
+
+    # TODO: add NPS support, check for if device is already on
+
+    # connect both controllers
+    for axis in axes:
+        if not axes[axis].connected
+            try: axes[axis].ConnectTCPIP(ips[axis])
+            except gcsrror: err = 1
+
+        # define limits as the larger of the min values between config file and software limits, vice 
+        #   versa for maxes
+        global limits
+        try:
+            limits[axis] = [max(axes[axis].qTMN()["1"], config.getfloat("Limits", "min_{}".format(axis))),
+                min(axes[axis].qTMX()["1"], config.getfloat("Limits", "max_{}".format(axis)))]
+        except gcserror: err = 1
+
+    # get the current status
+    stat = self.Stat_D.get_data()
+    # convert status to bits
+    bits = format(stat[0], "08b")
+    # set device power bit to "1"
+    bits[-2] = "1"
+    # set device ready bit to "1" if all devices are closed loop and homed
+    try: bits[-3] = str(int(all([dev.qSVO()["1"] and dev.qFRF()["1"] for dev in axes.values()])))
+    except gcserror: err = 1
+    # store new status
+    stat[0] = int(bits, 2)
+    self.Stat_D.set_data(bits)
+
+    return err
+
+def main():
+    """The main loop"""
+
+    while alive:
+
+        # get current counters to know if shm has been updated
+        pos_cnt = Pos_P.mtdata["cnt0"]
+        stat_cnt = Stat_P.mtdata["cnt0"]
+
+        # wait for one of the shms to be updated
+        ShmP.acquire()
+
+        # check to see if we should end
+        if not alive: return
+
+        errs = 0
+        errp = 0
+
+        # first make any changes requested in Stat_P
+        if stat_cnt != Stat_P.get_counter():
+            errs = do_state(format(Stat_P.get_data()[0], "08b")
+
+        # then make any changed requested in Pos_P
+        if pos_cnt != Pos_P.get_counter():
+            errp = move(Pos_P.get_data())
+        # update position if device is on and no move was requested
+        elif (format(Stat_D.get_data()[0], "08b")[-1] == "1"):
+            try: curpos = [axes["x"].qPOS()["1"], axes["y"].qPOS()["1"]]
+            except gcserror: errp = 1
+            self.Pos_D.set_data(np.array(curpos, self.Pos_D.npdtype))
+
+        # prioritize errors that arose when setting status
+        if errs != 0: self.Error.set_data(np.array([errs], self.Error.npdtype))
+        elif errp != 0: self.Error.set_data(np.array([errp], self.Error.npdtype))
+
+def close():
+    """A cleanup method
+
+    Closes all communication with the device, deletes command share memory,
+    and closes the tmux session.
+    """
+
+    info("Killing draw process.")
+    try: draw_proc.terminate()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Deleting command shared memory file.")
+    # We want to delete all command shared memories so scripts can't
+    #   mistakenly think the control script is alive
+    try:
+        for shm in [Stat_P, Pos_P]:
+            try: os.remove(shm.fname)
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Checking if device is connected")
+    try: device_off()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Updating Stat_D file")
+    try:
+        # get the current status to avoid changing anything other than script bit
+        stat = Stat_D.get_data()
+        # convert to 8 bit binary
+        bits = format(stat[0], "08b")
+        # set script bit to 0
+        bits[-1] = "0"
+        # store new status
+        stat[0] = bits
+        Stat_D.set_data(stat)
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Killing semaphore listening process")
+    try:
+        for proc in Sem_Listeners:
+            try: proc.terminate()
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Unlinking subscription semaphore")
+    try: ShmP.unlink()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Closing tmux session")
+    # unregister this method now that it's completed to avoid running it twice
+    unregister(close)
+    os.system(config.get("Environment", "end_command"))
+
+def signal_handler(signum, stack):
+    """A method to gracefully end script when a signal is passed"""
+    global alive
+    alive = False
+    try: ShmP.release()
+    except: pass
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[-1]
+
+# when alive is set to False, the script will end
+alive = True
+
+# read config file
+config = ConfigParser()
+config.read(RELDIR+"/data/Coronagraph.ini")
+
+log_path = config.get("Communication", "debug_log")
+debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
+
+parser = ArgumentParser()
+# boolean flag for CAN_MOVE
+parser.add_argument("-m", action = "store_true")
+# flags to set debug modes
+parser.add_argument("-d", default = -1, nargs = "?")
+parser.add_argument("-d!", "--dd", default = -1, nargs = "?")
+
+args = parser.parse_args()
+
+# whether this device can move on startup
+CAN_MOVE = args.m
+
+if args.dd != -1:
+    if not args.dd is None: log_path = args.dd
+    logging.basicConfig(format = debug_format, datefmt = "%H:%M:%S",
+        filename = log_path)
+    logging.root.setLevel(logging.DEBUG)
+elif args.d != -1:
+    if not args.d is None: log_path = args.d
+    logging.basicConfig(format = debug_format, datefmt = "%H:%M:%S",
+        filename = log_path)
+    logging.root.setLevel(logging.INFO)
+
+# make the folder for shared memories if it doesn't already exist
+if not os.path.isdir("/tmp/Coronagraph"): os.mkdir("/tmp/Coronagraph")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# connect to Stat_D to see if there's already a control script running
+Stat_D = config.get("Shm Info", "Stat_D").split(",")
+if os.path.isfile(Stat_D[0]):
+    Stat_D = Shm(Stat_D[0])
+    
+    if format(Stat_D.get_data()[0], "08b") == "1":
+        info("Active control script exists. Raising exception.")
+        msg = "State shared memory status {}.".format(status)
+        raise AlreadyAlive(msg)
+else:
+    info("No Stat_D shared memory file. Creating file.")
+    Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = type_[Stat_D[1]]),
+        mmap = (Stat_D[2] == "1"))
+
+info("No duplicate control script, continuing with initialization")
+
+# connect to rest of state shms
+Pos_D = config.get("Shm Info", "Pos_D").split(",")
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
+else:
+    info("No Pos_D shared memory file. Creating file.")
+    Pos_D = Shm(Pos_D[0], data = np.array([-5000., -5000.], dtype = type_[Pos_D[1]]),
+        mmap = (Pos_D[2] == "1"))
+
+Error = config.get("Shm Info", "Pos_D").split(",")
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
+else:
+    info("No Error shared memory file. Creating file.")
+    Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),
+        mmap = (Error[2] == "1"))
+
+# register cleanup methods
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+# create a subscription semaphore to link all P shms
+ShmP = Semaphore(None, flags = O_CREX)
+
+# create a list to store processes that are updating semaphores
+#   (to be killed at close)
+Sem_Listeners = []
+
+Stat_P = config.get("Shm Info", "Stat_P").split(",")
+Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
+    sem = True, mmap = Stat_P[2])
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
+
+Pos_P = config.get("Shm Info", "Pos_P").split(",")
+Pos_P = Shm(Pos_P[0], data = np.array([1], dtype = type_[Pos_P[1]]),
+    sem = True, mmap = Pos_P[2])
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
+
+def Punlink():
+    """Tries to unlink the lock semaphores on the P shms"""
+
+    try: Stat_P.lock.unlink()
+    except (AttributeError, ExistentialError) as ouch:
+        info("Exception on close: {}.".format(ouch))
+
+    try: Pos_P.lock.unlink()
+    except (AttributeError, ExistentialError) as ouch:
+        info("Exception on close: {}.".format(ouch))
+
+# We want to register P shm unlock after creating P shms so they aren't cleaned
+#   up before we have a change to unlink (delete) the lock
+register(Punlink)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+info("Shared memories created successfully.")
+
+# TODO: add NPS support
+
+# define axes for this device
+axes = ["x":GCSDevice(), "y":GCSDevice()]
+# create a dictionary to hold limit information
+limits = {}
+
+# TODO: if device is on (NPS), connect to it
+
+info("Starting display drawer")
+# we use Popen to start drawer script in a non-blocking way
+draw_proc = Popen("Coronagraph_draw")
+
+info("Beginning loop.")
+main()

@@ -6,7 +6,7 @@ from time import sleep, gmtime, time
 from subprocess import Popen
 from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
-import sys, io, os
+import sys, os
 
 #installs
 import posix_ipc
