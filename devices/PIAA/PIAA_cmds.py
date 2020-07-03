@@ -9,8 +9,8 @@ from dev_Exceptions import *
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
-class Coronagraph_cmds:
-    """Class for controlling the Coronagraph pickoff via shared memory
+class PIAA_cmds:
+    """Class for controlling the PIAA via shared memory
 
     method list:
     Queries:
@@ -35,11 +35,11 @@ class Coronagraph_cmds:
     """
 
     def __init__(self):
-        """Constructor for Coronagraph_cmds"""
+        """Constructor for PIAA_cmds"""
 
         # the config file has all the info needed to connect to shared memory
         config = ConfigParser()
-        config.read(RELDIR+"/data/Coronagraph.ini")
+        config.read(RELDIR+"/data/PIAA.ini")
 
         # get paths to shms
         self.Stat_D = config.get("Shm Info", "Stat_D").split(",")[0]
@@ -57,7 +57,7 @@ class Coronagraph_cmds:
         """Returns true if control script is active
 
         Returns:
-            bool = whether the Coronagraph control script is active
+            bool = whether the PIAA control script is active
         """
 
         if type(self.Stat_D) is str: self._handleShms()
@@ -73,7 +73,7 @@ class Coronagraph_cmds:
         Checks Stat_D for on status, does not directly check the NPS
 
         Returns:
-            bool = whether the Coronagraph is on
+            bool = whether the PIAA is on
         """
 
         self._checkAlive()
@@ -84,7 +84,7 @@ class Coronagraph_cmds:
         """Returns true if device is homed
 
         Returns:
-            bool = whether the Coronagraph is in a referenced state
+            bool = whether the PIAA is in a referenced state
         """
 
         self._checkOnAndAlive()
@@ -107,16 +107,16 @@ class Coronagraph_cmds:
         if err < 0: return chr(-1*err + 64)
         else: return err
 
-    def get_pos(self, update:bool=True, time:bool=False) -> list:
-        """Return the current position of the Coronagraph
+    def get_pos(self, update:bool=True, time:bool=False) -> float:
+        """Return the current position of the PIAA
 
         Args:
             update = whether an update to the position should be requested
             time   = whether the time the shm was last updated should be included
         Returns:
-            list = [x position, y position]
+            float = PIAA position
             or
-            (list, float) = ([x position, y position], the time) if time == True
+            (float, float) = (position, time) if time == True
         """
 
         if update: 
@@ -132,10 +132,10 @@ class Coronagraph_cmds:
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
-        if time: return list(self.Pos_D.get_data()), self.Pos_D.get_time()
-        else: return list(self.Pos_D.get_data())
+        if time: return self.Pos_D.get_data()[0], self.Pos_D.get_time()
+        else: return self.Pos_D.get_data()[0]
 
-    def get_target(self) -> list:
+    def get_target(self) -> float:
         """Returns the target position from the shm
 
         Returns:
@@ -145,7 +145,7 @@ class Coronagraph_cmds:
         # getting target position doesn't make sense unless device is on
         self._checkOnAndAlive()
 
-        return list(self.Pos_P.get_data())
+        return self.Pos_P.get_data()[0]
 
     def on(self):
         """Turns the device on
@@ -209,7 +209,7 @@ class Coronagraph_cmds:
         """Sets a new target position
 
         Args:
-            target = list: the position for the device to move to
+            target = float: the position for the device to move to
                     or
                      str:  the name of the preset position to move to
             block  = whether program execution should be blocked until Pos_D is updated
@@ -229,8 +229,7 @@ class Coronagraph_cmds:
 
         # take Pos_P so that we don't need to remake the numpy array
         pos = Pos_P.get_data()
-        pos[0] = target[0]
-        pos[1] = target[1]
+        pos[0] = target
         Pos_P.set_data(pos)
 
         # if we don't block, return
@@ -256,7 +255,7 @@ class Coronagraph_cmds:
             raise ScriptAlreadActive(msg)
 
         config = ConfigParser()
-        config.read(RELDIR+"/data/Coronagraph.ini")
+        config.read(RELDIR+"/data/PIAA.ini")
 
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that
@@ -271,11 +270,10 @@ class Coronagraph_cmds:
         """
 
         config = ConfigParser()
-        config.read(RELDIR+"/data/Coronagraph.ini")
+        config.read(RELDIR+"/data/PIAA.ini")
 
         for name in config.options("Presets"):
-            pos = config.get("Presets", name).split(",")
-            self.presets[name] = [float(pos[0]), float(pos[1])]
+            self.presets[name] = config.getfloat("Presets", name)
 
     def _checkAlive(self):
         """Raises a ScriptOff error if the control script is not alive"""
