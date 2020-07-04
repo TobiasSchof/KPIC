@@ -140,13 +140,13 @@ def connect_device():
     #Do nothing if device is off or already connected
     """
     with dev_lock:
-        if not q_pow() or dev.isOpen: return 
+        if not q_pow() or not dev.con_type is None: return 
     """
 
-    if dev.isOpen: return
+    if not dev.con_type is None: return
 
     info("Connecting TTM Conex controller.")
-    with dev_lock: dev.open()
+    with dev_lock: dev.open_Telnet(addr, port)
 
     info("Extracting limits from config file.")
     global limits
@@ -193,7 +193,7 @@ def device_off():
     """Turns off the TTM using the NPS"""
 
     info("Checking if TTM is connected.")
-    if dev is None or not dev.isOpen:
+    if dev is None or dev.con_type is None:
         return
 
     #update position
@@ -306,7 +306,7 @@ def close():
 
     info("Checking if TTM is connected.")
     try:    
-        if dev.isOpen:
+        if not dev.con_type is None:
             info("Turning off TTM.")
             device_off()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
@@ -492,8 +492,11 @@ turn_on = lambda: 0
 turn_off = lambda: 0
 
 #set up device.
-dev=Conex_Device(config.get("Communication", "address"),\
-                 config.get("Communication", "port"))
+dev=Conex_Device()
+# save address and port to open later
+addr = config.get("Communication", "address")
+port = config.get("Communication", "address")
+
 axes=[1, 2]
 #since we will have multiple threads accessing the device, we need to 
 #  avoid interruption during communication

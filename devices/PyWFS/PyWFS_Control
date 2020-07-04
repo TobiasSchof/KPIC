@@ -82,10 +82,10 @@ def connect_device():
     # TODO: do nothing if device is off
 
     # Do nothing if device is already connected
-    if dev.isOpen: return
+    if not dev.con_type is None: return
 
     info("Connecting to Conex controller")
-    dev.open()
+    dev.open_Serial(devnm, baud)
 
     info("Extracting limits from config file")
     global limits
@@ -123,7 +123,7 @@ def connect_device():
             Stat_d.npdtype))
         # update Stat_D
         stat = "00000001"
-        stat[-2] = "1" if dev.isOpen else "0"
+        stat[-2] = "0" if dev.con_type is None else "1"
         stat[-3] = "1" if dev.isReady() else "0"
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
@@ -202,7 +202,7 @@ def listener():
             Stat_d.npdtype))
         # update current state
         stat = "00000001"
-        stat[-2] = "1" if dev.isOpen else "0"
+        stat[-2] = "0" if dev.con_type is None else "1"
         stat[-3] = "1" if dev.isReady() else "0"
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
@@ -401,8 +401,11 @@ info("Command shared memories successfully created.")
 # TODO: add in NPS, turn_on, turn_off, q_pow
 
 # set up device
-dev = Conex_Device(config.get("Communication", "address"),
-    config.get("Communication", "port"))
+dev = Conex_Device()
+# save devnm and port
+devnm = config.get("Communication", "devnm")
+baud = config.get("Communication", "baud")
+
 # define this stage's axes
 axes = [1]
 

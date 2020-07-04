@@ -1,6 +1,6 @@
 from time import sleep
 from logging import debug
-import telnetlib
+import telnetlib, serial
 
 #Should Modify:
 #Add method to class change serial timeout
@@ -22,14 +22,11 @@ class Conex_Device:
     MVTIMEOUT   = 600       #(MVTIMEOUTxDELAY)= number of seconds device will 
                                 #wait before declaring a move timeout error
     
-    def __init__(self, host, port):
+    def __init__(self):
         '''Constructor for Conex device'''
 
-        #Create Telnet Object for Communication (keep closed though)
-        self.tel = telnetlib.Telnet()
-        self.host = host
-        self.port = port
-        self.isOpen = False
+        # a variable to keep track of what kind of connection is open
+        self.con_type = None
         
         #Other Instance Variables
         self.SN     = 'DevNotOpenedYet'     #Device serial number
@@ -39,19 +36,61 @@ class Conex_Device:
         self.lims   = {}                    #Device limits
 
     #:::::::::::::::::::::::PORT MANAGEMENT FUNCTIONS::::::::::::::::::::::::::                
-    def open(self):
-        '''Opens connection to device
+    def open_Serial(self, devnm:str, baud:int):
+        """Opens a serial connection to the device
+
+        Also queries the device to obtain basic information to confirm communication
+
+        Does not reopen the device if already open
+
+        Args:
+            devnm = the device name to connect to
+            baud = the baudrate to connect at
+        """
+
+        # if port is already open, return
+        if not self.con is None:
+            debug("(SN:{}) is already open".format(self.SN))
+            return
+
+        debug("Connecting to serial: {}:{}...".format(devnm, baud))
+        self.con.open(devnm, baud)
+        self.con_type = "serial"
+
+        self.reqInfo()
+
+        if self.TY.find("M100DD") != -1:
+            self.axes = {1:"V", 2:"U"}
+        elif self.TY.find("LS25") != -1:
+            self.axes = {1:""}
+        elif self.TY.find("PR100P") != -1:
+            self.axes = {1:""}
+        else:
+            raise Exception("Controller type not recognized: {}".format(self.TY))
+
+        debug('Device is a   : %s \n'   %self.TY +
+              'Serial Number : %s \n'   %self.SN +
+              'Frameware vs. : %s \n'   %self.FW)
+        
+        self.reqLim()
+
+    def open_Telnet(self, host:str, port:int):
+        '''Opens a telnet connection to device
         Also queries the device to obtain basic information
             This serves to confirm communication
         *Does not reopen device if already open
+
+        Args:
+            host = the hostname of the telnet connection
+            port = the port to connect to
         '''
         #Open port if not already open
-        if self.isOpen:
+        if not self.con is None:
             debug('(SN:%s) is already open' %self.SN)
         else:
-            debug('Connecting to : {}:{}...'.format(self.host, self.port))
-            self.tel.open(self.host, self.port)
-            self.isOpen = True
+            debug('Connecting to telnet: {}:{}...'.format(host, port))
+            self.con.open(host, port)
+            self.con_type = "telnet"
             
             #Send 'ID?' command to synchronize comms with device:
                 #The first message sent after the device is powered up is 
@@ -81,11 +120,11 @@ class Conex_Device:
               
     def close(self):
         '''Closes the device connection'''
-        if not self.isOpen:
+        if self.con_type is None:
             debug("Device is already closed")
         else:
-            self.tel.close()
-            self.isOpen = False
+            self.con.close()
+            self.con_type = None
     
     #:::::::::::::::::::::::WRITE/READ FUNCTIONS:::::::::::::::::::::::::::::::    
     def write(self, MSG, append = None):
@@ -99,7 +138,7 @@ class Conex_Device:
             have a dedicated function yet.
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return
@@ -112,7 +151,7 @@ class Conex_Device:
         msg = MSG.encode()
             
         #Send message using telnet
-        self.tel.write(msg)
+        self.con.write(msg)
         
     def readAll(self):
         '''Returns the full read buffer or the first 50 lines
@@ -122,7 +161,7 @@ class Conex_Device:
             Does NOT strip() CR\LF at end of messages
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return
@@ -143,8 +182,6 @@ class Conex_Device:
     def read(self, tmt=1.0):
         '''Reads a single line from the readbuffer
         Strips the CR\LF and decodes it into a string
-        *DOES NOT CHECK IF PORT IS OPEN
-            Thus, performing read with port closed could throw errors
 
         Inputs:
             tmt = timeout in seconds
@@ -153,8 +190,12 @@ class Conex_Device:
         '''
         #Does not check if port is open to avoid slow-downs from checking
             #if port is open repeatedly when back-to-back reads are performed 
-        return self.tel.read_until(bytes('\r\n',
-            'utf-8'),tmt).strip().decode('utf-8')
+        if self.con_type is "telnet":
+            return self.con.read_until(bytes('\r\n', 'utf-8'), tmt).strip().decode('utf-8')
+        elif self.con_type is "serial":
+            self.con.timeout = tmt
+            return self.con.read_Line()
+
     
     #:::::::::::::::::::::::STATE CHANGE FUNCTIONS:::::::::::::::::::::::::::::
     def home(self, isBlocking = False):
@@ -172,7 +213,7 @@ class Conex_Device:
             None if there's no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -209,7 +250,7 @@ class Conex_Device:
             None if there's no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -235,7 +276,7 @@ class Conex_Device:
             None if there's no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -260,7 +301,7 @@ class Conex_Device:
             None if no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -285,7 +326,7 @@ class Conex_Device:
             None if no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -309,7 +350,7 @@ class Conex_Device:
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -330,7 +371,7 @@ class Conex_Device:
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -351,7 +392,7 @@ class Conex_Device:
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -372,7 +413,7 @@ class Conex_Device:
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -393,7 +434,7 @@ class Conex_Device:
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -417,7 +458,7 @@ class Conex_Device:
             -1 if communication is not open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -452,7 +493,7 @@ class Conex_Device:
             None if no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -501,7 +542,7 @@ class Conex_Device:
             None if no error
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -545,7 +586,7 @@ class Conex_Device:
             str with error code returned by device
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -569,7 +610,7 @@ class Conex_Device:
             *If device is not open(), the code itself is returned
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('WARNING::: Device must be open to translate string\n' + 
                   '  solution: call open()')
             return erCd
@@ -595,7 +636,7 @@ class Conex_Device:
             -1 if communication isn't open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -629,7 +670,7 @@ class Conex_Device:
             -1 if communication isn't open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -663,7 +704,7 @@ class Conex_Device:
             Serial number, device number, revision version
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
@@ -695,7 +736,7 @@ class Conex_Device:
             -1 if communication isn't open
         '''
         #Check if port is open
-        if not self.isOpen:
+        if self.con_type is None:
             debug('ERROR::: Device must be open\n' + 
                   '  solution: call open()')
             return -1
