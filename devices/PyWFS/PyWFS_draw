@@ -152,7 +152,11 @@ def draw():
     # translate error for user
     derror = Error.get_data()[0]
     if derror < 0: derror = "Conex error: {}".format(chr(-1*derror + 64))
-    else: derror = {0:"No error", 1:"Move requested beyond limits"}
+    else: 
+        try:
+            derror = {0:"No error", 1:"Move requested beyond limits"}[derror]
+        except KeyError:
+            derror = "Unknown error {}".format(derror)
     derror = [derror, Error.get_time()]
 
     def t(time:float):
@@ -202,7 +206,8 @@ def update(updates:list):
     # get the path to today's folder
     cur_path = "{}/{}".format(DATA, date.replace("/", "")[2:])
     # check whether the date of the last state shared memory update has a folder
-    try: if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    try: 
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
     except FileNotFoundError: print("DATA variable set incorrectly")
 
     # check for existence of LOG folder within today's dated folder

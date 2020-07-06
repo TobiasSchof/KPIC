@@ -14,7 +14,7 @@ import numpy as np
 from posix_ipc import Semaphore, O_CREX, ExistentialError
 
 # nfiuserver libraries
-from KPIC_shmlib import KPIC_shmlib
+from KPIC_shmlib import Shm
 from Conex import Conex_Device
 from NPS_cmds import NPS_cmds
 
@@ -328,26 +328,26 @@ if os.path.isfile(Stat_D[0]):
     Stat_D = Shm(Stat_D[0])
     status = format(Stat_D.get_data()[0], "08b")[-1]
 
-    if status == 1
+    if status == 1:
         info("Active control script exists. Raising exception.")
         raise AlreadAlive("State status shared memory script bit is 1.")
 else:
     info("No state shared memory file. Creating file.")
-    Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = type_[Stat_D[1]]),
+    Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = types_[Stat_D[1]]),
         mmap = (Stat_D[2] == "1"))
 
 Pos_D = config.get("Shm Info", "Pos_D").split(",")
 if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No state shared memory file. Creating file.")
-    Pos_D = Shm(Pos_D[0], data = np.array([-5000], dtype = type_[Stat_D[1]]),
+    Pos_D = Shm(Pos_D[0], data = np.array([-5000], dtype = types_[Pos_D[1]]),
         mmap = (Pos_D[2] == "1"))
 
 Error = config.get("Shm Info", "Error").split(",")
 if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else:
     info("No state shared memory file. Creating file.")
-    Error = Shm(Error[0], data = np.array([-5000], dtype = type_[Stat_D[1]]),
+    Error = Shm(Error[0], data = np.array([0], dtype = types_[Error[1]]),
         mmap = (Error[2] == "1"))
 
 info("No duplicate control script, continuing with intialization.")
@@ -372,12 +372,12 @@ ShmP = Semaphore(None, flags = O_CREX)
 Sem_Listeners = []
 
 Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
+Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = types_[Stat_P[1]]),
     sem = True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([1], dtype = type_[Pos_P[1]]),
+Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = types_[Pos_P[1]]),
     sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
