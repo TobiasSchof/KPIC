@@ -2,6 +2,7 @@
 # inherent python libraries
 from time import sleep
 from configparser import ConfigParser
+from subprocess import Popen
 import os
 
 # nfiuserver libraries
@@ -126,12 +127,14 @@ class Coronagraph_cmds:
             # if we want to update, device has to be on
             self._checkOnAndAlive()
 
-            # store the counter on Pos_D so we can tell when it was updated
-            cnt = self.Pos_D.mtdata["cnt0"]
+            # update Position counter
+            p_cnt = self.Pos_D.get_counter()
+            # wait for no longer than 10 seconds
+            cnt = 0
             # touch Stat_P so that D shms get updated
             self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
-            while cnt == self.Pos_D.get_counter(): sleep(1)
+            while cnt < 10 and p_cnt == self.Pos_D.get_counter(): sleep(1); cnt+=1
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
@@ -231,16 +234,16 @@ class Coronagraph_cmds:
             except KeyError: msg = target; raise MissingPreset(msg)
 
         # take Pos_P so that we don't need to remake the numpy array
-        pos = Pos_P.get_data()
+        pos = self.Pos_P.get_data()
         pos[0] = target[0]
         pos[1] = target[1]
-        Pos_P.set_data(pos)
+        self.Pos_P.set_data(pos)
 
         # if we don't block, return
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt == Pos_D.get_counter(): sleep(.5)
+        while cnt == self.Pos_D.get_counter(): sleep(.5)
 
         # raise an error if there is an error
         err = self.Error.get_data()[0]

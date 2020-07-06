@@ -54,7 +54,7 @@ def move(target:float) -> int:
     """
 
     # if we're not connected to the device, return error
-    if not dev.connected: return 4
+    if not dev.IsConnected(): return 4
 
     err = 0
 
@@ -68,6 +68,9 @@ def move(target:float) -> int:
 
     try: dev.MOV({"1":target})
     except GCSError: err = 1
+
+    # if we're not on target, wait
+    while abs(dev.qPOS() - target) > .01: sleep(.01)
 
     return err
 
@@ -139,9 +142,9 @@ def device_off() -> int:
     err = 0
 
     try:
-        if dev.connected:
+        if dev.IsConnected():
             dev.SVO({"1":False})
-            dev.close()
+            dev.CloseConnection()
     except GCSError: err = 1
 
     # TODO: add NPS support
@@ -170,7 +173,7 @@ def device_on() -> int:
     # TODO: add NPS support, check for if device is already on
 
     # connect both controllers
-    if not dev.connected:
+    if not dev.IsConnected():
         try: dev.ConnectTCPIP(ip)
         except gcsrror: err = 1
 
@@ -219,11 +222,12 @@ def main():
         # then make any changed requested in Pos_P
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data())
-        # update position if device is on and no move was requested
-        elif (format(Stat_D.get_data()[0], "08b")[-1] == "1"):
-            try: curpos = dev.qPOS()["1"]
-            except GCSError: pass
-            Pos_D.set_data(np.array([curpos], Pos_D.npdtype))
+        # update position of device
+        try: curpos = dev.qPOS()["1"]
+        except GCSError:
+            errp = 1
+            curpos = Stat_D.get_data()
+        Pos_D.set_data(np.array([curpos], Pos_D.npdtype))
 
         # prioritize errors that arose when setting status
         if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
@@ -343,7 +347,7 @@ if os.path.isfile(Stat_D[0]):
     bits = format(Stat_D.get_data()[0], "08b")
     if bits[-1] == "1":
         info("Active control script exists. Raising exception.")
-        msg = "State shared memory status {}.".format(status)
+        msg = "State shared memory status {}.".format(int(bits, 2))
         raise AlreadyAlive(msg)
     else:
         bits = bits[:-1] + "1"
