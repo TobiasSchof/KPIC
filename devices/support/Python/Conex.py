@@ -49,12 +49,15 @@ class Conex_Device:
         """
 
         # if port is already open, return
-        if not self.con is None:
+        if not self.con_type is None:
             debug("(SN:{}) is already open".format(self.SN))
             return
 
         debug("Connecting to serial: {}:{}...".format(devnm, baud))
-        self.con.open(devnm, baud)
+        self.con = serial.Serial()
+        self.con.port = devnm
+        self.con.baudrate = baud
+        self.con.open()
         self.con_type = "serial"
 
         self.reqInfo()
@@ -85,10 +88,11 @@ class Conex_Device:
             port = the port to connect to
         '''
         #Open port if not already open
-        if not self.con is None:
+        if not self.con_type is None:
             debug('(SN:%s) is already open' %self.SN)
         else:
             debug('Connecting to telnet: {}:{}...'.format(host, port))
+            self.con = telnetlib.Telnet()
             self.con.open(host, port)
             self.con_type = "telnet"
             
@@ -194,7 +198,7 @@ class Conex_Device:
             return self.con.read_until(bytes('\r\n', 'utf-8'), tmt).strip().decode('utf-8')
         elif self.con_type is "serial":
             self.con.timeout = tmt
-            return self.con.read_Line()
+            return self.con.readline().strip().decode("utf-8")
 
     
     #:::::::::::::::::::::::STATE CHANGE FUNCTIONS:::::::::::::::::::::::::::::
