@@ -21,7 +21,7 @@ once per 5 seconds
 """
 
 # this script should not be used as an import
-if __name__ != "__main__"
+if __name__ != "__main__":
     print("Coronagraph_draw is not meant to be used as an import")
     sys.exit()
 
@@ -197,12 +197,13 @@ def update(updates:list):
 
     gmt = gmtime()
     year = "{}".format(gmt.tm_year)[-2:]
-    dat = "{}{:02d}{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
+    date = "{}{:02d}{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
     # get the path to today's folder
-    cur_path = "{}/{}".format(DATA, date.replace("/", "")[2:])
+    cur_path = "{}/{}".format(DATA, date)
     # check whether the date of the last state shared memory update has a folder
-    try: if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    try: 
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
     except FileNotFoundError: print("DATA variable set incorrectly")
 
     # check for existence of LOG folder within today's dated folder

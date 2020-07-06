@@ -1,6 +1,8 @@
 
 # inherent python libraries
 from time import sleep
+from configparser import ConfigParser
+import os
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
@@ -45,9 +47,10 @@ class PIAA_cmds:
         self.Stat_D = config.get("Shm Info", "Stat_D").split(",")[0]
         self.Pos_D = config.get("Shm Info", "Pos_D").split(",")[0] 
         self.Stat_P = config.get("Shm Info", "Stat_P").split(",")[0] 
-        self.Pos_p = config.get("Shm Info", "Pos_P").split(",")[0] 
+        self.Pos_P = config.get("Shm Info", "Pos_P").split(",")[0] 
         self.Error = config.get("Shm Info", "Error").split(",")[0]
 
+        self.presets = {}
         # load preset positions.
         self.load_presets()
 
@@ -126,7 +129,7 @@ class PIAA_cmds:
             # store the counter on Pos_D so we can tell when it was updated
             cnt = self.Pos_D.mtdata["cnt0"]
             # touch Stat_P so that D shms get updated
-            self.Stat_P.set_data(Stat_D.get_data())
+            self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
             while cnt == self.Pos_D.get_counter(): sleep(1)
         # otherwise we just need to check if the control script is alive
