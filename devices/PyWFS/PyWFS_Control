@@ -123,8 +123,9 @@ def connect_device():
             Stat_d.npdtype))
         # update Stat_D
         stat = "00000001"
-        stat[-2] = "0" if dev.con_type is None else "1"
-        stat[-3] = "1" if dev.isReady() else "0"
+        stat = stat[:-2] + ("0" if dev.con_type is None else "1")
+        if stat[:-2] == "1":
+            stat = stat[:-3] + ("1" if dev.isReady() else "0")
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
         Pos_P.set_data(Pos_D.get_data())
@@ -138,7 +139,7 @@ def device_off():
 
     # change device bit to 0
     stat = format(Stat_D.get_data()[0], "08b")
-    stat[-2] = "0"
+    stat = stat[:-2] + "0" + stat[-1]
     Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
 
 def device_on():
@@ -149,7 +150,7 @@ def device_on():
 
     # Change device bit to 1
     stat = format(Stat_D.get_data()[0], "08b")
-    stat[-2] = "1"
+    stat = stat[:-2] + "1" + stat[-1]
     Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
 
 def listener():
@@ -202,8 +203,9 @@ def listener():
             Stat_d.npdtype))
         # update current state
         stat = "00000001"
-        stat[-2] = "0" if dev.con_type is None else "1"
-        stat[-3] = "1" if dev.isReady() else "0"
+        stat = stat[:-2] + ("0" if dev.con_type is None else "1")
+        if stat[:-2] == "1":
+            stat = stat[:-3] + ("1" if dev.isReady() else "0")
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
         # wait for shared memory to be updated
@@ -238,7 +240,7 @@ def close():
     # Update state shared memory file
     try:
         stat = format(Stat_D.get_data()[0], "08b")
-        stat[-1] = "0" 
+        stat = stat[:-1] + "0"
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
