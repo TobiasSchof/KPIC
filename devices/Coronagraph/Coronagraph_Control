@@ -26,7 +26,7 @@ AND NOT FOR USE BY USER
 See Coronagraph_cmds or type Coronagraph in terminal to control the stage
 """
 
-ips = {"x":"131.215.193.181", "y":"131.215.193.184"}
+ips = {"x":"131.215.193.041", "y":"131.215.193.063"}
 
 # This script is not an import
 if __name__ != "__main__":
