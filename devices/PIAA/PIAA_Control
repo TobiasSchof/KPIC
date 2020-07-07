@@ -26,7 +26,7 @@ AND NOT FOR USE BY USER
 See PIAA_cmds or type PIAA in terminal to control the stage
 """
 
-ip = "131.215.193.074"
+ip = "131.215.193.74"
 
 # This script is not an import
 if __name__ != "__main__":
@@ -70,7 +70,8 @@ def move(target:float) -> int:
     except GCSError: err = 1
 
     # if we're not on target, wait
-    while abs(dev.qPOS() - target) > .01: sleep(.01)
+    if err == 0:
+        while abs(dev.qPOS()["1"] - target) > .01: sleep(.01)
 
     return err
 
@@ -220,7 +221,7 @@ def main():
 
         # then make any changed requested in Pos_P
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
-            errp = move(Pos_P.get_data())
+            errp = move(Pos_P.get_data()[0])
         # update position of device
         try: curpos = dev.qPOS()["1"]
         except GCSError:

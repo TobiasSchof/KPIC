@@ -67,7 +67,7 @@ class PyWFS_cmds:
         # check if first Stat_D bit is 1
         try: return (format(self.Stat_D.get_data()[0], "08b")[-1] == "1")
         # if Stat_D is a still a string, it means there is not shm file
-        except TypeError: return False
+        except AttributeError: return False
 
     def is_On(self) -> bool:
         """Returns true if device is on

@@ -69,7 +69,7 @@ class PIAA_cmds:
         # check if first Stat_D bit is 1
         try: return (format(self.Stat_D.get_data()[0], "08b")[-1] == "1")
         # if Stat_D is a still a string, it means there is not shm file
-        except TypeError: return False
+        except AttributeError: return False
 
     def is_On(self) -> bool:
         """Returns true if device is on
@@ -226,7 +226,10 @@ class PIAA_cmds:
         if not self.is_Homed(): raise LoopOpen("Please home device.")
 
         # get current counter for Pos_D so we know when it updates
-        cnt = self.Pos_D.mtdata["cnt0"]
+        p_cnt = self.Pos_D.get_counter()
+        # wait no more than 10 seconds
+        cnt = 0
+
 
         # if a preset was given, translate it to a position
         if type(target) is str:
@@ -242,8 +245,10 @@ class PIAA_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt == self.Pos_D.get_counter(): sleep(.5)
+        while cnt < 20 and p_cnt == self.Pos_D.get_counter(): sleep(.5); cnt += 1
 
+        if p_cnt == self.Pos_D.get_counter():
+            raise MovementTimeout("Movement is taking too long. Check for blocks.")
         # raise an error if there is an error
         err = self.Error.get_data()[0]
         if err < 0: 
