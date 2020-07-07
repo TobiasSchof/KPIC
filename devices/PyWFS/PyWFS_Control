@@ -120,10 +120,10 @@ def connect_device():
         # update Pos_D
         curpos = dev.reqPosAct()
         if type(curpos) is dict: Pos_D.set_data(np.array([curpos[1]],
-            Stat_d.npdtype))
+            Pos_D.npdtype))
         # update Stat_D
-        stat = "00000001"
-        stat = stat[:-2] + ("0" if dev.con_type is None else "1")
+        stat = format(Stat_D.get_data()[0], "08b")
+        stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[:-1]
         if stat[:-2] == "1":
             stat = stat[:-3] + ("1" if dev.isReady() else "0")
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
@@ -200,10 +200,10 @@ def listener():
         # update current position
         curpos = dev.reqPosAct()
         if type(curpos) is dict: Pos_D.set_data(np.array([curpos[1]],
-            Stat_d.npdtype))
+            Stat_D.npdtype))
         # update current state
-        stat = "00000001"
-        stat = stat[:-2] + ("0" if dev.con_type is None else "1")
+        stat = format(Stat_D.get_data()[0], "08b")
+        stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[-1]
         if stat[:-2] == "1":
             stat = stat[:-3] + ("1" if dev.isReady() else "0")
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
@@ -326,11 +326,14 @@ types_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
 Stat_D = config.get("Shm Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]):
     Stat_D = Shm(Stat_D[0])
-    status = format(Stat_D.get_data()[0], "08b")[-1]
+    status = format(Stat_D.get_data()[0], "08b")
 
-    if status == 1:
+    if status[-1] == "1":
         info("Active control script exists. Raising exception.")
         raise AlreadAlive("State status shared memory script bit is 1.")
+    else:
+        status = status[:-1] + "1"
+        Stat_D.set_data(np.array([int(status, 2)], Stat_D.npdtype))
 else:
     info("No state shared memory file. Creating file.")
     Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = types_[Stat_D[1]]),
@@ -410,9 +413,6 @@ baud = config.get("Communication", "baud")
 
 # define this stage's axes
 axes = [1]
-
-stat = "00000001"
-Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
 
 # TODO: once NPS support is added, if the device is already on, connect to it
 

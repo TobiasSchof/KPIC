@@ -359,12 +359,14 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
+        rd = []
         #get positioner error and controller state
-        self.write('1TS{}'.format(self.axes[axis]))
-        rd = self.read()
+        for axis in axes:
+            self.write('1TS{}'.format(self.axes[axis]))
+            rd.append(self.read())
 
         # state is in last two characters
-        return (rd[-2:] in ["32", "33", "34", "35", "36"])
+        return all([item[-2:] in ["32", "33", "34", "35", "36"] for item in rd])
             
     def isDisable(self) -> bool:
         '''Checks that the device is in a 'Disable' state
@@ -380,12 +382,14 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
+        rd = []
         #get positioner error and controller state
-        self.write('1TS{}'.format(self.axes[axis]))
-        rd = self.read()
+        for axis in axes:
+            self.write('1TS{}'.format(self.axes[axis]))
+            rd.append(self.read())
 
         # state is in last two characters
-        return (rd[-2:] in ["3C", "3D"])
+        return all([item[-2:] in ["3C", "3D"] for item in rd])
             
     def isReferenced(self) -> bool:
         '''Checks that the device is in a 'Referenced' state
@@ -401,12 +405,14 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
+        rd = []
         #get positioner error and controller state
-        self.write('1TS{}'.format(self.axes[axis]))
-        rd = self.read()
+        for axis in axes:
+            self.write('1TS{}'.format(self.axes[axis]))
+            rd.append(self.read())
 
         # state is in last two characters
-        return (rd[-2:] in ["0A", "0B", "0C", "0D", "0E", "0F", "10"])
+        return all([item[-2:] in ["0A", "0B", "0C", "0D", "0E", "0F", "10"] for item in rd])
             
     def isConfiguration(self) -> bool:
         '''Checks that the device is in 'Configuration' state
@@ -422,12 +428,14 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
+        rd = []
         #get positioner error and controller state
-        self.write('1TS')
-        rd = self.read()
+        for axis in axes:
+            self.write('1TS{}'.format(self.axes[axis]))
+            rd.append(self.read())
 
         # state is in last two characters
-        return (rd[-2:] == "14") 
+        return all([item[-2:] == "14" for item in rd]) 
     
     def isHoming(self) -> bool:
         '''Checks that the device is in 'Homing' state
@@ -443,12 +451,14 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
+        rd = []
         #get positioner error and controller state
-        self.write('1TS')
-        rd = self.read()
+        for axis in axes:
+            self.write('1TS{}'.format(self.axes[axis]))
+            rd.append(self.read())
 
         # state is in last two characters
-        return (rd[-2:] == "1E") 
+        return all([item[-2:] == "1E" for item in rd]) 
             
     def isMoving(self, homing=True, ol=True) -> bool:
         '''Checks that the device is in 'Moving' state
@@ -467,18 +477,18 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
+        rd = []
         #get positioner error and controller state
-        self.write('1TS')
-        rd = self.read()
+        for axis in axes:
+            self.write('1TS{}'.format(self.axes[axis]))
+            rd.append(self.read())
 
-        # state is in last two characters
-        stat = rd[-2:]
         # Closed loop movement
-        ret = stat == "28"
+        ret = all([stat[-2:] == "28" for stat in rd]) 
         # Open loop step and jog (respectively)
-        if ol: ret = (ret or stat =="29" or stat == "46")
+        if ol: ret = (ret or all([stat[-2:] in ["29", "46"] for stat in rd]))
         # Homing
-        if homing: ret = (ret or stat == "1E")
+        if homing: ret = (ret or all([stat[-2:] == "1E" for stat in rd]))
         
         return ret
             
