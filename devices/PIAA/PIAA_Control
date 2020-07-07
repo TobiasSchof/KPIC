@@ -96,7 +96,8 @@ def do_state() -> int:
         # if we can't move, update P shms
         if not CAN_MOVE:
             Stat_P.set_data(Stat_D.get_data())
-            Pos_P.set_data(np.array([dev.qPOS()["1"]], Pos_P.npdtype))
+            try: Pos_P.set_data(np.array([dev.qPOS()["1"]], Pos_P.npdtype))
+            except GCSError: err = 1
             return err
         starting = True
         cur = format(Stat_D.get_data()[0], "08b")
@@ -105,9 +106,7 @@ def do_state() -> int:
     # close the loop and home if requested
     if req[-3] == "1" and (cur[-3] == "0" or starting):
         try:
-            if dev.qSVO()["1"]: dev.SVO({"1":True})
-        except GCSError: err = 1
-        try:
+            if not dev.qSVO()["1"]: dev.SVO({"1":True})
             if not dev.qFRF()["1"]: dev.FNL()
         except GCSError: err = 1
     # open the loop if requested
@@ -117,7 +116,7 @@ def do_state() -> int:
         except GCSError: err = 1
 
     try:
-        readybit = "1" if (dev.qSVO()["1"] and dev.qFRF["1"]) else "0"
+        readybit = "1" if (dev.qSVO()["1"] and dev.qFRF()["1"]) else "0"
     except GCSError:
         err = 1
         readybit = "0"
@@ -175,7 +174,7 @@ def device_on() -> int:
     # connect both controllers
     if not dev.IsConnected():
         try: dev.ConnectTCPIP(ip)
-        except gcsrror: err = 1
+        except GCSError: err = 1
 
         # define limits as the larger of the min values between config file and software limits, vice 
         #   versa for maxes

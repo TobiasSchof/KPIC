@@ -128,7 +128,7 @@ class PIAA_cmds:
             self._checkOnAndAlive()
 
             # update position counter
-            p_cnt = Pos_D.get_counter()
+            p_cnt = self.Pos_D.get_counter()
             # wait for no longer than 10 seconds
             cnt = 0
             # touch Stat_P so that D shms get updated

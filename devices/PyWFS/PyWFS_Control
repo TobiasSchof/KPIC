@@ -64,7 +64,7 @@ def move(target:float) -> int:
     """
 
     # Check whether target is valid before moving
-    if req < limits["min_1"] or req > limits["max_1"]:
+    if target < limits["min_1"] or target > limits["max_1"]:
         info("Movement requested outside of motion range")
         return 1
 
@@ -123,9 +123,9 @@ def connect_device():
             Pos_D.npdtype))
         # update Stat_D
         stat = format(Stat_D.get_data()[0], "08b")
-        stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[:-1]
+        stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[-1]
         if stat[:-2] == "1":
-            stat = stat[:-3] + ("1" if dev.isReady() else "0")
+            stat = stat[:-3] + ("1" if dev.isReady() else "0") + stat[-2:]
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
         Pos_P.set_data(Pos_D.get_data())
@@ -134,8 +134,8 @@ def connect_device():
 def device_off():
     """A method to be implemented that closes connection and turns off the device"""
 
-    # close connection to device
-    dev.close()
+    # close connection to device if it's open
+    if not dev.con_type is None: dev.close()
 
     # change device bit to 0
     stat = format(Stat_D.get_data()[0], "08b")
@@ -144,6 +144,9 @@ def device_off():
 
 def device_on():
     """A method to be implemented that turns on the device and connects to it"""
+
+    # if device is already connected, do nothing
+    if not dev.con_type is None: return
 
     # connect to device
     connect_device()
@@ -195,17 +198,17 @@ def listener():
         # check position change
         if Pos_P.get_counter() != pos_cnt:
             info("position updated")
-            error = move(Pos_P.get_data())
+            error = move(Pos_P.get_data()[0])
 
         # update current position
         curpos = dev.reqPosAct()
         if type(curpos) is dict: Pos_D.set_data(np.array([curpos[1]],
-            Stat_D.npdtype))
+            Pos_D.npdtype))
         # update current state
         stat = format(Stat_D.get_data()[0], "08b")
         stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[-1]
-        if stat[:-2] == "1":
-            stat = stat[:-3] + ("1" if dev.isReady() else "0")
+        if stat[-2] == "1":
+            stat = stat[:-3] + ("1" if dev.isReady() else "0") + stat[-2:]
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
         # wait for shared memory to be updated
@@ -286,7 +289,7 @@ config = ConfigParser()
 config.read(RELDIR+"/data/PyWFS.ini")
 
 log_path = config.get("Communication", "debug_log")
-debug_format = "%(filename)s.%(funcName)s@%(asctime)s = %(levelname)s: %(messages)s"
+debug_format = "%(filename)s.%(funcName)s@%(asctime)s = %(levelname)s: %(message)s"
 
 parser = ArgumentParser()
 # boolean flag for CAN_MOVE

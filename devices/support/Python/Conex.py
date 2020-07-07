@@ -361,7 +361,7 @@ class Conex_Device:
         
         rd = []
         #get positioner error and controller state
-        for axis in axes:
+        for axis in self.axes:
             self.write('1TS{}'.format(self.axes[axis]))
             rd.append(self.read())
 
@@ -384,7 +384,7 @@ class Conex_Device:
         
         rd = []
         #get positioner error and controller state
-        for axis in axes:
+        for axis in self.axes:
             self.write('1TS{}'.format(self.axes[axis]))
             rd.append(self.read())
 
@@ -407,7 +407,7 @@ class Conex_Device:
         
         rd = []
         #get positioner error and controller state
-        for axis in axes:
+        for axis in self.axes:
             self.write('1TS{}'.format(self.axes[axis]))
             rd.append(self.read())
 
@@ -430,7 +430,7 @@ class Conex_Device:
         
         rd = []
         #get positioner error and controller state
-        for axis in axes:
+        for axis in self.axes:
             self.write('1TS{}'.format(self.axes[axis]))
             rd.append(self.read())
 
@@ -453,7 +453,7 @@ class Conex_Device:
         
         rd = []
         #get positioner error and controller state
-        for axis in axes:
+        for axis in self.axes:
             self.write('1TS{}'.format(self.axes[axis]))
             rd.append(self.read())
 
@@ -479,7 +479,7 @@ class Conex_Device:
         
         rd = []
         #get positioner error and controller state
-        for axis in axes:
+        for axis in self.axes:
             self.write('1TS{}'.format(self.axes[axis]))
             rd.append(self.read())
 

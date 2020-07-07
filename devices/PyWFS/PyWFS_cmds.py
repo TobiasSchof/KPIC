@@ -130,7 +130,7 @@ class PyWFS_cmds:
             # we want to wait no longer than 10 seconds
             cnt = 0
             # touch Stat_P so that D shms get updated
-            self.Stat_P.set_data(Stat_D.get_data())
+            self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
             while cnt < 10 and p_cnt == self.Pos_D.get_counter(): sleep(1); cnt += 1
         # otherwise we just need to check if the control script is alive
@@ -224,7 +224,8 @@ class PyWFS_cmds:
         if not self.is_Homed(): raise LoopOpen("Please home device.")
 
         # get current counter for Pos_D so we know when it updates
-        cnt = self.Pos_D.mtdata["cnt0"]
+        p_cnt = self.Pos_D.get_counter()
+        # keep a counter to wait no more than 15 seconds
 
         # if a preset was given, translate it to a position
         if type(target) is str:
@@ -232,15 +233,15 @@ class PyWFS_cmds:
             except KeyError: msg = target; raise MissingPreset(msg)
 
         # take Pos_P so that we don't need to remake the numpy array
-        pos = Pos_P.get_data()
+        pos = self.Pos_P.get_data()
         pos[0] = target
-        Pos_P.set_data(pos)
+        self.Pos_P.set_data(pos)
 
         # if we don't block, return
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt == Pos_D.get_counter(): sleep(.5)
+        while cnt == self.Pos_D.get_counter(): sleep(.5)
 
         # raise an error if there is an error
         err = self.Error.get_data()[0]
