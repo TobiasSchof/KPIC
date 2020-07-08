@@ -1,4 +1,3 @@
-
 #!/usr/bin/env kpython3
 
 # inherent python libraries
@@ -16,7 +15,7 @@ from posix_ipc import Semaphore, O_CREX, ExistentialError
 from KPIC_shmlib import Shm
 
 """
-A script to continuously maintian a distplay of shm values in the Coronograph tmux 
+A script to continuously maintian a distplay of shm values in the TCP tmux 
 session and log any changes to the state shared memory. Does not run faster than 
 once per 5 seconds
 """
@@ -32,7 +31,7 @@ alive = True
 # the path to the directory where data is stored
 DATA = os.environ.get("DATA")
 try:
-    if DATA[-1] =="/": DATA=DATA[:-1]
+    if DATA[-1] == "/": DATA=DATA[:-1]
 except TypeError:
     DATA = "/nfiudata"
     print("No DATA environment variable, using '/nfiudata/'")

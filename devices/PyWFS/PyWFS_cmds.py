@@ -1,6 +1,7 @@
 # inherent python libraries
 from time import sleep
 from configparser import ConfigParser
+from subprocess import Popen
 import os
 
 # nfiuserver libraries
@@ -127,12 +128,10 @@ class PyWFS_cmds:
 
             # update position counter
             p_cnt = self.Pos_D.get_counter()
-            # we want to wait no longer than 10 seconds
-            cnt = 0
             # touch Stat_P so that D shms get updated
             self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
-            while cnt < 10 and p_cnt == self.Pos_D.get_counter(): sleep(1); cnt += 1
+            while p_cnt == self.Pos_D.get_counter(): sleep(1)
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
@@ -225,7 +224,8 @@ class PyWFS_cmds:
 
         # get current counter for Pos_D so we know when it updates
         p_cnt = self.Pos_D.get_counter()
-        # keep a counter to wait no more than 15 seconds
+        # keep a counter to wait no more than 2 minutes
+        cnt = 0
 
         # if a preset was given, translate it to a position
         if type(target) is str:
@@ -241,7 +241,10 @@ class PyWFS_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt == self.Pos_D.get_counter(): sleep(.5)
+        while cnt < 60 and p_cnt == self.Pos_D.get_counter(): sleep(2); cnt += 1
+
+        if cnt == 60:
+            raise MovementTimeout("Move took longer than 2 minutes, check for blocks")
 
         # raise an error if there is an error
         err = self.Error.get_data()[0]
@@ -266,7 +269,7 @@ class PyWFS_cmds:
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
         #the tmux command should be split up by spaces
-        Popen(command[0].split(" ")+[command[-1]])
+        for cmd in command: Popen(cmd.split(" "))
 
     def load_presets(self):
         """Loads the preset positions from the config file

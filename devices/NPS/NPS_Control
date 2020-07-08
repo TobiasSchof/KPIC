@@ -1,4 +1,255 @@
 #!/usr/bin/env kpython3
 
+# inherent python libraries
 from time import sleep
+from configparser import ConfigParser
+from atexit import register, unregister
+from signal import SIGHUP, SIGTERM, signal
+from subprocess import Popen
+import telnetlib, os, sys
 
+# installed libraries
+import numpy as np
+from posix_ipc import Semaphore, O_CREX
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+
+
+# This script is not an import
+if __name__ != "__main__":
+    print("NPS_Control is not meant to be used as an import.")
+    sys.exit()
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice."""
+    pass
+
+class NPS:
+    """A context manager to open and close connection to NPS"""
+
+    def __init__(self):
+        """Gets required information for connection"""
+
+        pass
+
+    def __enter__(self):
+        """Opens connection"""
+
+        # Start telnet connection
+        try: self.telnet = telnetlib.Telnet(address, port)
+        except: raise ConnectionError("Controller connection failed.")
+
+        # Wait 0.5 second
+        sleep(0.5)
+
+        # Establish comms
+        self.telnet.write(("@@@@\r\n").encode('ascii'))
+        res = self.telnet.expect([bytes("IPC ONLINE!", 'utf-8')], TIMEOUT)
+
+        if(res[0] == -1):
+            #Timed out
+            self.telnet.close()
+            raise ConnectionError("Connection timeout on startup.")
+        # Wait 0.5 second
+        sleep(0.5)
+
+        return self.telnet
+
+    def __exit__(self, type, value, tb):
+        """Closes connection"""
+        
+        try:
+            # send logout command
+            self.telnet.write(("LO\r\n").encode('ascii'))
+            res = self.telnet.expect([bytes("LOGGED-OUT!", 'utf-8')], TIMEOUT)
+
+            #timed out
+            if(res[0] == -1):
+                raise ConnectionError("Connection timeout on logout.")
+        finally:
+            self.telnet.close()
+
+def main():
+    """The main loop that waits for a shm to be updated and acts"""
+
+    # make sure all shms' counters are up to date so we don't do anythin on startup
+    for shm in shms:
+        shm.get_counter()
+
+    while alive:
+
+        # open a telnet connection
+        with NPS() as telnet:
+            for shm in shms:
+                # check if this shm has been updated
+                if shm.mtdata["cnt0"] != shm.get_counter():
+                    stat = format(shm.get_data()[0], "08b")
+                    # if third bit is 1, we only want to update
+                    if stat[-3] == "0" and stat[-2] == "1":
+                        # turn on ports associated with this shm
+                        for port in shms[shm]:
+                            telnet.write("N0{}\r\n".format(port).encode("ascii"))
+                            res = telnet.expect([bytes["DONE", "utf-8")], TIMEOUT])
+                    elif stat[-3] == "0" and stat[-2] == "0":
+                        # turn off ports associated with this shm
+                        for port in shms[shm]:
+                            telnet.write("F0{}\r\n".format(port).encode("ascii"))
+                            res = telnet.expect([bytes["DONE", "utf-8")], TIMEOUT])
+
+            # update all shms
+            update(telnet)
+
+        # wait for a shm to be updated
+        act.acquire()
+
+def update(telnet):
+    """Updates all shared memories with current status
+    
+    Args:
+        telnet = a telnet connection
+    """
+
+    # Query all outlets (device does not have an easy way to query single)
+    telnet.write(("DX0\r\n").encode("ascii"))
+
+    devstat = []
+    for port in range(1, 9):
+        tmp_1 = "OUTLET {} ON".format(port)
+        tmp_2 = "OUTLET {} OFF".format(port)
+        fmt = "utf-8"
+        res = relnet.expect([bytes(tmp_1, fmt), bytes(tmp_2, fmt)], TIMEOUT)
+
+        # port is on
+        if res[0] == 0: devstat.append(True)
+        # port is off (-1 is timeout)
+        elif res[0] != -1: devstat.append(False)
+
+    # update all shms
+    for shm in shms:
+        # check to see if all associated ports are on
+        on = "1" if all([devstat[port-1] for port in shms[shm]]) else "0"
+        tmp = shm.get_data()
+        bits = format(tmp[0], "08b")
+        # update shm (even if there's no change, updates time)
+        bits = bits[-3:] + "0" + its[-2] + on
+        tmp[0] = int(bits, 2)
+        shm.set_data(tmp)
+
+def close():
+    """A cleanup method"""
+
+    # kill draw process
+    try: draw_proc.terminate()
+    except: pass
+
+    # Kill semaphore listening processes
+    try:
+        for proc in Sem_Listeners:
+            try: proc.terminate()
+            except: pass
+    except: pass
+
+    # unlink (delete) the act shm
+    try:
+        act.unlink()
+        act.close()
+    except: pass
+
+    # delete shms and their locks
+    try:
+        for shm in shms:
+            try: shm.lock.unlink(); shm.lock.close()
+            except: pass
+            try: os.remove(shm.fname)
+            except: pass
+
+    # unregister this method now that it's completed to avoid running it twice
+    os.system(config.get("Environment", "end_command"))
+
+
+def signal_handler(signum, stack):
+    """A method to handle signals"""
+
+    global alive
+    alive = False
+    try: update.release()
+    except: pass
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[-1]
+
+# when alive is set to False, the script will end
+alive = True
+
+# read config file
+config = ConfigParser()
+config.read(RELDIR+"/data/NPS.ini")
+
+model = config.get("Device_Info", "model").strip()
+if model == "IPC34XX":
+    # These are not currently used but are left here to make it
+    # easier to implement IPC32 vs 34 control
+    StatusFnc   = 'IPC34XX_Status'
+    PowerOnFnc  = 'IPC34XX_On'
+    PowerOffFnc = 'IPC34XX_Off'
+elif model == "IPC32XX":
+    # This library is not meant to be used with this model
+    msg = "This library is currently not set up to handle IPC32XX" +\
+        " controllers."
+    raise Exception(msg)
+else:
+    msg = "Invalid pulizzi model: {}".format(model)
+    raise Exception(msg)
+
+# load communication info
+address = config.get("Communication", "address")
+port = config.get("Communication", "port")
+TIMEOUT = 3.0
+
+if not os.path.isdir("/tmp/NPS"): os.mkdir("/tmp/NPS")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# get the first shm path to see if it exists
+check = config.get("Shm Info", config.options("Shm Info")[0])
+check = check.split(",")[0]
+# if the shm file exists, it means that another NPS control script is alive
+if os.path.isfile(check): raise AlreadyAlive("NPS control script already alive.")
+else: check = None
+
+# create a semaphore to keep track of all shms
+act = Semaphore(None, flags = O_CREX)
+# create a dictionary to hold shms and their associated ports
+shms = {}
+Sem_Listeners = []
+for option in config.options("Shm Info"):
+    # connect to shm
+    shm = config.get("Shm Info", option).split(",")
+    shm = Shm(shm[0], data = np.array([0], dtype = type_[shm[1]]),
+        mmap = (shm[2] == "1"), sem = True)
+    shms[shm]=[]
+    # connect shm semaphore to update semaphore
+    Sem_Listeners.append(Popen(["linksem", shm.sem.name, act.sem.name]))
+
+for port in config.options("Ports"):
+    # find which shm this port is associated with
+    shm = config.get("Ports", port).split(",")[0]
+    # if there is a shm associated, add it to the shms list
+    if shm != "":
+        try: shms[shm].append(int(port))
+        except KeyError: pass
+
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+# use Popen to start drawer in non-blocking way
+draw_proc = Popen("NPS_draw")
+
+main()

@@ -27,7 +27,7 @@ See TCP_cmds or type TCP in terminal to control the stage
 """
 
 devnm = "/dev/ttyUSB0"
-baud = "115200"
+baud = "9600"
 
 # This script is not an import
 if __name__ != "__main__":
@@ -70,10 +70,6 @@ def move(target:float) -> int:
     try: dev.MOV({"1":target})
     except GCSError: err = 1
 
-    # if we're not on target, wait
-    if err == 0:
-        while abs(dev.qPOS()["1"] - target) > .01: sleep(.01)
-
     return err
 
 def do_state() -> int:
@@ -109,7 +105,7 @@ def do_state() -> int:
     if req[-3] == "1" and (cur[-3] == "0" or starting):
         try:
             if not dev.qSVO()["1"]: dev.SVO({"1":True})
-            if not dev.qFRF()["1"]: dev.FNL()
+            if not dev.qFRF()["1"]: dev.FRF()
         except GCSError: err = 1
     # open the loop if requested
     elif req[-3] == "0" and (cur[-3] == "1" or starting):
@@ -223,6 +219,11 @@ def main():
         # then make any changed requested in Pos_P
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data()[0])
+
+        # wait if device is moving (for no longer than 5 seconds)
+        cnt = 0
+        while cnt < 50 and dev.IsMoving(): sleep(.1); cnt += 1
+
         # update position of device
         try: curpos = dev.qPOS()["1"]
         except GCSError:
@@ -427,7 +428,7 @@ limits = {}
 
 info("Starting display drawer")
 # we use Popen to start drawer script in a non-blocking way
-draw_proc = Popen("TCP_draw")
+draw_proc = Popen(["TCP_draw"])
 
 info("Beginning loop.")
 main()

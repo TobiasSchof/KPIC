@@ -73,10 +73,6 @@ def move(target:list) -> int:
         try: axes[axis].MOV({"1":reqs[axis]})
         except GCSError: err = 1
 
-    # if we're not on target, wait
-    for axis in reqs:
-        while abs(axes[axis].qPOS()["1"] - reqs[axis]) > .01: sleep(.01)
-
     return err
 
 def do_state() -> int:
@@ -234,6 +230,10 @@ def main():
         # then make any changed requested in Pos_P
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data())
+
+        # sleep while moving (for no more than 5 seconds)
+        cnt = 0
+        while cnt < 50 and any([axes[axis].IsMoving() for axis in axes]): sleep(.1); cnt += 1
 
         # update position of device
         try: curpos = [axes["x"].qPOS()["1"], axes["y"].qPOS()["1"]]

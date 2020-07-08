@@ -348,4 +348,3 @@ class NPS_cmds(object):
             print('\033[91mERROR: Something wrong happened.\033[0m')
             # Does not return anything
             return
-

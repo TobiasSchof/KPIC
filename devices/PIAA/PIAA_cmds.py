@@ -271,7 +271,7 @@ class PIAA_cmds:
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
         #the tmux command should be split up by spaces
-        Popen(command[0].split(" ")+[command[-1]])
+        for cmd in command: Popen(cmd.split(" "))
 
     def load_presets(self):
         """Loads the preset positions from the config file
