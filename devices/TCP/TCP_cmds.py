@@ -1,3 +1,4 @@
+
 # inherent python libraries
 from time import sleep
 from configparser import ConfigParser
@@ -11,8 +12,8 @@ from dev_Exceptions import *
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
-class PIAA_cmds:
-    """Class for controlling the PIAA via shared memory
+class TCP_cmds:
+    """Class for controlling the TCP via shared memory
 
     method list:
     Queries:
@@ -37,11 +38,11 @@ class PIAA_cmds:
     """
 
     def __init__(self):
-        """Constructor for PIAA_cmds"""
+        """Constructor for TCP_cmds"""
 
         # the config file has all the info needed to connect to shared memory
         config = ConfigParser()
-        config.read(RELDIR+"/data/PIAA.ini")
+        config.read(RELDIR+"/data/TCP.ini")
 
         # get paths to shms
         self.Stat_D = config.get("Shm Info", "Stat_D").split(",")[0]
@@ -60,7 +61,7 @@ class PIAA_cmds:
         """Returns true if control script is active
 
         Returns:
-            bool = whether the PIAA control script is active
+            bool = whether the TCP control script is active
         """
 
         if type(self.Stat_D) is str: self._handleShms()
@@ -76,7 +77,7 @@ class PIAA_cmds:
         Checks Stat_D for on status, does not directly check the NPS
 
         Returns:
-            bool = whether the PIAA is on
+            bool = whether the TCP is on
         """
 
         self._checkAlive()
@@ -87,7 +88,7 @@ class PIAA_cmds:
         """Returns true if device is homed
 
         Returns:
-            bool = whether the PIAA is in a referenced state
+            bool = whether the TCP is in a referenced state
         """
 
         self._checkOnAndAlive()
@@ -111,13 +112,13 @@ class PIAA_cmds:
         else: return err
 
     def get_pos(self, update:bool=True, time:bool=False) -> float:
-        """Return the current position of the PIAA
+        """Return the current position of the TCP
 
         Args:
             update = whether an update to the position should be requested
             time   = whether the time the shm was last updated should be included
         Returns:
-            float = PIAA position
+            float = TCP position
             or
             (float, float) = (position, time) if time == True
         """
@@ -265,7 +266,7 @@ class PIAA_cmds:
             raise ScriptAlreadActive(msg)
 
         config = ConfigParser()
-        config.read(RELDIR+"/data/PIAA.ini")
+        config.read(RELDIR+"/data/TCP.ini")
 
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that
@@ -280,7 +281,7 @@ class PIAA_cmds:
         """
 
         config = ConfigParser()
-        config.read(RELDIR+"/data/PIAA.ini")
+        config.read(RELDIR+"/data/TCP.ini")
 
         for name in config.options("Presets"):
             self.presets[name] = config.getfloat("Presets", name)
