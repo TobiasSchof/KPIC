@@ -1,15 +1,15 @@
 # NIRSPEC fiber injection unit. Build Network Power Strip
 
-override SYSNAM = kss/nirspec/nsfiu/devices/NPS
+override SYSNAM = kss/nirspec/nsfiu/devices/NPS/port_ctrl
 override VERNUM = 1.0
 
 # If I knew that code would not work with Python 2 I would:
 ##override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-RELLIB = NPS_cmds.py
-RELDAT = NPS.ini
-RELBIN = NPS
+RELLIB = NPS_port_cmds.py
+RELDAT = NPS_port.ini
+RELBIN = NPS_port
 LIBSUB = python
 ##FILES = $(RELBIN)
 

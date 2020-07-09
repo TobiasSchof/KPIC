@@ -29,7 +29,7 @@ import telnetlib, os
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
-CONFILE = RELDIR+'/data/NPS.ini' 
+CONFILE = RELDIR+'/data/NPS_port.ini' 
 DATA = os.environ.get("DATA")
 try:
     if DATA[-1] == "/": DATA=DATA[:-1]

@@ -9,7 +9,7 @@ override VERNUM = 1.0
 
 RELLIB = NPS_cmds.py
 RELDAT = NPS.ini
-RELBIN = NPS
+RELBIN = NPS NPS_Control, NPS_draw
 LIBSUB = python
 ##FILES = $(RELBIN)
 

@@ -236,14 +236,10 @@ for option in config.options("Shm Info"):
     shms[shm]=[]
     # connect shm semaphore to update semaphore
     Sem_Listeners.append(Popen(["linksem", shm.sem.name, act.sem.name]))
-
-for port in config.options("Ports"):
-    # find which shm this port is associated with
-    shm = config.get("Ports", port).split(",")[0]
-    # if there is a shm associated, add it to the shms list
-    if shm != "":
-        try: shms[shm].append(int(port))
-        except KeyError: pass
+    # attach ports to shm
+    for port in config.options("Ports"):
+        if option == config.get("Ports", port).split(",")[0]: 
+            shms[shm].append(int(port))
 
 register(close)
 signal(SIGHUP, signal_handler)

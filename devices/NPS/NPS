@@ -1,0 +1,132 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from configparser import ConfigParser
+import sys, os
+
+# nfiuserver libraries
+from NPS_cmds import NPS_cmds
+
+# exit if this script is not being used as command line
+if __name__ != "__main__": 
+    print("NPS not meant to be used as an import")
+    sys.exit()
+
+def usage():
+    print ("""----------------------------------------------------------
+Usage: {0} <command> <arg>
+----------------------------------------------------------
+COMMAND:
+    status     displays status of all ports
+    on         turns on selected ports
+    off        turns off selected ports
+    devices    lists which ports devices are connected to
+    help       offers help with the {0} library
+ARG:
+    port # - accepts an integer between 1 and 8. 
+             Minimum # of channels that can be 
+             specified is 1, and maximum is 8. 
+    script - activates control script 
+EXAMPLES:
+    {0} status
+    {0} on script
+    {0} on 2 3
+    {0} off 2 3
+    {0} devices
+----------------------------------------------------------""".format("NPS"))
+    sys.exit()
+
+args = sys.argv[1:]
+
+# flags that are understood
+help_cmds    = ["help", "h", "-h", "--help"]
+on_cmds      = ["on"]
+off_cmds     = ["off"]
+devices_cmds = ["devices", "devs"]
+status_cmds  = ["status", "stat"]
+cmds = help_cmds + on_cmds + off_cmds + devices_cmds + status_cmds + push_cmds
+
+# store flags in a more readable way
+on = []
+off = []
+script_on = False
+status = False
+devices = False
+idx = 0
+# parse flags
+while idx < len(args):
+    f = args[idx].strip().lower()
+    # display help
+    if f in help_cmds:
+        usage()
+        sys.exit()
+    # get which ports to turn on
+    elif f in on_cmds:
+        while idx+1 < len(args) and args[idx+1] not in cmds:
+            if f.isdigit():
+                f = int(f)
+                if f in range(1, 9): on.append(f) 
+                else: 
+                    print("ignoring 'on' command for port {}. Valid ports are 1-8.".format(f))
+            elif f == "script": script_on = True
+            else: print("{} not understood".format(f))
+            idx += 1
+    # get which ports to turn off
+    elif f in off_cmds:
+        while idx+1 < len(args) and args[idx+1] not in cmds:
+            if f.isdigit():
+                f = int(f)
+                if f in range(1, 9): off.append(f) 
+                else: 
+                    print("ignoring 'on' command for port {}. Valid ports are 1-8.".format(f))
+            else: print("{} not understood".format(f))
+            idx += 1
+    # interpret device and status flags
+    elif f in devices_cmds: devices = True
+    elif f in status_cmds: status = True
+
+    idx += 1
+
+# print device information
+if devices:
+    # open config file
+    config = ConfigParser()
+    RELDIR = os.environ.get("RELDIR")
+    if RELDIR == "": 
+        print("No $RELDIR variable, can't find config file.")
+        sys.exit()
+    # strip trailing '/' if it exists
+    if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+    config.read(RELDIR+"/data/NPS.ini")
+
+    msg = "NPS port assignment:\n\n"
+
+    for port in config.options("Ports"):
+        p_msg = "Port: {port} | Description: {descr:<20} | Associated shm: {shm}\n"
+        extras = config.get("Ports", port).split(",")
+        p_msg.format(port = port, descr = extras[1], shm = extras[0])
+        msg += p_msg
+
+    print(msg)
+    sys.exit()
+
+# create NPS_cmds object
+nps = NPS_cmds()
+
+script_on: nps.activate_Control_Script()
+
+if not nps.is_Active():
+    print("NPS CONTROL SCRIPT NOT ACTIVE. PLEASE USE 'NPS on script'.")
+    sys.exit()
+
+if "status" in args:
+    print(nps.getPrintableStatusAll())
+    sys.exit()
+
+# turn on/off requested ports
+if len(on) > 0: 
+    resp = input("Power control should be through device shm, not NPS. Continue? (y/n)")
+    if resp == "y": nps.turnOn(on)
+if len(off) > 0:
+    resp = input("Power control should be through device shm, not NPS. Continue? (y/n)")
+    if resp == "y": nps.turnOff(off)
