@@ -2,6 +2,7 @@
 
 # inherent python libraries
 from configparser import ConfigParser
+from time import sleep
 import sys, os
 
 # nfiuserver libraries
@@ -44,7 +45,7 @@ on_cmds      = ["on"]
 off_cmds     = ["off"]
 devices_cmds = ["devices", "devs"]
 status_cmds  = ["status", "stat"]
-cmds = help_cmds + on_cmds + off_cmds + devices_cmds + status_cmds + push_cmds
+cmds = help_cmds + on_cmds + off_cmds + devices_cmds + status_cmds
 
 # store flags in a more readable way
 on = []
@@ -63,6 +64,7 @@ while idx < len(args):
     # get which ports to turn on
     elif f in on_cmds:
         while idx+1 < len(args) and args[idx+1] not in cmds:
+            f = args[idx+1].strip().lower()
             if f.isdigit():
                 f = int(f)
                 if f in range(1, 9): on.append(f) 
@@ -74,6 +76,7 @@ while idx < len(args):
     # get which ports to turn off
     elif f in off_cmds:
         while idx+1 < len(args) and args[idx+1] not in cmds:
+            f = args[idx+1].strip().lower()
             if f.isdigit():
                 f = int(f)
                 if f in range(1, 9): off.append(f) 
@@ -83,44 +86,46 @@ while idx < len(args):
             idx += 1
     # interpret device and status flags
     elif f in devices_cmds: devices = True
-    elif f in status_cmds: status = True
+    elif f in status_cmds:  status = True
 
     idx += 1
 
+# create NPS_cmds object
+nps = NPS_cmds()
+
 # print device information
 if devices:
-    # open config file
-    config = ConfigParser()
-    RELDIR = os.environ.get("RELDIR")
-    if RELDIR == "": 
-        print("No $RELDIR variable, can't find config file.")
-        sys.exit()
-    # strip trailing '/' if it exists
-    if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
-    config.read(RELDIR+"/data/NPS.ini")
-
     msg = "NPS port assignment:\n\n"
 
-    for port in config.options("Ports"):
-        p_msg = "Port: {port} | Description: {descr:<20} | Associated shm: {shm}\n"
-        extras = config.get("Ports", port).split(",")
-        p_msg.format(port = port, descr = extras[1], shm = extras[0])
+    for port in nps.ports:
+        p_msg = "Port: {port} | Device Name: {name:<20} | Description: {descr}\n"
+        p_msg.format(port = port, name = nps.ports[port][0], descr = nps.ports[port][1])
         msg += p_msg
 
     print(msg)
     sys.exit()
 
-# create NPS_cmds object
-nps = NPS_cmds()
+# turn on control script
+if script_on:
+    nps.activate_Control_Script()
+    cnt = 0
+    # sleep while we wait for device to turn on
+    while not nps.is_Active(): 
+        print("\rTurning on NPS control script{:<4}".format("."*cnt), end = "")
+        cnt += 1
+        sleep(.5)
+    print("\r{:<34}".format("Control script turned on."))
 
-script_on: nps.activate_Control_Script()
-
+# raise issue if script isn't on
 if not nps.is_Active():
     print("NPS CONTROL SCRIPT NOT ACTIVE. PLEASE USE 'NPS on script'.")
     sys.exit()
 
-if "status" in args:
-    print(nps.getPrintableStatusAll())
+# print status
+if status:
+    print("Getting NPS status...", end = "")
+    stat = "\r" + nps.getPrintableStatusAll()
+    print(stat)
     sys.exit()
 
 # turn on/off requested ports

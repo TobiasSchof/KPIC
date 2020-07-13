@@ -21,15 +21,10 @@ def activate_Control_Script():
     command = config.get("Environment", "start_command").split("|")
     for cmd in command: Popen(cmd.split(" "))
 
-class PortNotTracked(Exception):
-    """An exception to be thrown when a port that is not tracked is turned on/off"""
-    
-    pass:
-
 class NPS_cmds:
     """Class for controlling the pulizzi NPS through shared memory"""
 
-    def __init__(self):
+    def __init__(self, follow = None):
         """Constructor for NPS_cmds class"""
 
         RELDIR = os.environ.get("RELDIR")
@@ -39,45 +34,84 @@ class NPS_cmds:
         self.config = ConfigParser()
         self.config.read(RELDIR + "/data/NPS.ini")
 
-        self.ports = {}
+        # populate with information on which device is on which port
+        self.devices = {config.get("Ports", opt).split(",")[0]:int(opt) for opt in config.options("Ports")}
+        # populate with information on which port has which device
+        self.ports = {int(opt):config.get("Ports", opt).split(",") for opt in config.options("Ports")}
+
+        # get file paths for shms
+        self.Shm_P = config.get("Shm Info", "Shm_P").split(",")[0]
+        self.Shm_D = config.get("Shm Info", "Shm_D").split(",")[0]
+
+        # a list that can be populated for getStatus(), on() and off()
+        self.follow = []
+
+        # populate follow list if something was provided
+        try:
+            if follow is not None:
+                # format follow as a list if it's only one element
+                if type(follow) is not list: follow = [follow]
+                for elem in follow:
+                    # if a port is given
+                    if type(elem) is int or (type(elem) is str and elem.isdigit()):
+                        elem = int(elem)
+                        assert elem in range(1, 9) 
+                        self.follow.append(elem)
+                    elif type(elem) is str:
+                        assert elem in self.devices.keys()
+                        self.follow.append(self.devices[elem])
+        # if follow is anything but an int from 1 to 8 or a key in self.devices, raise an error
+        except AssertionError:
+            msg = "Valid options to follow are ints or strings from 1 to 8 and " +\
+                  ("{}, "*len(self.devices.keys())).format(*self.devices.keys())
+            raise Exception(msg[:-2])
 
     def getStatusAll(self) -> dict:
-        """Gets updates for all shared memories
+        """Gets updates for all ports
         
         Returns:
             dict = keys as ports, values as booleans 
-                values: (True for on, False for off, None for no shm)
         """
 
         self._checkAlive()
 
-        for port in self.ports:
-            if self.ports[port] is None: continue
+        # get most recent Shm D counter
+        Shm_D.get_counter()
 
-            # Get the current status so we don't change the first two bits
-            stat = self.ports[port].get_data()
-            # convert to 8 bit format
-            bits = format(stat[0], "08b")
-            # change bit 3 to 1 to indicate that we want an update
-            bits = bits[:-3] + "1" + bits[-2:]
-            # convert bits to an int
-            stat[0] = int(bits, 2)
-            self.ports[port].set_data(stat)
-            # wait for an update
-            while self.ports[port].mtdata["cnt0"] != self.ports[port].get_counter():
-                sleep(.5)
-            # stop iterating through the ports (one update will update all)
-            break
+        # touch Shm_P to request update 
+        Shm_P.set_data(Shm_P.get_data())
 
-        ret = {}
-        for port in self.ports:
-            shm = self.ports[port]
-            # if there's no associated shm, populate None
-            if shm is None: ret[port] = None
-            # otherwise check if LSB is 1 
-            else: ret[port] = (format(shm.get_data()[0], "08b")[-1] == "1")
+        # wait for Shm D counter to increment
+        while Shm_D.mtdata["cnt0"] == Shm_D.get_counter(): sleep(.5)
 
-        return ret
+        # get updated status
+        stat = Shm_D.get_data()
+
+        # convert status to dictionary
+        return {idx+1:val == "1" for idx, val in enumerate(format(stat, "08b"))}
+
+    def getStatus(self, ports = None):
+        """Gets updates for the given ports
+
+        Args:
+            ports = a list of integer ports or a single integer port.
+                    (if ports is None, self.follow is used)
+        Returns:
+            dict = keys as ports, values as booleans if more than one port is given
+            bool = True for on, False for off, if only one port is given
+        """
+
+        # use self.follow if no ports are given
+        if ports is None: ports = self.follow
+        # convert ports to a list to iterate
+        if type(ports) is not list: ports = list(ports)
+
+        # get status of all ports (NPS doesn't support individual port query)
+        stat = self.getStatusAll()
+
+        # extract the desired ports
+        if len(ports) == 1: return stat[ports[0]]
+        else: return {port:stat[port] for port in ports}
 
     def getPrintableStatusAll(self) -> str:
         """Returns a human-readable string with port status
@@ -91,40 +125,45 @@ class NPS_cmds:
         stats = getStatusAll()
 
         ret = "NPS status:\n\n"
-        for port in config.options("Ports"):
+        for port in self.ports:
             # message template
-            msg = "{descr:<20} -- Port {port}: {stat}\n"
+            msg = "{name:<20} -- Port {port}: {stat}\n"
             # get a description of the port from the config file
-            descr = config.get("Ports", port).split(",")[1]
+            name = self.ports[port][0]
             # get the status
-            stat = stats[int(port)]
-            if stat is None: stat = "No associated shared memory"
-            elif stat: stat = "On"
+            stat = stats[port]
+            if stat: stat = "On"
             else: stat = "Off"
 
             # format message
-            msg.format(descr = descr, port = port, stat = stat)
+            msg.format(name = name, port = port, stat = stat)
 
             # add msg to the return string
             ret += msg
 
         return ret
 
-    def turnOn(self, outlets):
+    def turnOn(self, outlets = None):
         """Turns on the outlets provided, given that there is a shm associated
 
         Args:
             outlets = an int or list of ints to represent the outlet (1 - 8)
+                      (if outlets isn't provided, self.follow is used)
         """
+
+        if outlets is None: outlets = self.follow
 
         self._changeStats(outlets, "1")
 
-    def turnOff(self, outlets):
+    def turnOff(self, outlets = None):
         """Turns off the outlets provided, given that there is a shm associated
 
         Args:
             outlets = an int or list of ints to represent the outlet (1 - 8)
+                      (if outlets isn't provided, self.follow is used)
         """
+
+        if outlets is None: outlets = self.follow
 
         self._changeStats(outlets, "0")
 
@@ -138,42 +177,27 @@ class NPS_cmds:
 
         self._checkAlive()
 
+        # do nothing if no outlets are provided
+        if len(outlets) == 0: return
+
         # if a single int was given, put it in a list
         if type(outlets) is int: outlets = [outlets]
         # if bit was given as an int, make it a str
         if type(bit) is int: bit = str(bit)
 
-        # store which shms have already been turned on
-        flipped = []
-
-        # iterate through outlets to turn on port
-        for port in outlets:
-            # if there's no shm associated, raise an error
-            if self.ports[port] is None:
-                msg = "No shm associated with port {}. Updated NPS.ini".format(port)
-                raise PortNotTracked(msg)
-            
-            # next check if we've already turned on this shm
-            if self.ports[port] in flipped: continue
-
-            # turn on the shm
-            stat = self.ports[port].get_data()
-            # format status as bits
-            bits = format(stat[0], "08b")
-            # change second bit to 1
-            bits = bits[:-2] + bit + bits[-1]
-            # convert bits back to an int
-            stat[0] = int(bits, 2)
-            # store new status
-            self.ports[port.set_data(stat)]
-
-            # record that we've turn on this shm
-            flipped.append(self.ports[port])
+        stat = Shm_P.get_data()
+        stat_bits = format(stat, "08b")
+        # set new status to bit if in outlets, otherwise to the value currently in Shm P
+        new = ("{}"*8).format(*[bit if idx in outlets else stat_bits[idx] for idx in range(0,9)])
+        stat[0] = int(new, 2)
+        Shm_P.set_data(stat)
 
     def is_Active(self) -> bool:
         """Returns True if an NPS control script is active"""
 
-        return os.path.isfile(self.config.get("Shm Info", self.config.options("Shm Info")[0]).split(",")[0])
+        p_fname = Shm_P if type(Shm_P) is str else Shm_P.fname
+
+        return os.path.isfile(p_fname)
 
     def activate_Control_Script(self=None):
         """A method to activate the control script."""
@@ -184,16 +208,13 @@ class NPS_cmds:
         """Loads shared memories"""
 
         # reset shms and do nothing if control script is not active
-        if not self.is_Active(): self.ports = {}; return
-
-        shms = {}
-        for shm in config.option("Shm Info"):
-            shms[shm] = Shm(config.get("Shm Info", shm).split(",")[0])
-
-        for port in config.options("Ports"):
-            shm = config.get("Ports", port).split(",")[0]
-            if shm == "": self.ports[int(port)] = None
-            else: self.ports[int(port)] = shms[shm]
+        if not self.is_Active(): 
+            # get file paths for shms
+            self.Shm_P = self.Shm_P.fname
+            self.Shm_D = self.Shm_D.fname 
+        else:
+            self.Shm_P = Shm(self.Shm_P)
+            self.Shm_D = Shm(self.Shm_D)
 
     def _checkAlive(self)
         """Checks whether an active control script for the NPS is alive.
@@ -205,4 +226,4 @@ class NPS_cmds:
         if not self.is_Active():
             raise ScriptOff("No active control script. Please use activate_Control_Script().")
 
-        if len(self.ports) == 0: self._handleShms
+        if type(self.Shm_P) is str: self._handleShms()

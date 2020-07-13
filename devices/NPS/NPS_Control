@@ -1,7 +1,7 @@
 #!/usr/bin/env kpython3
 
 # inherent python libraries
-from time import sleep
+from time import sleep, gmtime
 from configparser import ConfigParser
 from atexit import register, unregister
 from signal import SIGHUP, SIGTERM, signal
@@ -73,35 +73,51 @@ class NPS:
 def main():
     """The main loop that waits for a shm to be updated and acts"""
 
-    # make sure all shms' counters are up to date so we don't do anythin on startup
-    for shm in shms:
-        shm.get_counter()
+    old = Shm_P.get_data()[0]
 
     while alive:
 
-        # open a telnet connection
-        with NPS() as telnet:
-            for shm in shms:
-                # check if this shm has been updated
-                if shm.mtdata["cnt0"] != shm.get_counter():
-                    stat = format(shm.get_data()[0], "08b")
-                    # if third bit is 1, we only want to update
-                    if stat[-3] == "0" and stat[-2] == "1":
-                        # turn on ports associated with this shm
-                        for port in shms[shm]:
-                            telnet.write("N0{}\r\n".format(port).encode("ascii"))
-                            res = telnet.expect([bytes["DONE", "utf-8")], TIMEOUT])
-                    elif stat[-3] == "0" and stat[-2] == "0":
-                        # turn off ports associated with this shm
-                        for port in shms[shm]:
-                            telnet.write("F0{}\r\n".format(port).encode("ascii"))
-                            res = telnet.expect([bytes["DONE", "utf-8")], TIMEOUT])
+        # get latest P_shm
+        new = Shm_P.get_data(check = True)[0]
 
-            # update all shms
+        # have an exit if we're supposed to end the script
+        if not alive: break
+
+        # get which ports have changed
+        on = new & ~old
+        off = old & ~new
+
+        # convert on and off to lists of ports
+        on = [idx+1 for idx, val in enumerate(format(on, "08b")) if val == "1"]
+        off = [idx+1 for idx, val in enumerate(format(off, "08b")) if val == "1"]
+
+        # make a list to store successful on/off
+        done = []
+
+        # open telnet connection
+        with NPS() as telnet:
+            # turn on ports
+            for port in on:
+                telnet.write("N0{}\r\n".format(port).encode("ascii"))
+                res = telnet.expect([bytes["DONE", "utf-8")], TIMEOUT])
+                # if we timeout, store that
+                if res[0] == -1: dont.append([port, "TIMEOUT", time()])
+                # if we didn't timeout, we stored result
+                else: done.append([port, "ON", time()])
+            # turn off ports
+            for port in off:
+                telnet.write("F0{}\r\n".format(port).encode("ascii"))
+                res = telnet.expect([bytes["DONE", "utf-8")], TIMEOUT])
+                # if we timeout, store that
+                if res[0] == -1: dont.append([port, "TIMEOUT", gmtime()])
+                # if we didn't timeout, we stored result
+                else: done.append([port, "OFF", time()])
+
+            # update D Shm
             update(telnet)
 
-        # wait for a shm to be updated
-        act.acquire()
+        # log result
+        log(done)
 
 def update(telnet):
     """Updates all shared memories with current status
@@ -125,59 +141,82 @@ def update(telnet):
         # port is off (-1 is timeout)
         elif res[0] != -1: devstat.append(False)
 
-    # update all shms
-    for shm in shms:
-        # check to see if all associated ports are on
-        on = "1" if all([devstat[port-1] for port in shms[shm]]) else "0"
-        tmp = shm.get_data()
-        bits = format(tmp[0], "08b")
-        # update shm (even if there's no change, updates time)
-        bits = bits[-3:] + "0" + its[-2] + on
-        tmp[0] = int(bits, 2)
-        shm.set_data(tmp)
+    # update Shm_D
+    stat = ("{:d}"*8).format(*devstat)
+    Shm_D.set_data(np.array([int(stat, 2)], dtype = Shm_D.npdtype))
+
+def log(actions:list):
+    """Updates the log associated with the NPS
+
+    Args:
+        actions = a list with 3 elements. [port, message, time]
+    """
+
+    gmt = gmtime()
+    year = "{}".format(gmt.tm_year)[-2:]
+    date = "{}{:02d}{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
+
+    # get the path to today's folder
+    cur_path = "{}/{}".format(DATA, date)
+    # check whether the date of the last state shared memory update has a folder
+    try: 
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    except FileNotFoundError: print("DATA variable set incorrectly")
+
+    # check for existence of LOG folder within today's dated folder
+    cur_path += "/LOG"
+    if not os.path.isdir(cur_path): os.mkdir(cur_path)
+
+    # format log message
+    msg = "{date:<11}{time:<10}GMT -- Port {port}: {val}\n"
+    for item in actions:
+        # log a change if there's a new value
+        port = item[0]
+        val = item[1]
+        gmt = item[2]
+        date = "{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+
+        with open("{}/{}".format(cur_path, LOG_FILE), "a") as log:
+            log.write(msg.format(date = date, time = log_t, port = port, val = val))
 
 def close():
     """A cleanup method"""
 
-    # kill draw process
-    try: draw_proc.terminate()
-    except: pass
-
-    # Kill semaphore listening processes
+    # delete P Shm and its lock
     try:
-        for proc in Sem_Listeners:
-            try: proc.terminate()
-            except: pass
+        try: Shm_P.lock.unlink(); Shm_P.lock.close()
+        except: pass
+        try: os.remove(Shm_P.fname)
+        except: pass
     except: pass
-
-    # unlink (delete) the act shm
-    try:
-        act.unlink()
-        act.close()
-    except: pass
-
-    # delete shms and their locks
-    try:
-        for shm in shms:
-            try: shm.lock.unlink(); shm.lock.close()
-            except: pass
-            try: os.remove(shm.fname)
-            except: pass
 
     # unregister this method now that it's completed to avoid running it twice
+    unregister(close)
     os.system(config.get("Environment", "end_command"))
-
 
 def signal_handler(signum, stack):
     """A method to handle signals"""
 
     global alive
     alive = False
-    try: update.release()
+    try: Shm_P.sem.release()
     except: pass
 
+# The root directory for where config files are stored
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[-1]
+
+# The path to the directory where data is stored (for logging)
+DATA = os.environ.get("DATA")
+try:
+    if DATA[-1] == "/": DATA=DATA[:-1]
+except TypeError:
+    DATA = "/nfiudata"
+    print("No DATA environment variable, using '/nfiudata/'")
+
+# the name of the log file (appended to DATA/YYYMMDD/LOGS)
+LOG_FILE = "NPS.log"
 
 # when alive is set to False, the script will end
 alive = True
@@ -217,35 +256,26 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
     "complex128":np.complex128}
 
 # get the first shm path to see if it exists
-check = config.get("Shm Info", config.options("Shm Info")[0])
+check = config.get("Shm Info", "P_Shm")
 check = check.split(",")[0]
 # if the shm file exists, it means that another NPS control script is alive
 if os.path.isfile(check): raise AlreadyAlive("NPS control script already alive.")
 else: check = None
 
-# create a semaphore to keep track of all shms
-act = Semaphore(None, flags = O_CREX)
-# create a dictionary to hold shms and their associated ports
-shms = {}
-Sem_Listeners = []
-for option in config.options("Shm Info"):
-    # connect to shm
-    shm = config.get("Shm Info", option).split(",")
-    shm = Shm(shm[0], data = np.array([0], dtype = type_[shm[1]]),
-        mmap = (shm[2] == "1"), sem = True)
-    shms[shm]=[]
-    # connect shm semaphore to update semaphore
-    Sem_Listeners.append(Popen(["linksem", shm.sem.name, act.sem.name]))
-    # attach ports to shm
-    for port in config.options("Ports"):
-        if option == config.get("Ports", port).split(",")[0]: 
-            shms[shm].append(int(port))
+# connect to Shm D
+Shm_D = config.get("Shm Info", "D_Shm").split(",")
+Shm_D = Shm(Shm_D[0], np.array([0], type_[Shm_D[1]]), mmap = Shm_D[2] == "1")
 
+# get current status of ports
+with NPS() as telnet: update(telnet)
+
+# make Shm P reflect Shm D
+Shm_P = config.get("Shm Info", "P_Shm").split(",")
+Shm_P = Shm(Shm_P[0], Shm_D.get_data(), mmap = Shm_P[2] == "1", sem = True)
+
+# register close after creating Shm P so that we can delete the lock
 register(close)
 signal(SIGHUP, signal_handler)
 signal(SIGTERM, signal_handler)
-
-# use Popen to start drawer in non-blocking way
-draw_proc = Popen("NPS_draw")
 
 main()
