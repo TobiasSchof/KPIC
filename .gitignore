@@ -10,3 +10,5 @@ tmp/*
 *.swo
 
 *.swn
+
+.vscode/*
