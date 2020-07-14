@@ -7,8 +7,10 @@
 #include <fstream>
 #include <stdlib.h>
 #include <cstring>
+#include <vector>
 
 #include "FliSdk.h"
+#include "Observer.hpp"
 #include "KPIC_shmlib.hpp"
 
 // Shared memories and the sdk which threads will need
@@ -22,10 +24,36 @@ Shm *NDR_P;
 Shm *FPS_P;
 Shm *Temp_P;
 Shm *Exp_P;
+Shm *NPSD;
+Shm *NPSP;
 
-// the rate at which the temperatures in the state shared memory should be
-//   updated (seconds).
-double temp_refresh=5;
+// mutex to control fli sdk
+std::mutex mtx;
+
+// fliobserver class
+FliObserver *obs;
+
+// variables to store whether this script should die and whether
+//   the camera is connected
+bool alive = true;
+bool camOn = false;
+
+// semaphore to wake up main thread when a signal is received
+sem_t wait;
+
+// variable to store which NPS port the Tracking Camera is on
+uint8_t TC_PORT; 
+
+// path to config files
+std::string CONFIG = getenv("RELDIR");
+if (CONFIG == NULL) {
+    perror("No $RELDIR environment variable found.");
+    exit(EXIT_FAILURE);
+} elif (CONFIG[CONFIG.length() - 1] == "/"){
+    CONFIG.erase(CONFIG.length() - 1, 1)
+}
+
+CONFIG += "/data"
 
 /*
  * Function that connects to shared memories. 
@@ -34,14 +62,9 @@ double temp_refresh=5;
  *   int = 1 if pointers already initialized, 0 otherwise.
  */
 int Shm_connect(){
-    if (Stat_D == NULL){ return 1; }
-    // find path to config filez
-    std::string path = getenv("CONFIG");
-    if (path == NULL) {
-        perror("No CONFIG environment variable found.");
-        exit(EXIT_FAILURE);
-    }
-    path += "Track_Cam.ini";
+    if (Stat_D != NULL){ return 1; }
+
+    path = CONFIG + "/Track_Cam.ini";
 
     // make a file object and open config file
     std::ifstream conf
@@ -80,60 +103,15 @@ int Shm_connect(){
 
     // paths to shms are up to comma, so find index of ,
     size_t idx;
-
-    idx = dstat_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { dstat_cf.erase(idx, std::string::npos); }
-
-    idx = err_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { err_cf.erase(idx, std::string::npos); }
-
-    idx = dtemp_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { dtemp_cf.erase(idx, std::string::npos); }
-
-    idx = pstat_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { pstat_cf.erase(idx, std::string::npos); }
-
-    idx = crop_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { crop_cf.erase(idx, std::string::npos); }
-
-    idx = pndr_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { pndr_cf.erase(idx, std::string::npos); }
-
-    idx = pfps_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { pfps_cf.erase(idx, std::string::npos); }
-
-    idx = ptemp_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { ptemp_cf.erase(idx, std::string::npos); }
-
-    idx = pexp_cf.find(",");
-    if (idx == std::string::npos) {
-        perror ("Config file unreadable.");
-        exit(EXIT_FAILURE);
-    } else { pexp_cf.erase(idx, std::string::npos); }
+    dstat_cf.erase(dstat_cf.find(","), std::string::npos);
+    err_cf.erase(err_cd.find(","), std::string::npos);
+    dtemp_cf.erase(dtemp_cf.find(","), std::string::npos);
+    pstat_cf.erase(pstat_cf.find(","), std::string::npos);
+    crop_cf.erase(crop_cf.find(","), std::string::npos);
+    pndr_cf.erase(pndr_cf.find(","), std::string::npos);
+    pfps_cf.erase(pfps_cf.find(","), std::string::npos);
+    ptemp_cf.erase(ptemp_cf.find(","), std::string::npos);
+    pexp_cf.erase(pexp_cf.find(","), std::string::npos);
 
     // query whether camera is on, this will tell us whether to pull values for
     //   shm or just populate with whatever
@@ -149,22 +127,22 @@ int Shm_connect(){
         bool fan;
         bool led;
         if (cam) {
-            std::string fan;
-            fli->credTwo()->getFanMode(fan);
-            fan = (fan == "Automatic");
+            std::string fan_m;
+            fli->credTwo()->getFanMode(fan_m);
+            fan = (fan_m == "Automatic");
             fli->getLedStat(led);
         } else { fan = false; led = false; }
 
         data[0] = (uint8_t)script + (uint8_t)cam << 1 + (uint8_t)fan << 2 +
                (uint8_t)led << 3;
-        Stat_D = new Shm(dstat_cf, &size, 3, 1, &data);
+        Stat_D = new Shm(dstat_cf, &size, 3, 1, &data, false);
     } 
 
     try { Error = new Shm(err_cf); }
     catch (NoShm) {
         uint8_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
-        Error = new Shm(err_cf, &size, 3, 1, &data); 
+        Error = new Shm(err_cf, &size, 3, 1, &data, false); 
     }
 
     try { Temp_D = new Shm(dtemp_cf) }
@@ -173,66 +151,638 @@ int Shm_connect(){
         uint16_t size[3] = {6, 0, 0};
         if (cam) { fli->getAllTemp(&data, &data + 1, &data + 2, &data + 3, 
                                    &data + 4, &data + 5) }
-        Temp_D = new Shm(dtemp_cf, &size, 3, 10, &data);
+        Temp_D = new Shm(dtemp_cf, &size, 3, 10, &data, false);
     }
 
     try { Stat_P = new Shm(pstat_cf); }
     catch (NoShm) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        Stat_P = new Shm(pstat_cf, &size, 3, 1, &data);
+        Stat_P = new Shm(pstat_cf, &size, 3, 1, &data, false);
     }
 
     try { Crop = new Shm(crop_cf); }
     catch (NoShm) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        Crop = new Shm(crop_cf, &size, 3, 3, &data);
+        Crop = new Shm(crop_cf, &size, 3, 3, &data, false);
     }
 
     try { NDR_P = new Shm(pndr_cf); }
     catch (NoShm) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        NDR_P = new Shm(pndr_cf, &size, 3, 1, &data);
+        NDR_P = new Shm(pndr_cf, &size, 3, 1, &data, false);
     }
 
     try { FPS_P = new Shm(pfps_cf); }
     catch (NoShm) {
         double data[1];
         uint16_t size[3] = {1, 0, 0};
-        FPS_P = new Shm(pfps_cf, &size, 3, 10, &data);
+        FPS_P = new Shm(pfps_cf, &size, 3, 10, &data, false);
     }
 
     try { Temp_P = new Shm(ptemp_cf); }
     catch (NoShm) {
-        double data[2] = {0, temp_refresh};
+        double data[2] = {0, 5};
         uint16_t size[3] = {2, 0, 0};
-        Temp_P = new Shm(ptemp_cf, &size, 3, 10, &data);
+        Temp_P = new Shm(ptemp_cf, &size, 3, 10, &data, false);
     }
 
     try { Exp_P = new Shm(pexp_cf); }
     catch (NoShm) {
         double data[1];
         uint16_t size[3] = {1, 0, 0};
-        Exp_P = new Shm(pexp_cf, &size, 3, 10, &data);
+        Exp_P = new Shm(pexp_cf, &size, 3, 10, &data, false);
     }
 
     return 0;
 }
 
+/*
+ * Function that connects to the NPS shms.
+ * 
+ * Returns:
+ *    int = 1 if pointers already initialized, 0 otherwise.
+ */
+int NPS_connect(){
+
+    // do nothing if shm already initialized
+    if (NPSD != NULL){ return 1; }
+
+    path = CONFIG + "/NPS.ini";
+
+    // make a file object and open config file
+    std::ifstream conf
+    
+    // iterate through the file (breaks are at spaces
+    std::string word;
+    std::string fnamed;
+    std::string fnamep;
+    std::string prev;
+    uint8_t port = 0;
+    while (conf >> word){
+        if (strncmp("D_Shm:", word.c_str(), 6) == 0){ conf >> fnamed; }
+        else if (strncmp("P_Shm:", word.c_str(), 6) == 0){ conf >> fnamep; }
+        else if (word.find("Tracking Camera") != std::string::npos){ 
+            port = atoi(prev.c_str()); }
+        prev = word
+    }
+    // close config file
+    conf.close();
+
+    // if port wasn't found, throw an error
+    if (port == 0){
+        perror("No 'Tracking Camera' port found in NPS.ini");
+        exit(EXIT_FAILURE)
+    } else { TC_PORT = port; }
+
+    // get file name
+    fnamed.erase(fnamed.find(","), std::string::npos);
+    fnamep.erase(fnamep.find(","), std::string::npos);
+    
+    // connect to shms
+    try { NPSD = new Shm(fnamed); }
+    catch(NoShm) {
+        perror("NPS control script must be alive");
+        exit(EXIT_FAILURE);
+    }
+    try { NPSP = new Shm(fnamep); }
+    catch(NoShm) {
+        perror("NPS control script must be alive");
+        exit(EXIT_FAILURE);
+    }
+
+    return 0;
+}
+
+/*
+ * A function to check the NPS shm for on status of camera
+ */
 bool q_cam_pow(){
+    
+    // get data in NPS shm
+    uint8_t stat;
+    NPSD->get_data(&stat);
+
+    // bit in NPS shm corresponds to port - 1 so use bit-wise and to see if it's on
+    return (stat & (1 << (TC_PORT - 1)) == 0);
 }
 
+/*
+ * A function to turn on the camera and connect it through the FliSdk
+ */
 void cam_on(){
+
+    // prepare camera bit
+    uint8_t cam = (1 << (TC_PORT - 1))
+
+    // get current NPS P Shm
+    uint8_t stat;
+    NPSP->get_data(&stat);
+
+    // set new status using bit-wise or
+    stat = stat | cam;
+    NPSP->set_data(&stat);
+
+    NPSD->get_data(&stat);
+    // wait for NPSD to reflect that camera is on
+    while(~(stat & cam)){ 
+        sleep(.5); 
+        NPSD.get_data(&stat)
+    }
+
+    // get fli lock
+    mtx.lock();
+
+    // find edt card and camera in FliSdk (assume they're the only ones connected)
+    std::vector<std::string> listOfGrabbers = fli->detectGrabbers();
+    std::vector<std::string> listOfCameras = fli->detectCameras();
+    if (listOfCameras.size() && listOfGrabbers.size()){
+        //take the first camera in the list
+        fli->setCamera(listOfCameras[0]);
+        fli->setGrabber(listOfGrabbers[0])
+        //set full mode
+        fli->setMode(FliSdk::Mode::Full);
+        //update
+        fli->update();
+    // if no grabber or no camera was found, throw an error
+    } else {
+        if (~listOfCameras.size()){
+            perror("No cameras found by the SDK.");
+            close(0)
+        } else {
+            perror("No grabbers found by the SDK.");
+            close(0)
+        }
+    }
+
+    // release fli lock
+    mtx.unlock()
+
+    // create a new FliObserver
+    obs = new FliObserver()
+
+    // get fli lock
+    mtx.lock()
+
+    // add observer to sdk
+    fli->addRawImageReceivedObserver(obs);
+    fli->addObserver(obs);
+
+    // update sdk
+    fli->update();
+    // start grabber
+    fli->start();
+
+    // release fli lock
+    mtx.unlock()
+
+    // the cred2 will return operational once camera is cooled.
+    {
+        std::string stat;
+
+        // get camera status
+        mtx.lock()
+        fli->getStatus(&stat);
+        mtx.unlock()
+
+        while(stat != "operational"){ 
+            // get fli status with lock
+            mtx.lock();
+            fli->getStatus(&stat);
+            mtx.unlock();
+            sleep(.5); }
+    }
+
+    camOn = true;
+
+    // set stat_d
+    {
+        bool fan;
+        bool led;
+        std::string fan_m;
+        mtx.lock();
+        fli->credTwo()->getFanMode(fan_m);
+        fan = (fan_m == "Automatic");
+        fli->getLedStat(led);
+        mtx.unlock();
+
+        uint8_t stat;
+        stat = led << 3 + fan << 2 + 1 << 1 + 1;
+        Stat_D->set_data(&stat)
+    }
 }
 
+/*
+ * A function to disconnect from the camera and shut it down
+ */
 void cam_off(){
+
+    mtx.lock()
+    // turn off the sdk
+    fli->shutdown();
+    mtx.unlock()
+
+    // delete the observer
+    delete obs;
+
+    // request nps to turn off power
+    // prepare camera bit
+    uint8_t cam = (1 << (TC_PORT - 1));
+
+    // get current NPS P Shm
+    uint8_t stat;
+    NPSP->get_data(&stat);
+
+    // set new status using subtraction and bit-wise
+    //  (we use bit-wise and to ensure we only subtract if the camera bit is 1)
+    stat = stat - (cam & stat);
+    NPSP->set_data(&stat);
+
+    // wait for camera to turn off
+    NPSD->get_data(&stat);    
+    while(stat & cam){
+        sleep(.5);
+        NPSD->get_data(&stat);
+    }
+
+    // update Stat_D
+    stat = 1;
+    Stat_D->set_data(&stat);
+
+    camOn = false;
+}
+
+/*
+ * Cleanup function to handle signals
+ */
+void close(int signum){
+    alive = false;
+    sem_post(&wait)
+}
+
+/*
+ * Function to handle Shm_P. To be used in a thread
+ */
+void handle_stat(){
+
+    // create variables to store new stat, old stat, and error
+    uint8_t stat;
+    uint8_t old;
+    uint8_t err;
+
+    // wait for shm to be updated so we can end loop with wait
+    Stat_P->get_data(&stat, true);
+    old = stat;
+
+    while (alive){
+
+        // if nothing has changed, do nothing
+        if (old == stat){
+            Stat_P->get_data(&stat, true);
+            continue;
+        }
+
+        // if script bit is turned to 0, end
+        if (stat & 1){ close(0); continue; }
+
+        // if camera bit is 1 and camera is not on, turn on
+        if ((stat & 1 << 1) && ~camOn){ cam_on(); }
+        // if camera bit is 0 and camera is not on, turn on
+        else if (~(stat & 1 << 1) && camOn){ cam_off(); continue; }
+
+        // if camera is on, check led and fan status
+        if (camOn){
+            // extract fan bit and led bit from stat
+            bool fan_req = stat & 1 << 2;
+            bool led_req = stat & 1 << 3;
+            // get current status of fan and led
+            bool fan_a;
+            bool led_a;
+            std::string fan_m;
+            mtx.lock();
+            fli->credTwo()->getFanMode(fan_m);
+            fan_a = (fan_m == "Automatic");
+            fli->getLedStat(led_a);
+            mtx.unlock();
+
+            // act if there's a difference between state and request
+            if (fan_req != fan_a){
+                // if fan bit is on, set fan to automatic
+                if (fan_req){
+                    mtx.lock();
+                    fli->credTwo()->setFanModeAutomatic();
+                    mtx.unlock();
+                // if fan bit is off, set fan to speed 0
+                } else {
+                    mtx.lock();
+                    fli->credTwo()->setFanModeManual();
+                    fli->credTwo()->setFanSpeed(0);
+                    mtx.unlock();
+                }
+            }
+            if (led_req != led_a){
+                mtx.lock();
+                fli->camera()->enableLed(led_req);
+                mtx.unlock();
+            }
+        // otherwise, set error
+        } else {
+            err = 1;
+            Error->set_data(&err);
+        }
+    }
+
+}
+
+/*
+ * Function to handle Crop. To be used in a thread
+ */
+void handle_crop(){
+
+    // create variables to store crop and error
+    double crop[4];
+    uint8_t err;
+
+    // wait for shm to be updated so we can end loop with wait
+    Crop->get_data(&crop, true);
+
+    while (alive){
+
+        // if camera is not on, set error and continue
+        if (~camOn){
+            err = 1
+            Error->set_data(&err);
+            Crop->get_data(&crop, true);
+            continue;
+        }
+
+        // check if subwindowing should be turned off
+        if (crop[0] == 0 && crop[1] == 0 && crop[2] == 0 && crop[3] == 0){
+                mtx.lock()
+                fli->credTwo()->setCropping(false, 0, 640, 0, 512);
+                mtx.unlock()
+
+                // clear any error that might be stored
+                err = 0;
+                Error.set_data(&err);
+        } else {
+            // check if subwindowing is valid
+            mtx.lock();
+            if (fli->credTwo()->isCroppingValid(crop[0], crop[1], 
+                    crop[2], crop[3]) == NULL){
+                // set cropping window
+                fli->credTwo()-setCropping(true, crop[0], crop[1],
+                    crop[2], crop[3]);
+
+                // clear any error that might be stored
+                err = 0;
+                Error.set_data(&err);
+            // otherwise, set an error
+            } else {
+                err = 2;
+                Error->set_data(&err);
+            }
+            mtx.unlock();
+        }
+
+        // wait for an update to shm
+        Crop->get_data(&crop, true);
+    }
+
+}
+
+/*
+ * Function to handle NDR_P. To be used in a thread
+ */
+void handle_ndr(){
+
+    // create variables to store ndr and err
+    uint8_t ndr;
+    uint8_t err;
+
+    // wait for shm to be updated so we can end loop with wait
+    NDR_P->get_data(&ndr, true);
+
+    while (alive){
+        // if camera is not on, set error and continue
+        if (~camOn){
+            err = 1
+            Error->set_data(&err);
+            NDR_P->get_data(&ndr, true);
+            continue;
+        }
+
+        mtx.lock();
+        fli->credTwo()->setNbReadWoReset(ndr);
+        mtx.unlock();
+
+        // if there was an error, clear it
+        err = 0;
+        Error->set_data(&err);
+
+        // wait for an update to shm
+        NDR_P->get_data(&ndr, true);
+    }
+
+}
+
+/*
+ * Function to handle FPS_P. To be used in a thread
+ */
+void handle_fps(){
+
+    // create variables to store fps and error
+    double fps;
+    uint8_t err;
+
+    // wait for shm to be updated so we can end loop with wait
+    FPS_P->get_data(&fps, true);
+
+    while (alive){
+        // if camera is not on, set error and continue
+        if (~camOn){
+            err = 1
+            Error->set_data(&err);
+            FPS_P->get_data(&fps, true);
+            continue;
+        }
+
+        // if fps is valid (positive), set it
+        if (fps > 0){
+            mtx.lock();
+            fli->camera()->setFps(fps);
+            mtx.unlock();
+
+            // if there was an error, clear it
+            err = 0;
+            Error->set_data(&err);
+        // otherwise, set error
+        } else {
+            err = 2;
+            Error->set_data(&err);
+        }
+
+        // wait for an update to shm
+        FPS_P->get_data(&fps, true);
+    }
+}
+
+/*
+ * Function to handle Temp_P and update Temp_D. To be used in a thread
+ */
+void handle_temp(){
+
+    // create a variable to store error
+    uint8_t err;
+    // keep old temp_p value to see if it's changed
+    double old[2];
+    // create a variable to hold new data
+    double p_data[2];
+    double d_data[6];
+    Temp_P.get_data(&p_data);
+
+    while (alive){
+        // update old
+        old = p_data;
+        // get newest P data
+        Temp_P->get_data(&p_data);
+
+        // check if temp needs to be set
+        if (p_data[0] != old[0]){
+            // if camera is not on, set error and continue
+            if (~camOn){
+                err = 1;
+                Error->set_data(&err);
+                Crop->get_data(&crop, true);
+                continue;
+            }
+
+            mtx.lock();
+            fli->credTwo()->setSensorTemp(p_data[0]);
+            mtx.unlock();
+            
+            // if there's an error, clear it
+            err = 0;
+            Error.set_data(&err);
+        }
+
+        // if camera is not on, skip updating temp_d
+        if (camOn){
+            // update temp_d
+            mtx.lock();
+            fli->credTwo()->getAllTemp(&d_data[0], &d_data[1], &d_data[2], 
+                                       &d_data[3], &d_data[4], &d_data[5]);
+            mtx.unlock();
+        }
+
+        // do a timed wait on temp_p semaphore.
+        sem_timedwait(Temp_P.sem, p_data[1]);
+    }
+}
+
+/*
+ * Function to handle Exp_P. To be used in a thread
+ * 
+ * If an exposure time greater than 1/fps is set, an error is set instead
+ */
+void handle_exp(){
+
+    // create variables to store exposure time and current fps
+    double exp;
+    double fps;
+    uint8_t err;
+
+    // wait for shm to be updated so we can end loop with wait
+    Exp_P->get_data(&exp, true);
+
+    while (alive){
+        // get fps from camera
+        mtx.lock();
+        fli->camera()->getFPS(&fps);
+        mtx.unlock();
+
+        // if exposure time is valid, set exposure
+        if (exp <= (1/fps)){
+            mtx.lock();
+            fli->credTwo()->setTint(exp);
+            mtx.unlock();
+
+            // if there was an error, clear it
+            err = 0;
+            Error->set_data(&err);
+        // otherwise, set error
+        } else {
+            err = 2;
+            Error->set_data(&err);
+        }
+
+        // wait for an update to shm
+        Exp_P->get_data(&exp, true);
+    }
 }
 
 int main(){
     fli = new FliSdk();
 
-    // Connect to Shared memories
+    // connect to NPS shm to see power
+    NPS_connect()
+
+    // Connect to Shared memories, and connect to camera if it's on
     Shm_connect();
+
+    // start threads with each of the P shms
+    std::thread th_stat(handle_stat);
+    std::thread th_crop(handle_crop);
+    std::thread th_ndr(handle_ndr);
+    std::thread th_fps(handle_fps);
+    std::thread th_temp(handle_temp);
+    std::thread th_exp(handle_exp);
+
+    // initialize semaphore to wake up main when signal is received
+    sem_init(&wait, 0, 0);
+
+    // setup cleanup methods
+    signal(SIGTERM, close);                                                     
+    signal(SIGINT, close);                                                      
+    signal(SIGABRT, close); 
+
+    // wait for cleanup method to post semaphore
+    sem_wait(&wait);
+    // cleanup semaphore
+    sem_destroy(&wait);
+
+    // post semaphores for all shms so that threads wake up
+    sem_post(Stat_P.sem);
+    sem_post(Crop.sem);
+    sem_post(NDR_P.sem);
+    sem_post(FPS_P.sem);
+    sem_post(Temp_P.sem);
+    sem_post(Exp_P.sem);
+
+    // join all the threads to make sure they've finished
+    if(th_stat.joinable()){ th_stat.join() }
+    if(th_crop.joinable()){ th_crop.join() }
+    if(th_ndr.joinable()){ th_ndr.join() }
+    if(th_fps.joinable()){ th_fps.join() }
+    if(th_temp.joinable()){ th_temp.join() }
+    if(th_exp.joinable()){ th_exp.join() }
+
+    // turn off camera
+    cam_off();
+
+    // delete classes so destructors are called
+    delete fli;
+    delete Stat_D;
+    delete Error;
+    delete Temp_D;
+    delete Stat_P;
+    delete Crop;
+    delete NDR_P;
+    delete FPS_P;
+    delete Temp_P;
+    delete Exp_P;
+    delete NPSD;
+    delete NPSP;
 }

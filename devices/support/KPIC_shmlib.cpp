@@ -17,7 +17,7 @@ namespace fs = std::experimental::filesystem;
 
 #include <iostream>
 
-#include "shmlib.hpp"
+#include "KPIC_shmlib.hpp"
 
 /*
  * Posts all alive semaphores. 

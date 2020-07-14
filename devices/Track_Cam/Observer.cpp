@@ -10,73 +10,13 @@
 #include <stdlib.h> // for getting environmental variables
 
 #include "FliSdk.h"
+#include "Observer.hpp"
 #include "KPIC_shmlib.hpp"
 
-class FliObserver : public IFliCameraObserver, 
-                    public IRawImageReceivedObserver(){
-
-  public:
-    // constructor
-    FliObserver();
-
-    // inherited from IRawImageReceivedObserver
-
-    // The method that is called when a new image is ready
-    //   even though the pointer is cast as uint8_t, the image is 16-bit
-    virtual void ImageReceived(uint8_t* image) override;
-    // Defines the speed that the above method is triggered at. A return 
-    //   of 0 means maximum speed
-    virtual double fpsTrigger() override;
-
-    // inherited from IFliCameraObserver
-    
-    // The method that's called on successful fps change
-    virtual void onFpsChanged(double _fps) override;
-    // The method that's called on successful exposure time change
-    virtual void onTintChanged(double tint) override;
-    // The mthod that's called on successful NDR change
-    virtual void onNbReadWoResetChanged(int nbRead) override;
-    // The method that's called on successful crop change
-    virtual void onCroppingChanged(bool enabled, uint16_t col1, uint16_t col2,
-                                   uint16_t row1, uint16_t row2) override;
-    // The method that's called when cropping window begins change
-    virtual void onBeginChangeCropping() override;
-    // The method that's called when cropping window finishes change
-    virtual void onEndChangeCropping() override;
-
-    // destructor
-    ~FliObserver();
-
-  private: 
-    // Shared memories
-
-    // To store the image
-    Shm *img;
-    // To store D_FPS
-    Shm *fps;
-    // to store D_Exp
-    Shm *exp;
-    // to store D_NDR
-    Shm *ndr;
-    // to store D_Crop
-    Shm *crop;
-
-    /*
-     * boolean flags to make sure that the shared memory and camera agree
-     *   on a subwindow before an image is copied to avoid seg faults
-     *
-     * NOTE: on script startup, shared memory and camera crop windows are 
-     *   assumed to be in an undefined state. Crop window will have to be
-     *   changed before images can start being recorded.
-     */ 
-    bool cam_res = false;
-    bool shm_res - false;
-} 
-
 /*
- * Set up shared memories in the constructor
+ * Constructor for Observer class
  */
-void FliObserver::ImageReceiver(){
+void FliObserver::FliObserver(){
     // prepare strings to store info from config file
     std::string img_cf;
     std::string fps_cf;
@@ -85,12 +25,14 @@ void FliObserver::ImageReceiver(){
     std::string crop_cf;
  
     // find path to config file
-    std::string path = getenv("CONFIG");
+    std::string path = getenv("RELDIR");
+    if (path[path.length() - 1] == "/") {path.erase(path.length() - 1, 1)}
+    path += "/data"
     if (path == NULL) { 
         perror("No CONFIG environment variable found.";
         exit(EXIT_FAILURE);
     }
-    path += "Track_Cam.ini";
+    path += "/Track_Cam.ini";
  
     // make a file object and open config file
     std::ifstream conf;
@@ -115,31 +57,31 @@ void FliObserver::ImageReceiver(){
     // the paths for shared memory are up to the comma
     size_t idx;
  
-    idx = img_fc.find(",");
+    idx = img_cf.find(",");
     if (idx == std::string::npos) { 
         perror("Config file unreadable.");
         exit(EXIT_FAILURE);
     } else { img_cf.erase(idx, std::string::npos); }
  
-    idx = fps_fc.find(",");
+    idx = fps_cf.find(",");
     if (idx == std::string::npos) { 
         perror("Config file unreadable.");
         exit(EXIT_FAILURE);
     } else { fps_cf.erase(idx, std::string::npos); }
  
-    idx = exp_fc.find(",");
+    idx = exp_cf.find(",");
     if (idx == std::string::npos) { 
         perror("Config file unreadable.");
         exit(EXIT_FAILURE);
     } else { exp_cf.erase(idx, std::string::npos); }
  
-    idx = ndr_fc.find(",");
+    idx = ndr_cf.find(",");
     if (idx == std::string::npos) { 
         perror("Config file unreadable.");
         exit(EXIT_FAILURE);
     } else { ndr_cf.erase(idx, std::string::npos); }
  
-    idx = crop_fc.find(",");
+    idx = crop_cf.find(",");
     if (idx == std::string::npos) { 
         perror("Config file unreadable.");
         exit(EXIT_FAILURE);
@@ -151,35 +93,35 @@ void FliObserver::ImageReceiver(){
     catch (NoShm) {
         uint16_t data[640*512];
         uint16_t size[3] = {640, 512, 0};
-        img = new Shm(img_fc, &size, 3, 3, &data); 
+        img = new Shm(img_fc, &size, 3, 3, &data, true); 
     }
  
     try { fps = new Shm(fps_fc); }
     catch (NoShm) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        fps = new Shm(fps_fc, &size, 3, 10, &data); 
+        fps = new Shm(fps_fc, &size, 3, 10, &data, false); 
     }
     
     try { exp = new Shm(exp_fc); }
     catch (NoShm) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        exp = new Shm(exp_fc, &size, 3, 10, &data); 
+        exp = new Shm(exp_fc, &size, 3, 10, &data, false); 
     }
     
     try { ndr = new Shm(ndr_fc); }
     catch (NoShm) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        ndr = new Shm(ndr_fc, &size, 3, 1, &data); 
+        ndr = new Shm(ndr_fc, &size, 3, 1, &data, false); 
     }
  
     try { crop = new Shm(crop_fc); }
     catch (NoShm) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        crop = new Shm(crop_fc, &size, 3, 3, &data); 
+        crop = new Shm(crop_fc, &size, 3, 3, &data, false); 
     }
 }
 
