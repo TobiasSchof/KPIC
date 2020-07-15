@@ -3,10 +3,10 @@
 override SYSNAM = kss/nirspec/nsfiu/devices/support
 override VERNUM = 1.0
 
-SOURCE  = linksem.c KPIC_shmlib.cpp
+SOURCE = linksem.c KPIC_shmlib.cpp
 RELINCLUDE = KPIC_shmlib.hpp
-RELLIB  = libshmlib.so
-RELBIN  = linksem
+RELLIB = libKPIC_shmlib.so
+RELBIN = linksem
 
 ################################################################################
 # KROOT boilerplate:
@@ -40,5 +40,5 @@ include $(RELDIR)/etc/rules.mk
 #C compilations
 linksem: linksem.c
 	$(CC) -o linksem linksem.c -lpthread
-#libKPIC_shmlib.so: KPIC_shmlib.cpp
-#    $(CC) -shared -o libKPIC_shmlib.so -fPIC KPIC_shmlib.cpp -lstdc++fs
+libKPIC_shmlib.so: KPIC_shmlib.cpp
+	$(CC) -shared -o libKPIC_shmlib.so -fPIC KPIC_shmlib.cpp -lstdc++fs

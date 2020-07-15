@@ -46,6 +46,7 @@ on_cmds      = ["on"]
 off_cmds     = ["off"]
 devices_cmds = ["devices", "devs"]
 status_cmds  = ["status", "stat"]
+stale_cmds    = ["no-push", "-stale", "stale"]
 cmds = help_cmds + on_cmds + off_cmds + devices_cmds + status_cmds
 
 # store flags in a more readable way
@@ -53,6 +54,7 @@ on = []
 off = []
 script_on = False
 status = False
+no_push = False
 devices = False
 idx = 0
 # parse flags
@@ -87,7 +89,11 @@ while idx < len(args):
             idx += 1
     # interpret device and status flags
     elif f in devices_cmds: devices = True
-    elif f in status_cmds:  status = True
+    elif f in status_cmds: 
+        status = True
+        if (idx + 1) < len(args) and args[idx + 1].strip().lower() in stale_cmds: 
+            no_push = True
+            idx += 1
 
     idx += 1
 
@@ -117,6 +123,10 @@ if script_on:
         sleep(.5)
     print("\r{:<34}".format("Control script turned on."))
 
+if no_push:
+    print(nps.getPrintableStatusAll(update = False))
+    sys.exit() 
+
 # raise issue if script isn't on
 if not nps.is_Active():
     print("NPS CONTROL SCRIPT NOT ACTIVE. PLEASE USE 'NPS on script'.")
@@ -124,8 +134,7 @@ if not nps.is_Active():
 
 # print status
 if status:
-    stat = "\r" + nps.getPrintableStatusAll()
-    print(stat)
+    print(nps.getPrintableStatusAll())
     sys.exit()
 
 # turn on/off requested ports

@@ -68,31 +68,40 @@ class NPS_cmds:
                   ("{}, "*len(self.devices.keys())).format(*self.devices.keys())
             raise Exception(msg[:-2])
 
-    def getStatusAll(self) -> dict:
+    def getStatusAll(self, update = True) -> dict:
         """Gets updates for all ports
         
         Returns:
             dict = keys as ports, values as booleans 
         """
 
-        self._checkAlive()
+        # if an update was requested, get an update
+        if update:
+            self._checkAlive()
 
-        # get most recent Shm D counter
-        self.Shm_D.get_counter()
+            # get most recent Shm D counter
+            self.Shm_D.get_counter()
 
-        # touch Shm_P to request update 
-        self.Shm_P.set_data(self.Shm_P.get_data())
+            # touch Shm_P to request update 
+            self.Shm_P.set_data(self.Shm_P.get_data())
 
-        # wait for Shm D counter to increment
-        while self.Shm_D.mtdata["cnt0"] == self.Shm_D.get_counter(): sleep(.5)
+            # wait for Shm D counter to increment
+            while self.Shm_D.mtdata["cnt0"] == self.Shm_D.get_counter(): sleep(.5)
+        # otherwise, make sure we're attached to shm
+        else:
+            # attach to shm if we haven't yet
+            if type(self.Shm_D) is str:
+                if os.path.isfile(self.Shm_D): self._handleShms()
+                # if there is no file, raise an error
+                else: raise ScriptOff("No shared memory. Please use activate_Control_Script().")
 
-        # get updated status
+        # get status
         stat = self.Shm_D.get_data()[0]
 
         # convert status to dictionary
         return {8-idx:val == "1" for idx, val in enumerate(format(stat, "08b"))}
 
-    def getStatus(self, ports = None):
+    def getStatus(self, ports = None, update = True):
         """Gets updates for the given ports
 
         Args:
@@ -109,13 +118,13 @@ class NPS_cmds:
         if type(ports) is not list: ports = list(ports)
 
         # get status of all ports (NPS doesn't support individual port query)
-        stat = self.getStatusAll()
+        stat = self.getStatusAll(update)
 
         # extract the desired ports
         if len(ports) == 1: return stat[ports[0]]
         else: return {port:stat[port] for port in ports}
 
-    def getPrintableStatusAll(self) -> str:
+    def getPrintableStatusAll(self, update = True) -> str:
         """Returns a human-readable string with port status
 
         Updates all shared memories first.
@@ -124,7 +133,7 @@ class NPS_cmds:
             str = a human readable string with the most recent status
         """
 
-        stats = self.getStatusAll()
+        stats = self.getStatusAll(update)
 
         ret = "NPS status:\n\n"
         for port in self.ports:
@@ -206,14 +215,18 @@ class NPS_cmds:
     def _handleShms(self):
         """Loads shared memories"""
 
-        # reset shms and do nothing if control script is not active
-        if not self.is_Active(): 
-            # get file paths for shms
-            self.Shm_P = self.Shm_P.fname
-            self.Shm_D = self.Shm_D.fname 
+        # if Shm_P isn't connected but file exists, connect
+        if type(self.Shm_P) is str:
+            if os.path.isfile(self.Shm_P): self.Shm_P = Shm(self.Shm_P)
+        # if Shm_P is connected but file doesn't exist, disconnect
         else:
-            self.Shm_P = Shm(self.Shm_P)
-            self.Shm_D = Shm(self.Shm_D)
+            if not os.path.isfile(self.Shm_P.fname): self.Shm_P = self.Shm_P.fname
+        # if Shm_D isn't connected but file exists, connect
+        if type(self.Shm_D) is str:
+            if os.path.isfile(self.Shm_D): self.Shm_D = Shm(self.Shm_D)
+        # if Shm_D is connected but file doesn't exist, disconnect
+        else:
+            if not os.path.isfile(self.Shm_D.fname): self.Shm_D = self.Shm_D.fname
 
     def _checkAlive(self):
         """Checks whether an active control script for the NPS is alive.
