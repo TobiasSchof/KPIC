@@ -105,8 +105,13 @@ if devices:
     msg = "NPS port assignment:\n\n"
 
     for port in nps.ports:
-        p_msg = "Port: {port} | Device Name: {name:<20} | Description: {descr}\n"
-        p_msg.format(port = port, name = nps.ports[port][0], descr = nps.ports[port][1])
+        p_msg = "Port: {port} | Device Name: {name:<15} | Description: {descr}\n"
+        name = nps.ports[port][0]
+        if len(name) > 15: name = name[11:] + "..."
+        descr = nps.ports[port][1]
+        p_msg = p_msg.format(port = port, name = name, descr = descr)
+        if len(p_msg) > 81:
+            p_msg = p_msg[:76] + "...\n"
         msg += p_msg
 
     print(msg)
