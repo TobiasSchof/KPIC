@@ -5,7 +5,7 @@ from subprocess import Popen
 import sys, os
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+from KPIC_shmlib import Shm
 #various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 
@@ -35,7 +35,6 @@ class FIU_TTM_cmds:
         _checkOnAndAlive
         _handleShms
         _getData
-        _setStatus
     """
     
     def __init__(self):
@@ -51,7 +50,6 @@ class FIU_TTM_cmds:
         self.Error = config.get("Shm_Info", "Error").split(",")[0]
         self.Pos_P = config.get("Shm_Info", "Pos_P").split(",")[0]
         self.Stat_P = config.get("Shm_Info", "Stat_P").split(",")[0]
-        self.Svos = config.get("Shm_Info", "Svos").split(",")[0]
 
         #NOTE: center is loaded here. If this changes, class will have to
         #   be reinitialized.
@@ -73,7 +71,7 @@ class FIU_TTM_cmds:
         #If Stat_D isn't loaded, load shms
         if type(self.Stat_D) is str: self._handleShms()
 
-        if type(self.Stat_D) is str or self.Stat_D.get_data()[0] in [-1, -2]:
+        if type(self.Stat_D) is str or not (self.Stat_D.get_data()[0] & 1):
             return False
         else: return True
 
@@ -84,19 +82,9 @@ class FIU_TTM_cmds:
             bool = True if device is on, False otherwise
         """
 
-        #if Stat_D isn't loaded, load it
-        if type(self.Stat_D) is str: self._handleShms()
+        self._checkAlive()
 
-        #if Stat_D didn't load, we can't get device state
-        #   NOTE: we could use NPS here but we want to avoid direct
-        #   communication with hardware on user side. If a user has the need
-        #   the need to check for power status of device even when there's no
-        #   Stat_D shm, see q_pow in FIU_TTM_Control.py
-        if type(self.Stat_D) is str: 
-            raise ShmError("No Stat_D shm. Please restart control script.")
-
-        #otherwise return based on Stat_D
-        return (self.Stat_D.get_data()[0] in [2, 1, -1])
+        return (self.Stat_D.get_data()[0] & 2)
 
     def get_error(self) -> int:
         """Returns the error currently stored in the shared memory.
@@ -107,30 +95,23 @@ class FIU_TTM_cmds:
 
         self._checkOnAndAlive()
 
-        #if self.Error is a string, this will throw an AttributeError
-        try: return self.Error.get_data()[0]
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        return self.Error.get_data()[0]
 
-    def is_svo_on(self) -> list:
+    def is_svo_on(self) -> bool:
         """Returns on status of servos.
 
         Returns:
-            list = indices: [axis 1, axis 2]. values: 1=on, 0=off
+            bool = whether the servo is on (True) or off (False)
         """
 
         self._checkOnAndAlive()
 
-        #if self.Error is a string, this will throw an AttributeError
-        try: return list(self.Svos.get_data()) 
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        return self.Stat_D.get_data()[0] & 8
 
-    union = "list OR list, float"
-    def get_pos(self, time:bool=True, push:bool=True) -> union:
+    def get_pos(self, time:bool=True, push:bool=True):
         """Returns the current position in the device's shared memory.
 
-        Inputs:
+        Args:
             time = whether the time of the last update should be returned also.
             push = whether shared memory should be updated first (takes longer)
         Returns:
@@ -143,18 +124,16 @@ class FIU_TTM_cmds:
         if push:
             self._checkOnAndAlive()
             #this will throw an Attribute error if Stat_P is a string
-            try: self.Stat_P.set_data(self.Stat_P.get_data())
-            except AttributeError:
-                raise ShmError("Shm states out of sync. Restart control script.")
+            self.Stat_P.set_data(self.Stat_P.get_data())
         #otherwise, we just need Pos_D
-        elif type(Pos_D) is str: self._handleShms()
+        elif type(Pos_D) is str: 
+            self._handleShms()
+            # if Pos_D is still a string, the control script needs to be started
+            if type(Pos_D) is str:
+                raise ScriptOff("No Shm file. Please start control script.") 
 
-        #in case there's no file backing, self.Pos_D won't have get_data()
-        try:
-            if time: return list(self.Pos_D.get_data()), self.Pos_D.get_time()
-            else: return list(self.Pos_D.get_data())
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        if time: return list(self.Pos_D.get_data()), self.Pos_D.get_time()
+        else: return list(self.Pos_D.get_data())
 
     def get_target(self) -> list:
         """Returns the control script's current target
@@ -166,52 +145,61 @@ class FIU_TTM_cmds:
         self._checkOnAndAlive()
 
         #if shm isn't loaded, Pos_P won't have get_data attribute
-        try: return list(self.Pos_P.get_data())
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        return list(self.Pos_P.get_data())
 
-    def on(self, block:bool=False):
+    def on(self, block:bool = False):
         """Turns the device on.
         
         Inputs:
             block = if True, blocks program until device is on
         """
 
-        self._setStatus(1)
+        self._checkAlive()
 
-        while not self.is_On(): sleep(1)
+        # change the device power bit to '1'
+        stat = Stat_P.get_data()
+        stat[0] = stat[0] | 2
+        Stat_P.set_data(stat)
 
-    def off(self):
-        """Turns the device off."""
+        if not block: return
 
-        self._setStatus(0)
+        while not self.is_On(): sleep(.5)
 
-    def set_svo(self, ax1:int=None, ax2:int=None):
-        """Sets servo values in the shared memory
-
-        Inputs:
-            ax1 = 1 to turn axis 1 servo on, 0 to turn it off
-            ax2 = 1 to turn axis 2 servo on, 0 to turn it off
+    def off(self, block:bool = False):
+        """Turns the device off.
+        
+        Args:
+            block = if True, blocks program until device is off
         """
 
-        #make sure input is valid
-        try:
-            assert ax1 in [0, 1, None]
-            assert ax2 in [0, 1, None]
-        except AssertionError:
-            raise ValueError("Only values of 1, 0, and None are valid.")
+        self._checkAlive()
+
+        # change the device power bit to '0'
+        stat = Stat_P.get_data()
+        stat[0] = stat[0] & ~2
+        Stat_P.set_data(stat)
+
+        if not block: return
+
+        while not self.is_On(): sleep(.5)
+
+    def set_svo(self, state:bool):
+        """Sets servo values in the shared memory
+
+        Args:
+            state = if False, turns servos off, if True, turns them on
+        """
 
         self._checkOnAndAlive()
 
-        try: svo = self.Svos.get_data()
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        stat = Stat_P.get_data()
 
-        #it's easier to modify returns rather than format a numpy array
-        if ax1 is not None: svo[0] = ax1
-        if ax2 is not None: svo[1] = ax2
+        # if state, change servo bit to '1'
+        if state: stat[0] = stat[0] | 8
+        # otherwise, change servo bit to '0'
+        else: stat[0] = stat[0] & ~8
 
-        self.Svos.set_data(svo)
+        Stat_P.set_data(stat)
 
     def set_pos(self, ax1:float, ax2:float) -> list:
         """Sets target position to [ax1, ax2]
@@ -226,9 +214,7 @@ class FIU_TTM_cmds:
 
         self._checkOnAndAlive()
 
-        try: pos = self.Pos_P.get_data()
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        pos = self.Pos_P.get_data()
 
         #it's easier to modify returns rather than format a numpy array
         pos[0] = ax1
@@ -262,8 +248,9 @@ class FIU_TTM_cmds:
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
         #the tmux command should be split up by spaces
-        Popen(command[0].split(" ")+[command[-1]])
-
+        for cmd in command:
+            Popen(cmd.split(" "))
+        
     def _checkAlive(self):
         """Raises an exception if the control script is not active."""
 
@@ -294,12 +281,12 @@ class FIU_TTM_cmds:
         if type(self.Stat_D) is str:
             #the shm constructor throws an error if no data is provided, no
             #   semaphore is requested, and no file backing exists.
-            try: self.Stat_D = shm(self.Stat_D)
+            try: self.Stat_D = Shm(self.Stat_D)
             except: return
 
         #the following two shms should exist if Stat_D does
         if type(self.Pos_D) is str:
-            try: self.Pos_D = shm(self.Pos_D)
+            try: self.Pos_D = Shm(self.Pos_D)
             #if there's no file backing but the control script is alive, states
             #   somehow fell out of sync, so the system should be restarted
             except:
@@ -307,7 +294,7 @@ class FIU_TTM_cmds:
                 raise ShmError(msg)
 
         if type(self.Error) is str:
-            try: self.Error = shm(self.Error)
+            try: self.Error = Shm(self.Error)
             except: 
                 msg = "Shm state out of sync. Please restart control script."
                 raise ShmError(msg)
@@ -315,17 +302,12 @@ class FIU_TTM_cmds:
         #the following shared memories will only exist if control is active
         if self.is_Active():
             if type(self.Pos_P) is str:
-                try: self.Pos_P = shm(self.Pos_P)
+                try: self.Pos_P = Shm(self.Pos_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
                     raise ShmError(msg)
             if type(self.Stat_P) is str:
-                try: self.Stat_P = shm(self.Stat_P)
-                except: 
-                    msg="Shm state out of sync. Please restart control script."
-                    raise ShmError(msg)
-            if type(self.Svos) is str:
-                try: self.Svos = shm(self.Svos)
+                try: self.Stat_P = Shm(self.Stat_P)
                 except: 
                     msg="Shm state out of sync. Please restart control script."
                     raise ShmError(msg)
@@ -339,23 +321,3 @@ class FIU_TTM_cmds:
                 name = self.Stat_P.fname
                 self.Stat_P.close()
                 self.Stat_P = name
-            if not type(self.Svos) is str:
-                name = self.Svos.fname
-                self.Svos.close()
-                self.Svos = name
-
-    def _setStatus(self, status:int):
-        """Sets Stat_P."""
-
-        try: assert status in [1, 0]
-        except AssertionError: raise ValueError("Status must be 1, or 0")
-
-        self._checkAlive()
-
-        #if shm isn't loaded correctly, we'll get an attribute error
-        try: stat = self.Stat_P.get_data()
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
-
-        stat[0] = status
-        self.Stat_P.set_data(stat)

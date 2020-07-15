@@ -266,7 +266,7 @@ bool q_cam_pow(){
     NPSD->get_data(&stat);
 
     // bit in NPS shm corresponds to port - 1 so use bit-wise and to see if it's on
-    return (stat & (1 << (TC_PORT - 1)) == 0);
+    return (stat & (1 << (TC_PORT - 1)) != 0);
 }
 
 /*

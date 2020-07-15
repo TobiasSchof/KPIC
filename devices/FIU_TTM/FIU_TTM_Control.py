@@ -7,7 +7,7 @@ from time import time, ctime, sleep
 from signal import signal, SIGHUP, SIGTERM
 from subprocess import Popen
 from argparse import ArgumentParser
-import sys, io, os, threading, logging
+import sys, os, threading, logging
 
 #installs
 from pipython import GCSDevice
@@ -16,7 +16,7 @@ import numpy as np
 import posix_ipc
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+from KPIC_shmlib import Shm
 from NPS_cmds import NPS_cmds
 
 """
@@ -37,9 +37,11 @@ if __name__ != "__main__":
 IP = "10.136.1.45"
 
 #a flag to tell the update thread to stop what it's doing
-STOP=False
-
+STOP = False
 cur_thread = None
+
+# a flag to tell this script when to end
+alive = True
 
 info=logging.info
 
@@ -54,43 +56,46 @@ class AlreadyAlive(Exception):
 def update(error:int=0):
     """A method to be used in a thread that continuously checks the
     state of the TTM and updates the shm if necessary.
-
-    Inputs:
-        error = the error message to put into the shm
     """
 
     #continuously check device info
     while not STOP:
         try:
             with pi_lock: qMOV=pidev.IsMoving()
-            #if we are moving or just finished moving, update shm
-            if qMOV["1"] or qMOV["2"] or Stat_D.get_data()[0] == 2:
+            stat = Stat_D.get_data()[0]
+            #if we are moving update shm
+            if qMOV["1"] or qMOV["2"]:
                 with pi_lock: curpos=pidev.qPOS()
                 cur_t = time()
                 Pos_D.set_data(np.array([curpos["1"], curpos["2"]],\
-                    np.float32), atime=cur_t)
+                    Pos_D.npdtype), atime=cur_t)
     
-                stat = 2 if (qMOV["1"] or qMOV["2"]) else 1
-                Stat_D.set_data(np.array([stat], np.int8), atime=cur_t)
-    
-                Error.set_data(np.array([error], np.uint8), atime=cur_t)
+                # if device is moving and Stat_D doesn't reflect this, change Stat_D
+                if not (stat & 4):
+                    Stat_D.set_data(np.array([stat | 4], Stat_D.npdtype), atime=cur_t)
+
             #otherwise, make sure status is set correctly
             else:
-                if Stat_D.get_data()[0] != 1: 
-                    Stat_D.set_data(np.array([1], np.int8))
-                if error != 0 or Error.get_data()[0] != error:
-                    Error.set_data(np.array([error], np.uint8))
-                with pi_lock: curpos=pidev.qPOS()
+                with pi_lock: curpos=pidev.qPOS(); loop=pidev.qSVO()
                 cur_t = time()
-                Pos_D.set_data(np.array([curpos["1"], curpos["2"]],\
-                    np.float32), atime=cur_t)
 
+                # update status                
+                stat = 3 | ((loop["1"] and loop["2"]) << 3)
+                Stat_D.set_data(np.array([stat], Stat_D.npdtype), cur_t)
+
+                # update position
+                Pos_D.set_data(np.array([curpos["1"], curpos["2"]],\
+                    Pos_D.npdtype), atime=cur_t)
+
+                # update error
+                Error.set_data(np.array([error], Error.npdtype), atime=cur_t)
                 break
         #GCSError means that the TTM is not connected
         except GCSError:
-            if Stat_D.get_data()[0] != 0:
-                Stat_D.set_data(np.array([0], np.int8))
-                Error.set_data(np.array([error], np.uint8))
+            # update status
+            Stat_D.set_data(np.array([1], Stat_D.npdtype))
+            # update error
+            Error.set_data(np.array([error], Error.npdtype))
             break
 
 def move(target:list) -> int:
@@ -105,7 +110,6 @@ def move(target:list) -> int:
         int = the error message (check FIU_TTM.ini for translation)
     """
 
-    #TODO: add open loop movement
     with pi_lock:
         try: check = pidev.qSVO()
         except GCSError: info("Device off. Can't move."); return 3
@@ -121,8 +125,6 @@ def move(target:list) -> int:
             return 1
 
     #perform movement
-    #TODO: don't send move if TTM is already in position (have to check
-        #precision of encoder)
     for idx in axes:
         req = target[int(idx)-1]
         info("Moving axis {} to {}.".format(idx, req))
@@ -130,38 +132,15 @@ def move(target:list) -> int:
 
     return 0
 
-def svo_check(reqs:list):
-    """Checks whether servo states should be changed and changes them if so
-
-    Inputs:
-        reqs = a list with two bools. Index n is axis n+1
-    """
-
-    info("Checking whether servo values should change.")
-    with pi_lock: 
-        try: servo_state = pidev.qSVO()
-        except GCSError: info("GCSError."); return
-    #populate a dictionary with any necessary servo changes
-    svo_set={axis:reqs[int(axis)-1] for axis in axes if \
-        servo_state[axis] != reqs[int(axis)-1]}
-
-    #only send a command to the device if a change has to be made.
-    if len(svo_set) > 0: 
-        with pi_lock: 
-            try: pidev.SVO(svo_set)
-            except GCSError: info("GCSError."); return
-
 def connect_device():
     """Connects the TTM. If device is already connected, does nothing.
         
     Reloads limits from config file and, if CAN_MOVE==True, moves.
-    If the limits in the config file are outside the software limits,
-        the config file will be rewrwitten
     """
     
     #Do nothing if device is off or already connected
     with pi_lock:
-        if not q_pow() or pidev.IsConnected(): return 
+        if not nps.getStatus() or pidev.IsConnected(): return 
 
     info("Connecting TTM PI controller.")
     with pi_lock:
@@ -172,6 +151,7 @@ def connect_device():
                 break
             except GCSError:
                 info("Trouble connecting FIU TTM.")
+                print("Connection to FIU TTM...")
                 sleep(1)
 
     info("Extracting limits from config file.")
@@ -195,15 +175,17 @@ def connect_device():
                 info("Changing {} limit to {}.".format(max_, softmax[axis]))
                 limits[max_] = softmax[axis]
 
+    # update D shms
+    update(0)
+
     info("Getting command shared memory")
-
-    svos = Svos.get_data()
-    pos = Pos_P.get_data()
-
     if CAN_MOVE:
+        stat = Stat_P.get_data()[0]
+        pos = Pos_P.get_data()
+
         info("Setting servos to initial values.")
         #load the starting servo values into a dict
-        svo_set = {axis:int(svos[int(axis)-1]) for axis in axes}
+        svo_set = {axis:bool(stat & 8) for axis in axes}
         with pi_lock: pidev.SVO(svo_set)
         info("Moving to initial positions.")
         #load the starting position values into a dict
@@ -212,18 +194,15 @@ def connect_device():
     else:
         info("Cannot move to initial positions. Changing command shared " +\
          "memory values.")
-        with pi_lock: cur_pos = pidev.qPOS()
-        with pi_lock: cur_svo = pidev.qSVO()
-        #get values for each axis
-        for axis in axes:
-            pos[int(axis)-1] = cur_pos[axis]
-            svos[int(axis)-1] = cur_svo[axis]
-        
-        Svos.set_data(svos)
-        Pos_P.set_data(pos)
+        # set P shms to current values
+        Pos_P.set_data(Pos_D.get_data())
+        Stat_P.set_data(Stat_D.get_data())
 
 def device_off():
     """Turns off the TTM using the NPS"""
+
+    # do nothing if nps port is already off
+    if not nps.getStatus(): return
 
     info("Checking if TTM is connected.")
     with pi_lock:
@@ -250,24 +229,24 @@ def device_off():
             pidev.CloseConnection()
 
     info("Sending off command to NPS")
-    turn_off()
+    nps.turnOff()
 
     info("Waiting for TTM to turn off.")
-    while q_pow(): sleep(.5)
+    while nps.getStatus(): sleep(.5)
 
-    Stat_D.set_data(np.array([0], np.int8))
+    Stat_D.set_data(np.array([1], np.int8))
 
 def device_on():
     """Waits for NPS to turn on device and then connects"""
 
     # if device is already on, do nothing
-    if q_pow(): return
+    if nps.getStatus(): return
 
     info("Sending on command to NPS")
-    turn_on()
+    nps.tunrOn()
 
     info("Waiting for NPS to turn on device.")
-    while not q_pow(): sleep(.1)
+    while not nps.getStatus(): sleep(.1)
 
     info("Opening connection to TTM.")
     connect_device()
@@ -277,39 +256,39 @@ def listener():
     updated, and spawns a thread that updates the position of the TTM in shm.
     """
 
+    # variable to store old status
+    old_stat = Stat_P.get_data()[0]
+
     #we put the listening process in an infinite loop
-    while True:
+    while alive:
 
-        #here we look at metadata instead of reading new metadata to ensure
-        #  we're getting the count of the last time we updated 
-        pos_cnt = Pos_P.mtdata["cnt0"]
-        stat_cnt = Stat_P.mtdata["cnt0"]
-        svo_cnt = Svos.mtdata["cnt0"]
-
-        ShmP.acquire()
-    
         info("command shared memory updated")
         
         error=0
         
-        #check status change first
-        if Stat_P.get_counter() != stat_cnt:
+        # check status change first
+        new_stat = Stat_P.get_data()[0]
+        change = new_stat ^ old_stat
+        # xor bit-wise to see if any bits have flipped
+        if (change):
             info("status updated")
-            req_stat = Stat_P.get_data()[0]
-            if req_stat == 1:
+            # if script bit is off, close
+            if not (new_stat & 1): signal_handler(None, None); break
+            # check device bit 
+            if change & new_stat & 2:
                 info("Turning on device")
                 device_on()
-            elif req_stat == 0:
+            elif change & ~new_stat & 2:
                 info("Turning off device")
                 device_off()
-    
-        #check servo change next
-        if Svos.get_counter() != svo_cnt:
-            info("Servo values updated")
-            svo_check(Svos.get_data())
+            # check open/close loop bit
+            if change & new_stat & 8:
+                with pi_lock: pidev.SVO({axis:True for axis in axes})
+            elif change & ~new_stat & 8:
+                with pi_lock: pidev.SVO({axis:False for axis in axes})
     
         #check position change last
-        if Pos_P.get_counter() != pos_cnt:
+        if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             info("Position updated")
             error = move(Pos_P.get_data())
         
@@ -323,6 +302,9 @@ def listener():
         #start a new update thread with the new error value
         cur_thread = threading.Thread(target=update, args=(error,), daemon=True)
         cur_thread.start()
+
+        # wait for a new update
+        ShmP.acquire()
 
 def close():
     """A cleanup method.
@@ -377,7 +359,15 @@ def close():
     except Exception as ouch: info("Exception on close: {}".format(ouch))
         
     info("Closing tmux session.")
+    unregister(close)
     Popen(config.get("Environment", "end_command").split(" "))
+
+def signal_handler(signum, stack):
+    """A function to gracefully exit when a signal is encountered"""
+
+    global alive = False
+    try: ShmP.release()
+    except: pass
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
@@ -424,35 +414,34 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
 #for now we just want to connect to shm to see if there's already a script
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]): 
-    Stat_D = shm(Stat_D[0])
+    Stat_D = Shm(Stat_D[0])
     status=Stat_D.get_data()[0]
 
-    if status in [2, 1, 0]:
+    if (status & 1):
         info("Active control script exists. Raising exception.")
         msg="State shared memory status {}.".format(status)
         raise AlreadyAlive(msg)
 else:
     info("No state shared memory file. Creating file.")
-    Stat_D = config.get("Shm_Info", "Stat_D").split(",") +\
-        config.get("Shm_Init", "Stat_D").split(",")
-    Stat_D = shm(Stat_D[0], data=np.array([Stat_D[2:]], dtype=type_[Stat_D[1]]))
+    Stat_D = config.get("Shm_Info", "Stat_D").split(",")
+    Stat_D = Shm(Stat_D[0], data=np.array([1], dtype=type_[Stat_D[1]]),
+        mmap = (Stat_D[2] == "1"))
 
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-if os.path.isfile(Pos_D[0]): Pos_D = shm(Pos_D[0])
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No state shared memory file. Creating file.")
-    Pos_D = config.get("Shm_Info", "Pos_D").split(",") +\
-        config.get("Shm_Init", "Pos_D").split(",")
-    Pos_D = shm(Pos_D[0], data=np.array([Pos_D[2:]], dtype=type_[Pos_D[1]]))
+    Pos_D = Shm(Pos_D[0], data=np.array([-5000., -5000.],
+        dtype=type_[Pos_D[1]]), mmap = (Pos_D[2] == "1"))
 
 Error = config.get("Shm_Info", "Error").split(",")
-if os.path.isfile(Error[0]): Error = shm(Error[0])
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else:
     info("No state shared memory file. Creating file.")
-    Error = config.get("Shm_Info", "Error").split(",") +\
-        config.get("Shm_Init", "Error").split(",")
-    Error = shm(Error[0], data=np.array([Error[2:]], dtype=type_[Error[1]]))
+    Error = config.get("Shm_Info", "Error").split(",")
+    Error = Shm(Error[0], data=np.array([0], dtype=type_[Error[1]]),
+        mmap = (Error[2] == "1"))
 
 info("No duplicate control script, continuing with initialization.")
 
@@ -461,8 +450,8 @@ info("No duplicate control script, continuing with initialization.")
 #signal handles tmux kill-ses, and terminate
 info("Registering cleanup.")
 register(close)
-signal(SIGHUP, close)
-signal(SIGTERM, close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler):
 
 info("Initializing command shared memory from config file.")
 
@@ -473,22 +462,13 @@ ShmP = posix_ipc.Semaphore(None, flags = posix_ipc.O_CREX)
 #   at close)
 Sem_Listeners = []
 
-Stat_P = config.get("Shm_Info", "Stat_P").split(",") +\
-    config.get("Shm_Init", "Stat_P").split(",")
-Stat_P = shm(Stat_P[0], data=np.array([Stat_P[2:]], dtype=type_[Stat_P[1]]),\
-     sem=True)
+Stat_P = config.get("Shm_Info", "Stat_P").split(",")
+Stat_P = Shm(Stat_P[0], data=Stat_D.get_data(), sem=True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
-Pos_P = config.get("Shm_Info", "Pos_P").split(",") +\
-    config.get("Shm_Init", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], data=np.array([Pos_P[2:]], dtype=type_[Pos_P[1]]),\
-    sem=True)
+Pos_P = config.get("Shm_Info", "Pos_P").split(",")
+Pos_P = Shm(Pos_P[0], data=Pos_D.get_data(), sem=True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
-
-Svos = config.get("Shm_Info", "Svos").split(",") +\
-    config.get("Shm_Init", "Svos").split(",")
-Svos = shm(Svos[0], data=np.array([Svos[2:]], dtype=type_[Svos[1]]), sem=True)
-Sem_Listeners.append(Popen(["linksem", Svos.sem.name, ShmP.name]))
 
 def Punlink():
     """Tries to unlink the lock semaphores on the P shms"""
@@ -503,35 +483,23 @@ def Punlink():
     except (AttributeError, posix_ipc.ExistentialError) as ouch:
         info("Exception on close: {}".format(ouch))
 
-    try: 
-        Svos.lock.unlink()
-    except (AttributeError, posix_ipc.ExistentialError) as ouch:
-        info("Exception on close: {}".format(ouch))
+    unregister(Punlink)
 
 #we want to register P shm unlink acter creating shared memory, otherwise
 #  the shm will be cleaned up and we lose access to the lock
 register(Punlink)
-signal(SIGHUP, Punlink)
-signal(SIGTERM, Punlink)
 
 info("Command shared memories successfully created.")
 
 info("Initializing NPS")
-NPS=NPS_cmds()
-info("Finding TTM port")
-NPS.TTM_port = None
-for port in NPS.devices:
-    if NPS.devices[port] == "FIU TTM":
-        NPS.TTM_port = port
-        break
-if NPS.TTM_port is None:
+try: nps = NPS_cmds("FIU TTM")
+except:
     info("Cannot find NPS port")
     raise NPSError("Cannot find NPS port")
 
-#convenience methods to deal with the NPS
-turn_on = lambda: NPS.turnOn(NPS.TTM_port)
-turn_off = lambda: NPS.turnOff(NPS.TTM_port)
-q_pow = lambda: NPS.getStatusAll()[NPS.TTM_port]
+if not nps.is_Active():
+    info("No NPS control script")
+    raise NPSError("No Active NPS control script.")
 
 #set up PI device.
 pidev=GCSDevice()
@@ -543,7 +511,7 @@ axes=["1", "2"]
 pi_lock = threading.Lock()
 
 #if the device is already on, connect to it
-if q_pow(): connect_device()
+if nps.getStatus(): connect_device()
     
 info("Starting display drawer")        
 #we use popen to start the drawing script separately to prevent blocking
