@@ -6,13 +6,13 @@ import os
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
-from dev_exceptions import *
+from dev_Exceptions import *
 
 def activate_Control_Script():
     """Activates the NPS control script"""
 
     RELDIR = os.environ.get("RELDIR")
-    if RELDIR = "": raise Exception("$RELDIR not found")
+    if RELDIR == "": raise Exception("$RELDIR not found")
     if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
     config = ConfigParser()
@@ -28,20 +28,22 @@ class NPS_cmds:
         """Constructor for NPS_cmds class"""
 
         RELDIR = os.environ.get("RELDIR")
-        if RELDIR = "": raise Exception("$RELDIR not found")
+        if RELDIR == "": raise Exception("$RELDIR not found")
         if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
         self.config = ConfigParser()
         self.config.read(RELDIR + "/data/NPS.ini")
 
         # populate with information on which device is on which port
-        self.devices = {config.get("Ports", opt).split(",")[0]:int(opt) for opt in config.options("Ports")}
+        self.devices = {self.config.get("Ports", opt).split(",")[0]:int(opt)\
+                        for opt in self.config.options("Ports")}
         # populate with information on which port has which device
-        self.ports = {int(opt):config.get("Ports", opt).split(",") for opt in config.options("Ports")}
+        self.ports = {int(opt):self.config.get("Ports", opt).split(",") for\
+                      opt in self.config.options("Ports")}
 
         # get file paths for shms
-        self.Shm_P = config.get("Shm Info", "Shm_P").split(",")[0]
-        self.Shm_D = config.get("Shm Info", "Shm_D").split(",")[0]
+        self.Shm_P = self.config.get("Shm Info", "P_Shm").split(",")[0]
+        self.Shm_D = self.config.get("Shm Info", "D_Shm").split(",")[0]
 
         # a list that can be populated for getStatus(), on() and off()
         self.follow = []
@@ -76,19 +78,19 @@ class NPS_cmds:
         self._checkAlive()
 
         # get most recent Shm D counter
-        Shm_D.get_counter()
+        self.Shm_D.get_counter()
 
         # touch Shm_P to request update 
-        Shm_P.set_data(Shm_P.get_data())
+        self.Shm_P.set_data(self.Shm_P.get_data())
 
         # wait for Shm D counter to increment
-        while Shm_D.mtdata["cnt0"] == Shm_D.get_counter(): sleep(.5)
+        while self.Shm_D.mtdata["cnt0"] == self.Shm_D.get_counter(): sleep(.5)
 
         # get updated status
-        stat = Shm_D.get_data()
+        stat = self.Shm_D.get_data()[0]
 
         # convert status to dictionary
-        return {idx+1:val == "1" for idx, val in enumerate(format(stat, "08b"))}
+        return {8-idx:val == "1" for idx, val in enumerate(format(stat, "08b"))}
 
     def getStatus(self, ports = None):
         """Gets updates for the given ports
@@ -122,7 +124,7 @@ class NPS_cmds:
             str = a human readable string with the most recent status
         """
 
-        stats = getStatusAll()
+        stats = self.getStatusAll()
 
         ret = "NPS status:\n\n"
         for port in self.ports:
@@ -135,11 +137,8 @@ class NPS_cmds:
             if stat: stat = "On"
             else: stat = "Off"
 
-            # format message
-            msg.format(name = name, port = port, stat = stat)
-
-            # add msg to the return string
-            ret += msg
+            # add formatted msg to the return string
+            ret += msg.format(name = name, port = port, stat = stat)
 
         return ret
 
@@ -185,17 +184,17 @@ class NPS_cmds:
         # if bit was given as an int, make it a str
         if type(bit) is int: bit = str(bit)
 
-        stat = Shm_P.get_data()
-        stat_bits = format(stat, "08b")
+        stat = self.Shm_P.get_data()
+        stat_bits = format(stat[0], "08b")
         # set new status to bit if in outlets, otherwise to the value currently in Shm P
-        new = ("{}"*8).format(*[bit if idx in outlets else stat_bits[idx] for idx in range(0,9)])
+        new = ("{}"*8).format(*[bit if idx in outlets else stat_bits[8-idx] for idx in range(8, 0, -1)])
         stat[0] = int(new, 2)
-        Shm_P.set_data(stat)
+        self.Shm_P.set_data(stat)
 
     def is_Active(self) -> bool:
         """Returns True if an NPS control script is active"""
 
-        p_fname = Shm_P if type(Shm_P) is str else Shm_P.fname
+        p_fname = self.Shm_P if type(self.Shm_P) is str else self.Shm_P.fname
 
         return os.path.isfile(p_fname)
 
@@ -216,7 +215,7 @@ class NPS_cmds:
             self.Shm_P = Shm(self.Shm_P)
             self.Shm_D = Shm(self.Shm_D)
 
-    def _checkAlive(self)
+    def _checkAlive(self):
         """Checks whether an active control script for the NPS is alive.
 
         Throws a ScriptOff error if no active control script exists,

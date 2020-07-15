@@ -3,9 +3,7 @@
 override SYSNAM = kss/nirspec/nsfiu/devices/NPS
 override VERNUM = 1.0
 
-# If I knew that code would not work with Python 2 I would:
-##override ENABLE_PYTHON2 = False
-## DIRS = designer
+override ENABLE_PYTHON2 = False
 
 RELLIB = NPS_cmds.py
 RELDAT = NPS.ini

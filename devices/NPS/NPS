@@ -7,6 +7,7 @@ import sys, os
 
 # nfiuserver libraries
 from NPS_cmds import NPS_cmds
+from KPIC_shmlib import Shm
 
 # exit if this script is not being used as command line
 if __name__ != "__main__": 
@@ -123,7 +124,6 @@ if not nps.is_Active():
 
 # print status
 if status:
-    print("Getting NPS status...", end = "")
     stat = "\r" + nps.getPrintableStatusAll()
     print(stat)
     sys.exit()
