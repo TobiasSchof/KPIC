@@ -1,12 +1,11 @@
 #inherent python libraries
-from configparser import ConfigParser
 from time import sleep
+from configparser import ConfigParser
 from subprocess import Popen
-import sys, os
+import os
 
 #nfiuserver libraries
 from KPIC_shmlib import Shm
-#various exceptions, file can be found in $RELDIR/devices/support
 from dev_Exceptions import *
 
 RELDIR = os.environ.get("RELDIR")
@@ -19,22 +18,22 @@ class FIU_TTM_cmds:
     Queries:
         is_Active
         is_On
+        is_loop_closed
         get_error
-        is_svo_on
         get_pos
         get_target
     Commands:
         on
         off
-        set_svo
+        close_loop
+        open_loop
         set_pos
-        center
         activate_Control_Script
+        load_presets
     Internal methods:
         _checkAlive
         _checkOnAndAlive
         _handleShms
-        _getData
     """
     
     def __init__(self):
@@ -51,14 +50,10 @@ class FIU_TTM_cmds:
         self.Pos_P = config.get("Shm_Info", "Pos_P").split(",")[0]
         self.Stat_P = config.get("Shm_Info", "Stat_P").split(",")[0]
 
-        #NOTE: center is loaded here. If this changes, class will have to
-        #   be reinitialized.
-        self.mid_1=config.getfloat("TTM_Limits", "min_1") +\
-            config.getfloat("TTM_Limits", "max_1")/2
-        self.mid_2=config.getfloat("TTM_Limits", "min_2") +\
-            config.getfloat("TTM_Limits", "max_2")/2
+        self.presets = {}
+        # load_presets()
+        self.load_presets()
 
-        #for examples on how to use semaphores, see FIU_TTM_draw or _Control 
         self._handleShms()
 
     def is_Active(self) -> bool:
@@ -71,9 +66,10 @@ class FIU_TTM_cmds:
         #If Stat_D isn't loaded, load shms
         if type(self.Stat_D) is str: self._handleShms()
 
-        if type(self.Stat_D) is str or not (self.Stat_D.get_data()[0] & 1):
+        if type(self.Stat_D) is str:
             return False
-        else: return True
+        else:
+            return bool(self.Stat_D.get_data()[0] & 1)
 
     def is_On(self) -> bool:
         """Checks whether device is on
@@ -84,7 +80,18 @@ class FIU_TTM_cmds:
 
         self._checkAlive()
 
-        return (self.Stat_D.get_data()[0] & 2)
+        return bool(self.Stat_D.get_data()[0] & 2)
+
+    def is_loop_closed(self) -> bool:
+        """Returns on status of servos.
+
+        Returns:
+            bool = whether the servo is on (True) or off (False)
+        """
+
+        self._checkOnAndAlive()
+
+        return bool(self.Stat_D.get_data()[0] & 8)
 
     def get_error(self) -> int:
         """Returns the error currently stored in the shared memory.
@@ -97,36 +104,28 @@ class FIU_TTM_cmds:
 
         return self.Error.get_data()[0]
 
-    def is_svo_on(self) -> bool:
-        """Returns on status of servos.
-
-        Returns:
-            bool = whether the servo is on (True) or off (False)
-        """
-
-        self._checkOnAndAlive()
-
-        return self.Stat_D.get_data()[0] & 8
-
-    def get_pos(self, time:bool=True, push:bool=True):
+    def get_pos(self, update:bool=True, time:bool=False):
         """Returns the current position in the device's shared memory.
 
         Args:
+            update = whether shared memory should be updated first (takes longer)
             time = whether the time of the last update should be returned also.
-            push = whether shared memory should be updated first (takes longer)
         Returns:
-            if time == False: list, else: list, float
-            list = indices: [axis 1, axis 2], values: float - the position
-            float = the time in UNIX epoch time that the position was recorded
+            list = [x pos, y pos]
+            or
+            (list, float) = ([x pos, y pos], time) if time == True
         """
 
         #if push is required, we need control script.
-        if push:
+        if update:
             self._checkOnAndAlive()
-            #this will throw an Attribute error if Stat_P is a string
+            self.Pos_D.get_counter()
+            # this will throw an Attribute error if Stat_P is a string
             self.Stat_P.set_data(self.Stat_P.get_data())
+            # wait for TTM position to update
+            while self.Pos_D.mtdata["cnt0"] == self.Pos_D.get_counter(): sleep(.5)
         #otherwise, we just need Pos_D
-        elif type(Pos_D) is str: 
+        elif type(self.Pos_D) is str: 
             self._handleShms()
             # if Pos_D is still a string, the control script needs to be started
             if type(Pos_D) is str:
@@ -157,9 +156,9 @@ class FIU_TTM_cmds:
         self._checkAlive()
 
         # change the device power bit to '1'
-        stat = Stat_P.get_data()
+        stat = self.Stat_P.get_data()
         stat[0] = stat[0] | 2
-        Stat_P.set_data(stat)
+        self.Stat_P.set_data(stat)
 
         if not block: return
 
@@ -175,44 +174,57 @@ class FIU_TTM_cmds:
         self._checkAlive()
 
         # change the device power bit to '0'
-        stat = Stat_P.get_data()
+        stat = self.Stat_P.get_data()
         stat[0] = stat[0] & ~2
-        Stat_P.set_data(stat)
+        self.Stat_P.set_data(stat)
 
         if not block: return
 
         while not self.is_On(): sleep(.5)
 
-    def set_svo(self, state:bool):
-        """Sets servo values in the shared memory
-
-        Args:
-            state = if False, turns servos off, if True, turns them on
-        """
+    def open_loop(self):
+        """Opens the loop"""
 
         self._checkOnAndAlive()
 
-        stat = Stat_P.get_data()
+        stat = self.Stat_P.get_data()
+        #change servo bit to '0'
+        stat[0] = stat[0] & ~8
+        self.Stat_P.set_data(stat)
 
-        # if state, change servo bit to '1'
-        if state: stat[0] = stat[0] | 8
-        # otherwise, change servo bit to '0'
-        else: stat[0] = stat[0] & ~8
+    def close_loop(self):
+        """Closes the loop"""
 
-        Stat_P.set_data(stat)
+        self._checkOnAndAlive()
 
-    def set_pos(self, ax1:float, ax2:float) -> list:
+        stat = self.Stat_P.get_data()
+        #change servo bit to '1'
+        stat[0] = stat[0] | 8
+        self.Stat_P.set_data(stat)
+
+    def set_pos(self, target, block:bool=False) -> list:
         """Sets target position to [ax1, ax2]
 
-        Throws errors if they any are posted by the control script
-        Inputs:
-            ax1 = the value for axis 1
-            ax2 = the value for axis 2
+        Throws errors if any are posted by the control script
+        Args:
+            target = a key of presets or a list of floats with an x and 
+                    a y position.
+            block  = if True, blocks until FIU_TTM is done moving
         Returns:
             list = indices: [axis 1, axis 2]. values: the requested positions
         """
 
         self._checkOnAndAlive()
+
+        if type(target) is str:
+            try: target = self.presets[target]
+            except KeyError: raise MissingPreset(target)
+        elif type(target) is list:
+            if len(target) != 2:
+                raise ValueError("List should have two elements, x and y.")
+            for axis in target:
+                if type(axis) is not float:
+                    raise ValueError("list elements should be floats.")
 
         pos = self.Pos_P.get_data()
 
@@ -228,12 +240,11 @@ class FIU_TTM_cmds:
         elif error == 1: raise MovementRange("Requested move outside limits.")
         elif error == 2: raise LoopOpen("Open loop movement not supported.") 
         elif error == 3: raise StageOff("Turn on device and try again.")
-        
-    def center(self):
-        """Moves the TTM to the center of its range"""
-        
-        self.set_pos(ax1=self.mid_1, ax2=self.mid_2)
 
+        if not block: return
+
+        while self.Stat_D.get_data()[0] & 4: sleep(.5)
+        
     def activate_Control_Script(self):
         """Activates the control script if it's not already active."""
 
@@ -250,6 +261,20 @@ class FIU_TTM_cmds:
         #the tmux command should be split up by spaces
         for cmd in command:
             Popen(cmd.split(" "))
+
+    def load_presets(self):
+        """Loads the preset positions from the config file
+
+        Any presets from self.presets defined in the config file will be overwritten
+        """
+
+        config = ConfigParser()
+        config.read(RELDIR + "/data/FIU_TTM.ini")
+
+        for name in config.options("Presets"):
+            pos = config.get("Presets", name).split(",")
+            pos = [float(item.strip()) for item in pos]
+            self.presets[name] = pos
         
     def _checkAlive(self):
         """Raises an exception if the control script is not active."""

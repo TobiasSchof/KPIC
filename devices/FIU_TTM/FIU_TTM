@@ -11,7 +11,8 @@ import sys, io, os
 import numpy as np
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+from FIU_TTM_cmds import FIU_TTM_cmds
+from dev_Exceptions import ScriptOff, StageOff, MissingPreset
 
 if __name__ != "__main__": sys.exit()
 
@@ -56,26 +57,19 @@ disable.add_argument("-disable")
 #Moves TTM to the given position.
 moveAbs=dev.add_parser("goto")
 moveAbs.add_argument("-goto")
-moveAbs.add_argument("ax1", nargs="?", default=None)
-moveAbs.add_argument("val1", nargs="?", default=None)
-moveAbs.add_argument("ax2", nargs="?", default=None)
-moveAbs.add_argument("val2", nargs="?", default=None)
+moveAbs.add_argument("target", nargs="?", default=None)
+moveAbs.add_argument("y", nargs="?", default=None)
 moveAbs.add_argument("-move")
-
-#Moves TTM to the center of its range.
-center=dev.add_parser("center")
-center.add_argument("-center")
-center.add_argument("-move")
 
 #Displays whether axes are in open loop
 qol=dev.add_parser("ol?")
 qol.add_argument("-qol")
 
-#Opens the loop (turns servo off)
+#Opens the loop
 open_=dev.add_parser("open")
 open_.add_argument("-open")
 
-#Closes the loop (turns servos on)
+#Closes the loop
 close_=dev.add_parser("close")
 close_.add_argument("-close")
 
@@ -92,7 +86,6 @@ parser.add_argument("-h", action="store_true")
 	
 args=parser.parse_args()
 
-
 #start control script if enable tag was used
 if "enable" in args:
     #vertical pipe separates tmux command from python command
@@ -104,7 +97,8 @@ if "enable" in args:
         if args.debug is not None:
             command += args.debug
 
-    Popen(command[0].split(" ") + [command[-1]])
+    for cmd in command:
+        Popen(cmd.split(" "))
     sys.exit()
 
 if "disable" in args:
@@ -112,180 +106,101 @@ if "disable" in args:
     Popen(command)
     sys.exit()
 
-#for anything else we will want shared memory so enable it as needed
-try: Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-except:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'FIU_TTM enable'")
-    print()
+dev = FIU_TTM_cmds()
+
+# get status
+if "status" in args: 
+    try: 
+        pos, time = dev.get_pos(time = True, update = args.push)
+        print("Position: {}. Data was updated {}.".format(list(pos), ctime(time)))
+    except ScriptOff as e:
+        print("Issue getting status. Try 'FIU_TTM enable'")
+
     sys.exit()
-    
-cur_pos = Pos_D.get_data()
-time = Pos_D.get_time()
-
-#if position was requested without push, we don't need the device to be on
-if "status" in args and not args.push:
-    time=ctime(time)
-    print("Position: {}. Data was updated {}.".format(list(cur_pos), time))
-    sys.exit()
-
-#Now we need Stat_D to tell if the script is on
-Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
-DStat = Stat_D.get_data()[0]
-
-#if control script is off, tell user to turn it on
-if DStat in [-1, -2]:
-    print()
-    print("CONTROL SCRIPT OFF. PLEASE USE 'FIU_TTM enable'")
-    print()
-    sys.exit()
-
-#at this point, we need Stat_P shm
-try: Stat_P = shm(config.get("Shm_Info", "Stat_P").split(",")[0])
-except:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'FIU_TTM enable' OR 'FIU_TTM status'")
-    print()
-    sys.exit()
-
-PStat = Stat_P.get_data()
 
 if "on" in args:
-    PStat[0] = 1
-    Stat_P.set_data(PStat)
-    _ = -1
-    while Stat_D.get_data()[0] not in [2, 1]: 
-        _ = (_+1)%3
-        print("Turning on device{:<4}".format("."*(_+1)), end="\r")
-        sleep(1)
-    print("Device on.{:15}".format(""))
+    try: dev.on()
+    except ScriptOff as e:
+        print("Control script off. Try 'FIU_TTM enable' first.")
+
     sys.exit()
 
 if "off" in args:
-    PStat[0] = 0
-    Stat_P.set_data(PStat)
+    try: dev.off()
+    except ScriptOff as e:
+        print("Control script off. Try 'FIU_TTM enable' first.")
+    
     sys.exit()
 
-#Now we need the device on
-if DStat == 0:
-    print()
-    print("DEVICE OFF. PLEASE USE 'FIU_TTM on'")
-    print()
-    sys.exit()
-
-#Open servo status shm
-Svos = shm(config.get("Shm_Info", "Svos").split(",")[0])
-SvoStat = Svos.get_data()
- 
 if "qol" in args:
-    print(["Loop closed" if axis else "Loop open" for axis in SvoStat])
+    try: 
+        if dev.is_loop_closed():
+            print("Loop closed.")
+        else: print("Loop open.")
+    except ScriptOff as e:
+        print("Control script off. Try 'FIU_TTM enable' first.")
+    except StageOff as e:
+        print("Device off. Try 'FIU_TTM on' first")
+    
     sys.exit()
          
 if "open" in args:
-    if not any(SvoStat): sys.exit()
-    SvoStat[0] = 0
-    SvoStat[1] = 0
-    Svos.set_data(SvoStat)
+    try: dev.open_loop()
+    except ScriptOff as e:
+        print("Control script off. Try 'FIU_TTM enable' first.")
+    except StageOff as e:
+        print("Device off. Try 'FIU_TTM on' first")
     sys.exit()
         
 if "close" in args:
-    if all(SvoStat): sys.exit()
-    SvoStat[0] = 1
-    SvoStat[1] = 1
-    Svos.set_data(SvoStat)
+    try: dev.close_loop()
+    except ScriptOff as e:
+        print("Control script off. Try 'FIU_TTM enable' first.")
+    except StageOff as e:
+        print("Device off. Try 'FIU_TTM on' first")
     sys.exit()
         
-#we checked for status without push earlier, so this one has it
-if "status" in args:
-    #warn the user if the stage is in open loop.
-    if not all(SvoStat):
-        print("WARNING, STAGE HAS AT LEAST ONE AXIS IN OPEN LOOP." + \
-            " POSITION MAY BE UNRELIABLE.")
-        print()
-
-    #Get the counter for the position before requesting an update
-    cnt = Pos_D.get_counter()
-
-    #make control script act by touching Stat_P
-    Stat_P.set_data(PStat)
-
-    #wait for shared memory to be updated
-    while Pos_D.get_counter() == cnt: sleep(.01)
-
-    cur_pos = Pos_D.get_data()
-    time = Pos_D.get_time()
-    cur_stat = Stat_D.get_data()
-    time=ctime(time)
-    #warn the user if the stage is moving
-    if cur_stat[0] == 2:
-        print("WARNING, STAGE IS CURRENTLY IN MOTION.")
-        print()
-
-    print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
-    sys.exit()
-
-#at this point, we need Pos_P and Error
-Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-Error = shm(config.get("Shm_Info", "Error").split(",")[0])
-
-if "goto" in args and not args.ax1 is None:
-    pos = Pos_P.get_data()
-    try:
-        #validate first parameter
-        assert args.ax1 in ["x", "y"]
-        assert args.val1 is not None
-        #convert val1 to a float
-        try: args.val1 = float(args.val1)
-        except: assert 1==0
-
-        ax = {"x":0, "y":1}
-        
-        pos[ax[args.ax1]] = args.val1
-
-        if args.ax2 is not None:
-            #validate second parameter
-            assert args.ax2 in ["x", "y"]
-            assert args.val2 is not None
-            #convert val2 to a float
-            try: args.val2 = float(args.val2)
-            except: assert 1==0
-            #validate that the same axis was not passed twice
-            assert args.ax1 != args.ax2
-            
-            pos[ax[args.ax2]] = args.val2
-
-        Pos_P.set_data(pos)
-
-        #give device time to throw an error
-        sleep(1)
-
-        error = Error.get_data()[0] 
-        if error == 1:
-            print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
-        elif error == 2:
-            print()
-            print("LOOP OPEN, CANNOT MOVE.")
-            print()
+if "goto" in args and not args.target is None:
+    # if only first argument was provided, it should be a preset
+    if args.y is None:
+        try: 
+            dev.set_pos(args.target)
             sys.exit()
-        else: sys.exit()
-
-    except AssertionError:
-        print("INVALID PARAMETERS. SEE EXAMPLES BELOW.")
-        print()
+        except MissingPreset as e:
+            print("Invalid preset '{}'. See below.".format(args.target))
+        except ScriptOff as e:
+            print("Control script off. Try 'FIU_TTM enable' first.")
+            sys.exit()
+        except StageOff as e:
+            print("Device is off. Try 'FIU_TTM on' first.")
+            sys.exit()
+    else:
+        try:
+            args.target = float(args.target)
+            args.y = float(args.y)
+            dev.set_pos([args.target, args.y])
+            sys.exit()
+        except ValueError as e:
+            print("Invalid arguments. See below.")
+        except ScriptOff as e:
+            print("Control script off. Try 'FIU_TTM enable' first.")
+            sys.exit()
+        except StageOff as e:
+            print("Device is off. Try 'FIU_TTM on' first.")
+            sys.exit()
 
 #before finding limits, we display usage (note the only tag left to parse is
 #  'center' which comes with 'move', so it's ok to display this first.
 if not "move" in args:
-    cmds=["goto", "center", "status"]
+    cmds=["goto", "status"]
     print("""
 --------------------------------------------
 Movement:
       - - - - - - - - - - - - - - - -      
-FIU_TTM <CMD> <-x/-y <ARG>>
+FIU_TTM <CMD> [<POS> <POS>] [PRESET]
 --------------------------------------------
 CMD:
 {b:3}{:<8}move to an absoluate position
-{b:3}{:<8}move to center of range
 
 Type FIU_TTM <CMD> for examples and limits
 --------------------------------------------
@@ -315,48 +230,33 @@ max1=config.getfloat("TTM_Limits", "max_1")
 min2=config.getfloat("TTM_Limits", "min_2")
 max2=config.getfloat("TTM_Limits", "max_2")
 
-if "center" in args:
-    pos = Pos_P.get_data()
-    pos[0] = (min1+max1)/2
-    pos[1] = (min2+max2)/2
-
-    #save counter so we know when shm has been updated
-    cnt = Pos_D.get_counter()
-
-    #update Pos_P
-    Pos_P.set_data(pos)
-
-    #wait for shared memory to be updated
-    sleep(1)
-
-    error = Error.get_data()[0] 
-    if error == 2:
-        print()
-        print("LOOP OPEN, CANNOT MOVE.")
-        print()
-
-    sys.exit()
-
-
 lim_msgx="(x: must be between {} and {})".format(min1, max1)
 lim_msgy="(y: must be between {} and {})".format(min2, max2)
 thirdx=(max1-min1)/3
 thirdy=(max2-min2)/3
-use1="x {:.2f} y {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
-use2="x {:.0f}".format(min1+2*thirdx)
-use3="y {:.3f}".format(min2+.5*thirdy) 
+use1="{:.2f} {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
+use2="{:.0f} {:.3f}".format(min1+2*thirdx, min2+.5*thirdy)
+if len(dev.presets) != 0:
+    use3 = "{}".format(list(dev.presets.keys())[0])
+else:
+    use3 = "{} {}".format(min1, max2)
+
+pres_msg = ""
+for pres in dev.presets:
+    pres_msg += "{b:5}{name:<10}: {val}\n".format(b = "", name = pres,
+                val = dev.presets[pres])
 
 print("""
 --------------------------------------------
-Usage: FIU_TTM goto <-x/-y <ARG>>
+Usage: FIU_TTM goto [<POS> <POS>] [PRESET]
 --------------------------------------------
-x/y:
-{b:3}the axis to move (can use one or both)
-ARG:
+POS:
 {b:3}the absolute position to move to
 {b:5}{lim_msgx}
 {b:5}{lim_msgy}
-
+PRESET:
+{b:3}one of the following (values shown too)
+{presets}
 EXAMPLES:
 {b:3}FIU_TTM goto {use1}
 {b:3}FIU_TTM goto {use2}
@@ -364,5 +264,5 @@ EXAMPLES:
 --------------------------------------------
 
 ERROR: invalid ARG. Please see above.
-""".format(use1=use1, use2=use2, use3=use3, lim_msgx=lim_msgx,\
-    lim_msgy=lim_msgy, b=""))
+""".format(presets = pres_msg, use1=use1, use2=use2, use3=use3,
+    lim_msgx=lim_msgx, lim_msgy=lim_msgy, b=""))

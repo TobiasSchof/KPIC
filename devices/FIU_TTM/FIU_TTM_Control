@@ -328,7 +328,7 @@ def close():
     #We want to delete all command shared memories  so scripts can't 
     #mistakenly think the control script is alive.
     try:
-        for shm in [Stat_P, Pos_P, Svos]:
+        for shm in [Stat_P, Pos_P]:
             try: os.remove(shm.fname)
             except Exception as ouch: info("Exception on close: {}".format(ouch))
     except Exception as ouch: info("Exception on close: {}".format(ouch))
@@ -342,10 +342,8 @@ def close():
     
     info("Updating state shared memory file.")
     try:
-        #define how the status should change
-        change = {2:-1, 1:-1, 0:-2, -1:-1, -2:-2}
         #set state status based on above change
-        Stat_D.set_data(np.array([change[Stat_D.get_data()[0]]], np.int8))
+        Stat_D.set_data(np.array([Stat_D.get_data()[0] & ~1], Stat_D.npdtype))
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     #killing semaphore listening processes.
@@ -365,7 +363,8 @@ def close():
 def signal_handler(signum, stack):
     """A function to gracefully exit when a signal is encountered"""
 
-    global alive = False
+    global alive 
+    alive = False
     try: ShmP.release()
     except: pass
 
@@ -451,7 +450,7 @@ info("No duplicate control script, continuing with initialization.")
 info("Registering cleanup.")
 register(close)
 signal(SIGHUP, signal_handler)
-signal(SIGTERM, signal_handler):
+signal(SIGTERM, signal_handler)
 
 info("Initializing command shared memory from config file.")
 
