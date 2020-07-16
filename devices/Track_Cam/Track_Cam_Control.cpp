@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "FliSdk.h"
-#include "Observer.hpp"
+#include "KPIC_Cam_Observer.hpp"
 #include "KPIC_shmlib.hpp"
 
 // Shared memories and the sdk which threads will need

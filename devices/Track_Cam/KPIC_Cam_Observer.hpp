@@ -4,10 +4,10 @@
  */
 
 #include "FliSdk.h"
+#include "IFliCameraObserver.h"
 #include "KPIC_shmlib.hpp"
 
-class FliObserver : public IFliCameraObserver, 
-                    public IRawImageReceivedObserver(){
+class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
 
   public:
     // constructor
@@ -17,10 +17,10 @@ class FliObserver : public IFliCameraObserver,
 
     // The method that is called when a new image is ready
     //   even though the pointer is cast as uint8_t, the image is 16-bit
-    virtual void ImageReceived(uint8_t* image) override;
+    virtual void imageReceived(const uint8_t* image) override;
     // Defines the speed that the above method is triggered at. A return 
     //   of 0 means maximum speed
-    virtual double fpsTrigger() override;
+    virtual uint16_t fpsTrigger() override;
 
     // inherited from IFliCameraObserver
     
@@ -64,5 +64,5 @@ class FliObserver : public IFliCameraObserver,
      *   changed before images can start being recorded.
      */ 
     bool cam_res = false;
-    bool shm_res - false;
+    bool shm_res = false;
 } 

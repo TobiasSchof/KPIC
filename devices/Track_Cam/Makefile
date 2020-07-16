@@ -3,12 +3,9 @@
 override SYSNAM = kss/nirspec/nsfiu/devices/Track_Cam
 override VERNUM = 1.0
 
-# If I knew that code would not work with Python 2 I would:
-##override ENABLE_PYTHON2 = False
-## DIRS = designer
-
-RELLIB = 
-RELBIN = 
+SOURCE = Track_Cam_Control.cpp KPIC_Cam_Observer.cpp
+RELINCLUDE = KIPC_Cam_Observer.hpp
+RELBIN = Track_Cam_Control
 RELDAT = Track_Cam.ini 
 
 
@@ -39,3 +36,7 @@ endif
 ################################################################################
 include $(RELDIR)/etc/rules.mk
 ################################################################################
+
+
+Track_Cam_Control: Track_Cam_Control.cpp KPIC_Cam_Observer.cpp
+	$(CC) -o Track_Cam_Control Track_Cam_Control.cpp KPIC_Cam_Observer.cpp -lpthread -L$(FLISDK_DIR)/lib/release -lFliSdk -I$(FLISDK_DIR)/include -std=c++11

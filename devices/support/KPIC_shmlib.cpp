@@ -2,18 +2,17 @@
  * This class implements the shared memory class defined in shmlib.hpp
  */
 
-#include <semaphore.h>             // adds POSIX semaphores
-#include <fcntl.h>                 // adds O POSIX tags (O_CREAT)
-#include <thread>                  // adds threading
-#include <sys/mman.h>              // adds mmap
-#include <sys/stat.h>              // adds mmap tags
-#include <time.h>                  // adds timespec and enables getting the time
-#include <string>                  // adds string
-#include <cstring>                 // adds strcpy
-#include <fstream>                 // adds file reading/writing
-#include <stdint.h>                // adds uxxx_t types
-#include <experimental/filesystem> // adds directory inspection
-namespace fs = std::experimental::filesystem;
+#include <semaphore.h>  // adds POSIX semaphores
+#include <fcntl.h>      // adds O POSIX tags (O_CREAT)
+#include <thread>       // adds threading
+#include <sys/mman.h>   // adds mmap
+#include <sys/stat.h>   // adds mmap tags
+#include <time.h>       // adds timespec and enables getting the time
+#include <string>       // adds string
+#include <cstring>      // adds strcpy
+#include <fstream>      // adds file reading/writing
+#include <stdint.h>     // adds uxxx_t types
+#include <dirent.h>     // adds directory inspection
 
 #include <iostream>
 
@@ -34,35 +33,31 @@ namespace fs = std::experimental::filesystem;
  *    int = -1 if SEM_DIR isn't found, else 0
  */
 int postSems(std::string sem_fnm){
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(SEM_DIR)) != NULL) {
+        /* print all the files and directories within directory */
+        while ((ent = readdir(dir)) != NULL) {
+            if (strncmp(sem_fnm.c_str(), ent->d_name, sem_fnm.length()) == 0){
+                // replace 'sem.' in file name with '/' to get semaphore name
+                std::string sem_nm = ent->d_name;
+                sem_nm.erase(0, 4);
+                sem_nm = "/" + sem_nm;
+                // open the semaphore
+                sem_t *sem = sem_open(sem_nm.c_str(), O_CREAT, 0644, 0);   
+                // increment the semaphore
+                sem_post(sem);
+                // close the semaphore
+                sem_close(sem);
+            }
+        }
+        closedir (dir);
 
-    // Return with error if directory can't be found
-    if (!fs::exists(SEM_DIR) | !fs::is_directory(SEM_DIR)){
+        return 0;
+    } else {
+        // could not open directory
         return -1;
     }
-
-    // Look through semaphore directory
-    for (const auto & entry : fs::directory_iterator(SEM_DIR)){
-        std::string f_nm = entry.path();
-        f_nm.erase(0, 9);
-        // check if this semaphore's name matches this shm's semaphores' names
-        if (strncmp(sem_fnm.c_str(), f_nm.c_str(), sem_fnm.length()) == 0){
-            // replace 'sem.' in file name with '/' to get semaphore name
-            std::string sem_nm = f_nm;
-            sem_nm.erase(0, 4);
-            sem_nm = "/" + sem_nm;
-
-            // open the semaphore
-            sem_t *sem = sem_open(sem_nm.c_str(), O_CREAT, 0644, 0);   
-
-            // increment the semaphore
-            sem_post(sem);
-
-            // close the semaphore
-            sem_close(sem);
-        } 
-    }
-
-    return 0;
 }
 
 int get_size(size_t* size, int enc)

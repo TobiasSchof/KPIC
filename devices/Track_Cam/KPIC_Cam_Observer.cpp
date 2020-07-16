@@ -10,7 +10,7 @@
 #include <stdlib.h> // for getting environmental variables
 
 #include "FliSdk.h"
-#include "Observer.hpp"
+#include "KPIC_Cam_Observer.hpp"
 #include "KPIC_shmlib.hpp"
 
 /*
@@ -128,7 +128,7 @@ void FliObserver::FliObserver(){
 /*
  * Set fps trigger to 0 to do fastest updates
  */
-double FliObserver::fpsTrigger(){ return 0; }
+uint16_t FliObserver::fpsTrigger(){ return 0; }
 
 /*
  * This method is called any time a new image is ready.
@@ -138,7 +138,7 @@ double FliObserver::fpsTrigger(){ return 0; }
  * NOTE: The FliSdk casts the pointer to the image as uint8_t* but the image is
  *   really 16-bit
  */
-void FliObserver::ImageReceived(uint8_t* image){
+void FliObserver::imageReceived(uint8_t* image){
     if (cam_res && shm_res){ img->set_data(image); } 
 }
 
@@ -202,7 +202,7 @@ void FliObserver::onCroppingChanged(bool enabled, uint16_t col1,
         img->resize(&size);
 
         // set crop_d shm to "no crop"
-        uint16_t data[4] = {-1, -1, -1, -1};
+        uint16_t data[4] = {0, 0, 0, 0};
         crop->set_data(&data);
     }
 
