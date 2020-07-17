@@ -93,15 +93,6 @@ int get_size(size_t* size, int enc)
     }
 }
 
-/*
- * an exception to be thrown when a shm that doesn't exist is attached to
- */
-class MissingSharedMemory: public std::exception{
-    
-    virtual const char* what() const throw(){
-        return "No shared memory, please create.";
-    }
-} NoShm; 
 
 /*
  * an exception to be thrown when a shm can't be read because dtype is invalid

@@ -29,6 +29,16 @@ typedef struct{
 } complex_double;
 
 /*
+ * an exception to be thrown when a shm that doesn't exist is attached to
+ */
+class MissingSharedMemory: public std::exception{
+    
+    virtual const char* what() const throw(){
+        return "No shared memory, please create.";
+    }
+} NoShm; 
+
+/*
  * Defines a structure to hold the image's metadata
  */ 
 typedef struct
