@@ -115,7 +115,7 @@ class NPS_cmds:
         # use self.follow if no ports are given
         if ports is None: ports = self.follow
         # convert ports to a list to iterate
-        if type(ports) is not list: ports = list(ports)
+        if type(ports) is not list: ports = [ports]
 
         # get status of all ports (NPS doesn't support individual port query)
         stat = self.getStatusAll(update)
