@@ -33,9 +33,6 @@ except TypeError:
     print("No DATA environment variable, using '/nfiudata'")
 LOG_FILE = "FIU_TTM.log" #the name of the log file (appended to DATA/YYYMMDD/)
 
-# folder in nfiudata to put logs
-LOGS = DATA + "/LOG"
-
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
@@ -127,14 +124,14 @@ def draw():
     stat = Stat_D.get_data()[0]
     s_time = Stat_D.get_time() 
     if stat & 1:
-        if not (stat & 8):
+        if not (stat & 2):
+            dstatus = dstatus.format("ON", "OFF")
+        elif not (stat & 8):
             dstatus = dstatus.format("ON", "NOT REF.")
         elif stat & 4:
             dstatus = dstatus.format("ON", "MOVING")
-        elif stat & 2:
-            dstatus = dstatus.format("ON", "ON")
         else:
-            dstatus = dstatus.format("ON", "OFF")
+            dstatus = dstatus.format("ON", "ON")
     else:
         dstatus = dstatus.format("OFF", "---")
     dstatus=[dstatus, s_time]
@@ -144,14 +141,14 @@ def draw():
     stat = Stat_P.get_data()[0]
     s_time = Stat_P.get_time() 
     if stat & 1:
-        if not (stat & 8):
+        if not (stat & 2):
+            pstatus = pstatus.format("ON", "OFF")
+        elif not (stat & 8):
             pstatus = pstatus.format("ON", "NOT REF.")
         elif stat & 4:
             pstatus = pstatus.format("ON", "MOVING")
-        elif stat & 2:
-            pstatus = pstatus.format("ON", "ON")
         else:
-            pstatus = pstatus.format("ON", "OFF")
+            pstatus = pstatus.format("ON", "ON")
     else:
         pstatus = pstatus.format("OFF", "---")
     pstatus=[pstatus, s_time]
@@ -204,8 +201,15 @@ def update(updates:list):
     year = str(gmt.tm_year)[-2:]
     date="{}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
-    cur_path = "{}/{}".format(LOGS, date.replace("/", ""))
+    cur_path = "{}/{}".format(DATA, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
+    try:
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    except FileNotFoundError:
+        print("DATA variable set incorrectly.")
+
+    cur_path = "{}/{}".format(cur_path, "LOGS")
+    # check whether the log folder in the date folder exists
     try:
         if not os.path.isdir(cur_path): os.mkdir(cur_path)
     except FileNotFoundError:

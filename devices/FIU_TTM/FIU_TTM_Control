@@ -243,7 +243,7 @@ def device_on():
     if nps.getStatus(): return
 
     info("Sending on command to NPS")
-    nps.tunrOn()
+    nps.turnOn()
 
     info("Waiting for NPS to turn on device.")
     while not nps.getStatus(): sleep(.1)
@@ -420,6 +420,9 @@ if os.path.isfile(Stat_D[0]):
         info("Active control script exists. Raising exception.")
         msg="State shared memory status {}.".format(status)
         raise AlreadyAlive(msg)
+    else:
+        status = status | 1
+        Stat_D.set_data(np.array([status], Stat_D.npdtype))
 else:
     info("No state shared memory file. Creating file.")
     Stat_D = config.get("Shm_Info", "Stat_D").split(",")

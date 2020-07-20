@@ -123,6 +123,14 @@ if "on" in args:
     except ScriptOff as e:
         print("Control script off. Try 'FIU_TTM enable' first.")
 
+    cnt = 2
+    while not dev.is_On():
+        cnt = (cnt % 3) + 1
+        print("\033[FTurning device on{:<3}".format("."*cnt))
+        sleep(1)
+
+    print("\033[FDevice on.\033[K")
+
     sys.exit()
 
 if "off" in args:
@@ -164,7 +172,7 @@ if "goto" in args and not args.target is None:
     # if only first argument was provided, it should be a preset
     if args.y is None:
         try: 
-            dev.set_pos(args.target)
+            dev.set_pos(args.target, block = True)
             sys.exit()
         except MissingPreset as e:
             print("Invalid preset '{}'. See below.".format(args.target))
@@ -178,7 +186,7 @@ if "goto" in args and not args.target is None:
         try:
             args.target = float(args.target)
             args.y = float(args.y)
-            dev.set_pos([args.target, args.y])
+            dev.set_pos([args.target, args.y], block = True)
             sys.exit()
         except ValueError as e:
             print("Invalid arguments. See below.")

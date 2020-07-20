@@ -222,28 +222,35 @@ class FIU_TTM_cmds:
         elif type(target) is list:
             if len(target) != 2:
                 raise ValueError("List should have two elements, x and y.")
-            for axis in target:
-                if type(axis) is not float:
-                    raise ValueError("list elements should be floats.")
+            for idx, axis in enumerate(target):
+                try: target[idx] = float(axis)
+                except ValueError: raise ValueError("list elements should be floats.")
 
         pos = self.Pos_P.get_data()
 
-        #it's easier to modify returns rather than format a numpy array
-        pos[0] = ax1
-        pos[1] = ax2
+        # it's easier to modify returns rather than format a numpy array
+        pos[0] = target[0]
+        pos[1] = target[1]
 
+        # get latest counter so we can make sure we're watching the device after it's updating
+        if block: self.Stat_D.get_counter()
+
+        # set new position
         self.Pos_P.set_data(pos)
 
-        #for translation of error codes, see config file
+        if not block: return
+
+        while self.Stat_D.mtdata["cnt0"] == self.Stat_D.get_counter(): sleep(.5)
+
+        while self.Stat_D.get_data()[0] & 4: sleep(.5)
+
+        # for translation of error codes, see config file
         error = self.get_error()
         if error == 0: return list(pos)
         elif error == 1: raise MovementRange("Requested move outside limits.")
         elif error == 2: raise LoopOpen("Open loop movement not supported.") 
         elif error == 3: raise StageOff("Turn on device and try again.")
 
-        if not block: return
-
-        while self.Stat_D.get_data()[0] & 4: sleep(.5)
         
     def activate_Control_Script(self):
         """Activates the control script if it's not already active."""
