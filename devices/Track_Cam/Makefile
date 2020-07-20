@@ -37,6 +37,6 @@ endif
 include $(RELDIR)/etc/rules.mk
 ################################################################################
 
-
+# requires libpng12.x86_64
 Track_Cam_Control: Track_Cam_Control.cpp KPIC_Cam_Observer.cpp
 	$(CC) -o Track_Cam_Control Track_Cam_Control.cpp KPIC_Cam_Observer.cpp -lpthread -L$(FLISDK_DIR)/lib/release -lFliSdk -I$(FLISDK_DIR)/include -std=c++11

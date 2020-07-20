@@ -65,4 +65,4 @@ class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
      */ 
     bool cam_res = false;
     bool shm_res = false;
-} 
+}; 

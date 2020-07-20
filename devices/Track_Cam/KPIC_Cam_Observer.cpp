@@ -11,12 +11,11 @@
 
 #include "FliSdk.h"
 #include "KPIC_Cam_Observer.hpp"
-#include "KPIC_shmlib.hpp"
 
 /*
  * Constructor for Observer class
  */
-void FliObserver::FliObserver(){
+FliObserver::FliObserver(){
     // prepare strings to store info from config file
     std::string img_cf;
     std::string fps_cf;
@@ -26,10 +25,10 @@ void FliObserver::FliObserver(){
  
     // find path to config file
     std::string path = getenv("RELDIR");
-    if (path[path.length() - 1] == "/") {path.erase(path.length() - 1, 1)}
-    path += "/data"
-    if (path == NULL) { 
-        perror("No CONFIG environment variable found.";
+    if (path.compare(path.length() - 1, 1, "/")) { path.erase(path.length() - 1, 1); }
+    path += "/data";
+    if (path == "") { 
+        perror("No CONFIG environment variable found.");
         exit(EXIT_FAILURE);
     }
     path += "/Track_Cam.ini";
@@ -52,7 +51,7 @@ void FliObserver::FliObserver(){
     }
  
     // close config file
-    conf.close()
+    conf.close();
  
     // the paths for shared memory are up to the comma
     size_t idx;
@@ -89,39 +88,39 @@ void FliObserver::FliObserver(){
  
     // if a shared memory doesn't exist and we try to connect to it,
     //    it will throw an error.
-    try { img = new Shm(img_fc); }
-    catch (NoShm) {
+    try { img = new Shm(img_cf); }
+    catch (MissingSharedMemory& ex) {
         uint16_t data[640*512];
         uint16_t size[3] = {640, 512, 0};
-        img = new Shm(img_fc, &size, 3, 3, &data, true); 
+        img = new Shm(img_cf, size, 3, 3, &data, true); 
     }
  
-    try { fps = new Shm(fps_fc); }
-    catch (NoShm) {
+    try { fps = new Shm(fps_cf); }
+    catch (MissingSharedMemory& ex) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        fps = new Shm(fps_fc, &size, 3, 10, &data, false); 
+        fps = new Shm(fps_cf, size, 3, 10, &data, false); 
     }
     
-    try { exp = new Shm(exp_fc); }
-    catch (NoShm) {
+    try { exp = new Shm(exp_cf); }
+    catch (MissingSharedMemory& ex) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        exp = new Shm(exp_fc, &size, 3, 10, &data, false); 
+        exp = new Shm(exp_cf, size, 3, 10, &data, false); 
     }
     
-    try { ndr = new Shm(ndr_fc); }
-    catch (NoShm) {
+    try { ndr = new Shm(ndr_cf); }
+    catch (MissingSharedMemory& ex) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        ndr = new Shm(ndr_fc, &size, 3, 1, &data, false); 
+        ndr = new Shm(ndr_cf, size, 3, 1, &data, false); 
     }
  
-    try { crop = new Shm(crop_fc); }
-    catch (NoShm) {
+    try { crop = new Shm(crop_cf); }
+    catch (MissingSharedMemory& ex) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        crop = new Shm(crop_fc, &size, 3, 3, &data, false); 
+        crop = new Shm(crop_cf, size, 3, 3, &data, false); 
     }
 }
 
@@ -138,7 +137,7 @@ uint16_t FliObserver::fpsTrigger(){ return 0; }
  * NOTE: The FliSdk casts the pointer to the image as uint8_t* but the image is
  *   really 16-bit
  */
-void FliObserver::imageReceived(uint8_t* image){
+void FliObserver::imageReceived(const uint8_t* image){
     if (cam_res && shm_res){ img->set_data(image); } 
 }
 
@@ -189,8 +188,7 @@ void FliObserver::onCroppingChanged(bool enabled, uint16_t col1,
                                       uint16_t row2){
     if (enabled){
         // resize the image in shm
-        uint16_t size[3] = {col2 - col1, row2 - row1, 0};
-        img->resize(&size);
+        img->resize(col2 - col1, row2 - row1, 0);
 
         // set crop_d shm
         uint16_t data[4] = {col1, col2, row1, row2};
@@ -198,8 +196,7 @@ void FliObserver::onCroppingChanged(bool enabled, uint16_t col1,
 
     } else {
         // resize the image in shm to max
-        uint16_t size[3] = {640, 512, 0};
-        img->resize(&size);
+        img->resize(640, 512, 0);
 
         // set crop_d shm to "no crop"
         uint16_t data[4] = {0, 0, 0, 0};
@@ -213,7 +210,7 @@ void FliObserver::onCroppingChanged(bool enabled, uint16_t col1,
 /*
  * Delete references to shared memories in the destructor
  */
-void FliObserver::~FliObserver(){
+FliObserver::~FliObserver(){
     delete img;
     delete fps;
     delete exp;

@@ -36,7 +36,7 @@ class MissingSharedMemory: public std::exception{
     virtual const char* what() const throw(){
         return "No shared memory, please create.";
     }
-} NoShm; 
+}; 
 
 /*
  * Defines a structure to hold the image's metadata
@@ -141,7 +141,7 @@ class Shm{
          * Inputs:
          *   new_data = a pointer to the start of the data to be written.
          */
-        void set_data(void *new_data);
+        void set_data(const void *new_data);
 
         /*
          * Gets the current data from the shm and returns a pointer to it.
@@ -159,7 +159,7 @@ class Shm{
          * Inputs:
          *   size = how to resize this data
          */
-        void resize(uint16_t size[3]);
+        void resize(uint16_t dim1, uint16_t dim2, uint16_t dim3);
 
         // destructor
         ~Shm();

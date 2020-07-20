@@ -111,7 +111,7 @@ Shm::Shm(std::string filepath)
     // open file
     FILE* backing = fopen(fname.c_str(), "rb+");
     // check that file was opened successfully
-    if (!backing) { throw NoShm; }
+    if (!backing) { throw MissingSharedMemory(); }
     // read in metadata
     fread(&mtdata, sizeof(mtdata), 1, backing);
     // close file
@@ -247,7 +247,7 @@ void Shm::getMetaData(){
         // open file as read only to check existence
         FILE* backing = fopen(fname.c_str(), "rb");
         // check for file existence
-        if (!backing){ throw NoShm; } 
+        if (!backing){ throw MissingSharedMemory(); } 
         // read in metadata
         fread(&mtdata, DATA_OFFSET, 1, backing); 
         fclose(backing);
@@ -259,7 +259,7 @@ uint64_t Shm::getCounter(){
         memcpy(&mtdata.cnt0, buf + CNT0_OFFSET, sizeof(mtdata.cnt0));
     } else {
         FILE* backing = fopen(fname.c_str(), "rb");
-        if (!backing){ throw NoShm; } 
+        if (!backing){ throw MissingSharedMemory(); } 
         // move to cnt0 position
         fseek(backing, CNT0_OFFSET, SEEK_SET);
         fread(&mtdata.cnt0, sizeof(mtdata.cnt0), 1, backing); 
@@ -269,7 +269,7 @@ uint64_t Shm::getCounter(){
     return mtdata.cnt0;
 }
 
-void Shm::set_data(void *new_data){
+void Shm::set_data(const void *new_data){
     struct timespec time;
     timespec_get(&time, TIME_UTC);
 
@@ -289,7 +289,7 @@ void Shm::set_data(void *new_data){
         memcpy(buf+ATIME_OFFSET, &mtdata.atime, edit);
     } else {
         FILE* backing = fopen(fname.c_str(), "rb+");
-        if (!backing){ throw NoShm; }
+        if (!backing){ throw MissingSharedMemory(); }
         // write atime
         fseek(backing, ATIME_OFFSET, SEEK_SET);
         fwrite(&mtdata.atime, edit, 1, backing);
@@ -351,7 +351,7 @@ void Shm::get_data(void *loc, bool wait){
         getCounter();
     } else {
         FILE* backing = fopen(fname.c_str(), "rb");
-        if (!backing){ throw NoShm; }
+        if (!backing){ throw MissingSharedMemory(); }
         // get CNT0 (we avoid using getCounter() to only open file once)
         fseek(backing, CNT0_OFFSET, SEEK_SET);
         fread(&mtdata.cnt0, sizeof(mtdata.cnt0), 1, backing);
@@ -365,11 +365,11 @@ void Shm::get_data(void *loc, bool wait){
     sem_post(lock);
 }
 
-void Shm::resize(uint16_t size[3]){
+void Shm::resize(uint16_t dim1, uint16_t dim2, uint16_t dim3){
 
-    mtdata.size[0] = size[0];
-    mtdata.size[1] = size[1];
-    mtdata.size[2] = size[2];
+    mtdata.size[0] = dim1;
+    mtdata.size[1] = dim2;
+    mtdata.size[2] = dim3;
 
     mtdata.nel = 1;
     for (int i=0; i<3; i++){
@@ -383,7 +383,7 @@ void Shm::resize(uint16_t size[3]){
         memcpy(buf+NEL_OFFSET, &mtdata.nel, len);
     } else {
         FILE* backing = fopen(fname.c_str(), "rb+");
-        if(!backing){ throw NoShm; }
+        if(!backing){ throw MissingSharedMemory(); }
         // update nel and size at once
         fseek(backing, NEL_OFFSET, SEEK_SET);
         fwrite(&mtdata.nel, len, 1, backing);
