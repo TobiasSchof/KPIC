@@ -168,7 +168,7 @@ def device_on() -> int:
 
     # connect both controllers
     if not dev.IsConnected():
-        try: dev.ConnectRS232(DEVNNM, BAUD)
+        try: dev.ConnectRS232(DEVNM, BAUD)
         except GCSError: err = 1
 
         # define limits as the larger of the min values between config file and software limits, vice 
