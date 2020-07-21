@@ -1,0 +1,237 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from configparser import ConfigParser
+from time import sleep, gmtime, time
+from subprocess import Popen
+from atexit import register, unregister
+from signal import signal, SIGHUP, SIGTERM
+import sys, os
+
+# installs
+from posix_ipc import Semaphore, O_CREX, ExistentialError
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+
+"""
+A script to continuously maintian a distplay of shm values in the Fiber_MP tmux 
+session and log any changes to the state shared memory. Does not run faster than 
+once per 5 seconds
+"""
+
+# this script should not be used as an import
+if __name__ != "__main__":
+    print("Fiber_MP_draw is not meant to be used as an import")
+    sys.exit()
+
+# a flag to tell the whole script to stop if a signal is passed
+alive = True
+
+# the path to the directory where data is stored
+DATA = os.environ.get("DATA")
+try:
+    if DATA[-1] =="/": DATA=DATA[:-1]
+except TypeError:
+    DATA = "/nfiudata"
+    print("No DATA environment variable, using '/nfiudata/'")
+
+# the name of the log file (appended to DATA/YYYMMDD/LOGS)
+LOG_FILE = "Fiber_MP.log"
+
+# load the config file
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+config = ConfigParser()
+config.read(RELDIR+"/data/Fiber_MP.ini")
+
+# Create a semaphore to combine all shm sems
+shm_update = Semaphore(None, flags = O_CREX)
+# make a list of sem listen processes to kill at program termination
+Sem_Listeners = []
+
+# Connect to shared memories
+Stat_D = config.get("Shm Info", "Stat_D").split(",")
+Stat_D = Shm(Stat_D[0], sem = True, mmap = (Stat_D[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
+
+Stat_P = config.get("Shm Info", "Stat_P").split(",")
+Stat_P = Shm(Stat_P[0], sem = True, mmap = (Stat_P[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
+
+Pos_D = config.get("Shm Info", "Pos_D").split(",")
+Pos_D = Shm(Pos_D[0], sem = True, mmap = (Pos_D[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
+
+Pos_P = config.get("Shm Info", "Pos_P").split(",")
+Pos_P = Shm(Pos_P[0], sem = True, mmap = (Pos_P[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
+
+Error = config.get("Shm Info", "Error").split(",")
+Error = Shm(Error[0], sem = True, mmap = (Error[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
+
+def close():
+    """Cleanup method to release semaphores and kill processes"""
+
+    try:
+        for proc in Sem_Listeners:
+            try: proc.kill()
+            except Exception as ouch: print("Exception on close: {}".format(ouch))
+    except Exception as ouch: print("Exception on close: {}".format(ouch))
+
+    try:
+        shm_update.unlink()
+        shm_update.close()
+    except Exception as ouch: print("Exception on close: {}".format(ouch))
+
+    unregister(close)
+
+def signal_handler(signum, stack):
+    global alive
+    alive = False
+    try: shm_update.release()
+    except: pass
+
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+def loop():
+    """A method that performs one iteration of the loop.
+
+    Waits 5 seconds between iterations.
+    """
+
+    # get counts of last update on each of the shms that we need to log
+    #   This will tell us which has been updated
+    Dstat_cnt = Stat_D.mtdata["cnt0"]
+    Dpos_cnt  = Pos_D.mtdata["cnt0"]
+    Error_cnt = Error.mtdata["cnt0"]
+
+    # wait for one of the shms to be updated
+    shm_update.acquire()
+
+    # put an exit point here for if we want the script to stop
+    if not alive: return
+
+    updates = []
+    if Stat_D.get_counter() != Dstat_cnt: updates.append(1)
+    if Pos_D.get_counter() != Dpos_cnt:   updates.append(2)
+    if Error.get_counter() != Error_cnt:  updates.append(3)
+
+    update(updates)
+    draw()
+
+    sleep(5)
+
+def draw():
+    """Draws a display with shared memory values."""
+
+    dpos = [Pos_D.get_data()[0], Pos_D.get_time()]
+    ppos = [Pos_P.get_data()[0], Pos_P.get_time()]
+
+    # translate status for user
+    def stat_trans(stat:int) -> str:
+        """Translates a status bit code to user readable values
+
+        Args:
+            stat = an integer formatted as laid out in Fiber_MP.ini
+        Returns:
+            str = human-readable string
+        """
+
+        msg = "Device: {} | {}"
+
+        if not (stat & 2): return msg.format("off", "---")
+        else:
+            app = "ready" if (stat & 4) else "loop open"
+            return msg.format("on", app)
+    dstatus = [stat_trans(Stat_D.get_data()[0]), Stat_D.get_time()]
+    pstatus = [stat_trans(Stat_P.get_data()[0]), Stat_P.get_time()]
+
+    # translate error for user
+    derror = {0:"No Error", 1:"GCS Error (PI)", 2:"Loop Open", 3:"Movement Range"}
+    derror = derror[Error.get_data()[0]]
+    derror = [derror, Error.get_time()]
+
+    def t(time:float):
+        """Returns a printable string for a UNIX epoch time, formatted in GMT"""
+
+        gmt = gmtime(time)
+        date = "{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        ftime = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        
+        return "{} {} GMT".format(date, ftime)
+
+    fmt = u"\u2503"" {:<37}"*2+u"\u2503"
+    print("\033c", end="")
+    print(u"\u250F""{:<77}"u"\u2513".format(u"\u2501"*77))
+    print(u"\u2503""{:^77}"u"\u2503".format("Fiber multiport Controller"))
+    print(u"\u2523""{0:<38}"u"\u2533""{0:<38}"u"\u252B".format(u"\u2501"*38))
+    print(fmt.format("Device state:", "Requests:"))
+    print(fmt.format("", ""))
+    print(fmt.format("Position: ", "Position:"))
+    print(fmt.format(str(dpos[0]), str(ppos[0])))
+    print(fmt.format(t(dpos[1]), t(ppos[1])))
+    print(fmt.format("", ""))
+    print(fmt.format("Status:", "Status:"))
+    print(fmt.format(dstatus[0], pstatus[0]))
+    print(fmt.format(t(dstatus[1]), t(pstatus[1])))
+    print(fmt.format("", ""))
+    print(fmt.format("Error message:", ""))
+    print(fmt.format(derror[0], ""))
+    print(fmt.format(t(derror[1]), ""))
+    print(fmt.format("", ""))
+    print(u"\u2517"+u"\u2501"*38+u"\u253B"+u"\u2501"*38+u"\u251B")
+
+def update(updates:list):
+    """Updates the log.
+
+    Args:
+        update = the list of state shms that have been updated:
+            1 = Stat_D
+            2 = Pos_D
+            3 = Error
+    """
+
+    gmt = gmtime()
+    year = "{}".format(gmt.tm_year)[-2:]
+    date = "{}{:02d}{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
+
+    # get the path to today's folder
+    cur_path = "{}/{}".format(DATA, date)
+    # check whether the date of the last state shared memory update has a folder
+    try: 
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
+    except FileNotFoundError: print("DATA variable set incorrectly")
+
+    # check for existence of LOG folder within today's dated folder
+    cur_path += "/LOG"
+    if not os.path.isdir(cur_path): os.mkdir(cur_path)
+
+    # translate update list to names and values
+    names = {1:"status", 2:"position", 3:"error"}
+    vals = {"status":Stat_D.get_data()[0], "error":Error.get_data()[0],
+        "position":Pos_D.get_data()[0]}
+    times = {"status":Stat_D.get_time(), "error":Error.get_time(),
+        "position":Pos_D.get_time()}
+
+    # format log message
+    msg = "{date:<11}{time:<10}update: {name:>6} = {val}\n"
+    for item in updates:
+        # log a change if there's a new value
+        name = names[item]
+        gmt = gmtime(times[name])
+        date = "{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        val = vals[name]
+
+        with open("{}/{}".format(cur_path, LOG_FILE), "a") as log:
+            log.write(msg.format(date = date, time = log_t, name = name, val = val))
+
+# draw initial values
+draw()
+
+# continuously run the process loop
+while alive: loop()
