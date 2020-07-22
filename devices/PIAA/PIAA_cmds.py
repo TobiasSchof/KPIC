@@ -250,14 +250,11 @@ class PIAA_cmds:
             raise MovementTimeout("Movement is taking too long. Check for blocks.")
         # raise an error if there is an error
         err = self.Error.get_data()[0]
-        if err < 0: 
-            msg = "Error {}.".format(chr(-1*err + 64))
-            raise ShmError(msg)
-        elif err > 0: 
+        if err > 0: 
             msg = "Error {}.".format(err)
             raise ShmError(msg)
 
-    def activate_Control_Script(self):
+    def activate_Control_Script(self, append = None):
         """Activates the control script if it's not already active."""
 
         if self.is_Active(): 
@@ -270,6 +267,13 @@ class PIAA_cmds:
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
+
+        if not append is None:
+            # the command to start the control script will be the last set of quotes
+            idx = command.rfind("")
+            if idx == -1: raise Exception("Cannot find where to append")
+            command = command[:idx] + append + command[idx:]
+
         #the tmux command should be split up by spaces
         for cmd in command: Popen(cmd.split(" "))
 

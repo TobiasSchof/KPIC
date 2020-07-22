@@ -6,7 +6,7 @@ override VERNUM = 1.0
 override ENABLE_PYTHON2 = False
 
 RELLIB = PIAA_cmds.py
-RELBIN = PIAA_Control PIAA_draw
+RELBIN = PIAA_Control PIAA_draw PIAA
 RELDAT = PIAA.ini
 LIBSUB = python
 
