@@ -6,7 +6,7 @@ override VERNUM = 1.0
 override ENABLE_PYTHON2 = False
 
 RELLIB = Coronagraph_cmds.py
-RELBIN = Coronagraph_Control Coronagraph_draw, Coronagraph
+RELBIN = Coronagraph_Control Coronagraph_draw Coronagraph
 RELDAT = Coronagraph.ini
 LIBSUB = python
 
