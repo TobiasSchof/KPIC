@@ -6,7 +6,7 @@ override VERNUM = 1.0
 override ENABLE_PYTHON2 = False
 
 RELLIB = PyWFS_cmds.py
-RELBIN = PyWFS_Control PyWFS_draw
+RELBIN = PyWFS_Control PyWFS_draw PyWFS
 RELDAT = PyWFS.ini
 LIBSUB = python
 
