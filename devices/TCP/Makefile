@@ -7,7 +7,7 @@ override VERNUM = 1.0
 override ENABLE_PYTHON2 = False
 
 RELLIB = TCP_cmds.py
-RELBIN = TCP_Control TCP_draw
+RELBIN = TCP_Control TCP_draw TCP
 RELDAT = TCP.ini
 LIBSUB = python
 
