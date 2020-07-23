@@ -6,7 +6,7 @@ override VERNUM = 1.0
 override ENABLE_PYTHON2 = False
 
 RELLIB = Fiber_MP_cmds.py
-RELBIN = Fiber_MP_Control Fiber_MP_draw
+RELBIN = Fiber_MP_Control Fiber_MP_draw Fiber_MP
 RELDAT = Fiber_MP.ini
 LIBSUB = python
 
