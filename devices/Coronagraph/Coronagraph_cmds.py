@@ -264,6 +264,7 @@ class Coronagraph_cmds:
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
 
+        # add append to the end of the start command
         if not append is None:
             # the command to start the control script will be the last set of quotes
             idx = command.rfind("")

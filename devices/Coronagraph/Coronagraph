@@ -166,7 +166,7 @@ if args.command == "off":
 # next check home
 if args.command == "home":
     # if device is already homed, do nothing
-    if not dev.is_Homed():
+    if dev.is_Homed():
         print("Device already homed.")
         sys.exit()
     # home device
@@ -230,6 +230,8 @@ if args.command == "goto":
                 print("Device unreferenced. Please use 'Coronagraph home'")
             else:
                 print(e.message)
+        except LoopOpen as e:
+            print("Device in open loop. Please use 'TCP home'.")
     # if no target was provided, just display help page
     elif len(args.target) == 0:
         goto.print_help()
