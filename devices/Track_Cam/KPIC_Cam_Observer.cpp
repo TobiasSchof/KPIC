@@ -9,7 +9,6 @@
 #include <fstream>  // for reading config file
 #include <stdlib.h> // for getting environmental variables
 
-#include "FliSdk.h"
 #include "KPIC_Cam_Observer.hpp"
 
 /*
@@ -122,6 +121,10 @@ FliObserver::FliObserver(){
         uint16_t size[3] = {4, 0, 0};
         crop = new Shm(crop_cf, size, 3, 3, &data, false); 
     }
+
+    // check resolution
+    cam_res = true;
+    shm_res = true;
 }
 
 /*

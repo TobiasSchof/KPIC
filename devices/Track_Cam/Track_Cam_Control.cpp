@@ -12,7 +12,6 @@
 #include <csignal>
 #include <thread>
 
-#include "FliSdk.h"
 #include "KPIC_Cam_Observer.hpp"
 
 // Shared memories and the sdk which threads will need

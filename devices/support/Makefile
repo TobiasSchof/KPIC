@@ -41,4 +41,4 @@ include $(RELDIR)/etc/rules.mk
 linksem: linksem.c
 	$(CC) -o linksem linksem.c -lpthread
 libKPIC_shmlib.so: KPIC_shmlib.cpp
-	$(CC) -shared -o libKPIC_shmlib.so -fPIC KPIC_shmlib.cpp -std=c++11
+	$(CC) -shared -o libKPIC_shmlib.so -fPIC KPIC_shmlib.cpp -std=c++11 

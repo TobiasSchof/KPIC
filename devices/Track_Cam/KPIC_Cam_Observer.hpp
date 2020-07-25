@@ -3,9 +3,13 @@
  *   This class handles whenever the D shms need to be updated for the tracking camera
  */
 
+#ifndef KPIC_CAM_OBSERVER_INCLUDE
+#define KPIC_CAM_OBSERVER_INCLUDE
+
 #include "FliSdk.h"
 #include "IFliCameraObserver.h"
 #include "KPIC_shmlib.hpp"
+
 
 class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
 
@@ -17,26 +21,26 @@ class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
 
     // The method that is called when a new image is ready
     //   even though the pointer is cast as uint8_t, the image is 16-bit
-    virtual void imageReceived(const uint8_t* image) override;
+    void imageReceived(const uint8_t* image);
     // Defines the speed that the above method is triggered at. A return 
     //   of 0 means maximum speed
-    virtual uint16_t fpsTrigger() override;
+    uint16_t fpsTrigger();
 
     // inherited from IFliCameraObserver
     
     // The method that's called on successful fps change
-    virtual void onFpsChanged(double _fps) override;
+    void onFpsChanged(double _fps);
     // The method that's called on successful exposure time change
-    virtual void onTintChanged(double tint) override;
+    void onTintChanged(double tint);
     // The mthod that's called on successful NDR change
-    virtual void onNbReadWoResetChanged(int nbRead) override;
+    void onNbReadWoResetChanged(int nbRead);
     // The method that's called on successful crop change
-    virtual void onCroppingChanged(bool enabled, uint16_t col1, uint16_t col2,
-                                   uint16_t row1, uint16_t row2) override;
+    void onCroppingChanged(bool enabled, uint16_t col1, uint16_t col2,
+                                   uint16_t row1, uint16_t row2);
     // The method that's called when cropping window begins change
-    virtual void onBeginChangeCropping() override;
+    void onBeginChangeCropping();
     // The method that's called when cropping window finishes change
-    virtual void onEndChangeCropping() override;
+    void onEndChangeCropping();
 
     // destructor
     ~FliObserver();
@@ -63,6 +67,8 @@ class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
      *   assumed to be in an undefined state. Crop window will have to be
      *   changed before images can start being recorded.
      */ 
-    bool cam_res = false;
-    bool shm_res = false;
+    bool cam_res;
+    bool shm_res;
 }; 
+
+#endif
