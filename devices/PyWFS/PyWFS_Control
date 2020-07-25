@@ -119,13 +119,10 @@ def connect_device():
         info("Cannot move to initial position. Changing command shm.")
         # update Pos_D
         curpos = dev.reqPosAct()
-        if type(curpos) is dict: Pos_D.set_data(np.array([curpos[1]],
-            Pos_D.npdtype))
+        if type(curpos) is dict: 
+            Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
         # update Stat_D
-        stat = format(Stat_D.get_data()[0], "08b")
-        stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[-1]
-        if stat[:-2] == "1":
-            stat = stat[:-3] + ("1" if dev.isReady() else "0") + stat[-2:]
+        stat = ("1" if dev.isReady() else "0") + "11"
         Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
 
         Pos_P.set_data(Pos_D.get_data())
@@ -139,7 +136,7 @@ def device_off():
 
     # change device bit to 0
     stat = format(Stat_D.get_data()[0], "08b")
-    stat = stat[:-2] + "0" + stat[-1]
+    stat = stat[:-3] + "00" + stat[-1]
     Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
 
 def device_on():
@@ -151,11 +148,6 @@ def device_on():
     # connect to device
     connect_device()
 
-    # Change device bit to 1
-    stat = format(Stat_D.get_data()[0], "08b")
-    stat = stat[:-2] + "1" + stat[-1]
-    Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
-
 def listener():
     """A method to continuously check for command Shm updates"""
 
@@ -163,53 +155,74 @@ def listener():
     Pos_P.get_counter()
     Stat_P.get_counter()
 
+    # get current status
+    cur_stat = Stat_D.get_data()[0]
+
     # keep the listening processes looping while alive is True
     while alive:
-        # get metadata counter to see if it's changed
-        pos_cnt = Pos_P.mtdata["cnt0"]
-        stat_cnt = Stat_P.mtdata["cnt0"]
-
         # assume no error
         error = 0
 
         # check status change first
-        if Stat_P.get_counter() != stat_cnt:
+        if Stat_P.mtdata["cnt0"] != Stat_P.get_counter():
             info("status updated")
-            stat = format(Stat_P.get_data()[0], "08b")
+            # get requested status
+            stat_req = Stat_P.get_data()[0]
+
             # if first bit is 0, end script
-            if stat[-1]   == "0": break
-            # if second bit is 1, turn on
-            if stat[-2]   == "1": device_on()
-            # if second bit is 0, turn off
-            elif stat[-2] == "0": device_off()
-            # if third bit is 1, try to home
-            if stat[-3]   == "1": 
-                if not dev.isReady(): 
-                    err = dev.home(isBlocking = True)
-                    if err is not None and err != -1:
-                        error = -1*(ord(err)-64) 
-            # if third bit is 0, try to reset
-            elif stat[-3] == "0": 
-                if dev.isReady(): 
-                    err = dev.reset()
-                    if err is not None and err != -1:
-                        error = -1*(ord(err)-64)
+            if not stat_req & 1: break
+
+            # get the difference between requested and current status
+            dif = stat_req ^ cur_stat
+
+            # if device on was requested, turn on
+            if dif & 2 & stat_req: 
+                device_on()
+                # update cur_stat
+                cur_stat = Stat_D.get_data()[0]
+                dif = stat_req ^ cur_stat
+            # if device off was requested, turn off
+            elif dif & 2: 
+                device_off()
+                # update cur_stat
+                cur_stat = Stat_D.get_data()[0]
+                dif = stat_req ^ cur_stat
+            else:
+                # if home was requested, home
+                if dif & 4 & stat_req: 
+                    if not dev.isReady(): 
+                        err = dev.home(isBlocking = True)
+                        if err is not None and err != -1:
+                            error = -1*(ord(err)-64) 
+                # if third bit is 0, try to reset
+                elif dif & 4: 
+                    if dev.isReady(): 
+                        err = dev.reset()
+                        if err is not None and err != -1:
+                            error = -1*(ord(err)-64)
 
         # check position change
-        if Pos_P.get_counter() != pos_cnt:
+        if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             info("position updated")
             error = move(Pos_P.get_data()[0])
 
         # update current position
         curpos = dev.reqPosAct()
-        if type(curpos) is dict: Pos_D.set_data(np.array([curpos[1]],
-            Pos_D.npdtype))
+        if type(curpos) is dict: 
+            Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
         # update current state
-        stat = format(Stat_D.get_data()[0], "08b")
-        stat = stat[:-2] + ("0" if dev.con_type is None else "1") + stat[-1]
-        if stat[-2] == "1":
-            stat = stat[:-3] + ("1" if dev.isReady() else "0") + stat[-2:]
-        Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
+        if dev.con_type is None:
+            stat = 1
+        else:
+            stat = 7 if dev.isReady() else 3
+
+        Stat_D.set_data(np.array([stat], Stat_D.npdtype)) 
+        # update cur_stat
+        cur_stat = stat
+
+        # update error if necessary
+        if error != Error.get_data()[0] or error != 0:
+            Error.set_data(np.array([error], Error.npdtype))
 
         # wait for shared memory to be updated
         ShmP.acquire()
