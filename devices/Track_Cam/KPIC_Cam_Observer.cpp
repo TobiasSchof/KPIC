@@ -21,6 +21,8 @@ FliObserver::FliObserver(){
     std::string exp_cf;
     std::string ndr_cf;
     std::string crop_cf;
+    bool cam_res = true;
+    bool shm_res = true;
  
     // find path to config file
     std::string path = getenv("RELDIR");
@@ -122,9 +124,6 @@ FliObserver::FliObserver(){
         crop = new Shm(crop_cf, size, 3, 3, &data, false); 
     }
 
-    // check resolution
-    cam_res = true;
-    shm_res = true;
 }
 
 /*

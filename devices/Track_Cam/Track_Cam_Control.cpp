@@ -127,7 +127,6 @@ void cam_on(){
     mtx.lock();
 
     // add observer to sdk
-    fli->addRawImageReceivedObserver(dynamic_cast<IRawImageReceivedObserver*>(obs));
     fli->addObserver(dynamic_cast<IFliSdkObserver*>(obs));
 
     // update sdk
@@ -155,6 +154,25 @@ void cam_on(){
             sleep(.5);
         }
     }
+
+    mtx.lock()
+
+    // set cropping to current cropping to make sure that shm and camera match
+    {
+        bool enabled;
+        uint16_t col1;
+        uint16_t col2;
+        uint16_t row1;
+        uint16_t row2;
+        fli->credTwo()->getCropping(enabled, col1, col2, row1, row2);
+        fli->credTwo()->setCropping(enabled, col1, col2, row1, row2);
+    }
+
+    // add image receiver
+    fli->addRawImageReceivedObserver(dynamic_cast<IRawImageReceivedObserver*>(obs));
+    fli->update()
+
+    mtx.unlock()
 
     camOn = true;
 
