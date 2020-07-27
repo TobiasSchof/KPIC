@@ -155,7 +155,7 @@ void cam_on(){
         }
     }
 
-    mtx.lock()
+    mtx.lock();
 
     // set cropping to current cropping to make sure that shm and camera match
     {
@@ -170,9 +170,9 @@ void cam_on(){
 
     // add image receiver
     fli->addRawImageReceivedObserver(dynamic_cast<IRawImageReceivedObserver*>(obs));
-    fli->update()
+    fli->update();
 
-    mtx.unlock()
+    mtx.unlock();
 
     camOn = true;
 
