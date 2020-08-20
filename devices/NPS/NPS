@@ -118,7 +118,7 @@ if devices:
     sys.exit()
 
 # turn on control script
-if script_on:
+if script_on and not nps.is_Active():
     nps.activate_Control_Script()
     cnt = 0
     # sleep while we wait for device to turn on
@@ -144,8 +144,6 @@ if status:
 
 # turn on/off requested ports
 if len(on) > 0: 
-    resp = input("Power control should be through device shm, not NPS. Continue? (y/n)")
-    if resp == "y": nps.turnOn(on)
+    nps.turnOn(on)
 if len(off) > 0:
-    resp = input("Power control should be through device shm, not NPS. Continue? (y/n)")
-    if resp == "y": nps.turnOff(off)
+    nps.turnOff(off)
