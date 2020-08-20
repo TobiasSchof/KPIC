@@ -1,0 +1,122 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from time import sleep
+import sys
+
+# installed libraries
+from pipython import GCSDevice
+
+# format help message for no command/invalid command
+main_help = """usage
+{b:2}Coronagraph [CMD] [-h]
+    
+CMD:
+{b:2}goto   - moves device
+{b:2}status - returns last recorded position
+{b:2}home   - homes device
+-h:
+{b:2}add "-h" after a command for more info""".format(b = "")
+
+# change ArgumnetParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
+        sys.exit()
+
+# create argument parser
+parser = HelpArgumentParser(add_help = False)
+
+# add subparser so we can add tags to our commands
+#   NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparsers(dest = "command")
+
+# create subparser to handle home command
+home = sub.add_parser("home")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
+
+# create subparser to handle goto command
+goto = sub.add_parser("goto",
+    formatter_class = RawDescriptionHelpFormatter,
+    usage = "Coronagraph goto [-h] target ([PRESET] | [POS, POS])")
+goto.add_argument("target", nargs = "*",
+    help = "position to move to (a preset or x, y in mm)")
+
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
+args = parser.parse_args()
+
+# if no arguments were specified (or if -h is used, since we disabled help), print help
+if args.command is None:
+    print(main_help); sys.exit()
+
+# instantiate Coronagraph cmds to get presets
+axes = {"x":GCSDevice(), "y":GCSDevice()}
+# connect to x stage
+axes["x"].ConnectTCPIP("131.215.193.41")
+# connect to y stage
+axes["y"].ConnectTCPIP("131.215.193.63")
+
+
+# next check home
+if args.command == "home":
+    for axis in axes:
+        if not axes[axis].qFRF()["1"]:
+            axes[axis].SVO({"1":True})
+            axes[axis].FPL()
+            while not axes[axis].qFRF()["1"]: sleep(.1)
+            axes[axis].SVO({"1":False})
+
+# next check status
+if args.command == "status":
+    # get position
+    pos = [axes[axis].qPOS()["1"] for axis in axes]
+    print("Position: {}".format(pos))
+
+
+# last check goto
+if args.command == "goto":
+    # if a position was provided, convert it to floats
+    if len(args.target) == 2:
+        try: 
+            args.target[0] = float(args.target[0])
+            args.target[1] = float(args.target[1])
+        except:
+            print("Invalid target. See below.")
+            goto.print_help()
+            sys.exit()
+
+    # if target is a list of floats or a preset, try it
+    if len(args.target) == 2:
+        if not all([axes[axis].qFRF()["1"] for axis in axes]):
+            print("Please home device.")
+        else:
+            axes["x"].SVO({"1":True})
+            axes["x"].MOV({"1":args.target[0]})
+            axes["x"].SVO({"1":False})
+            sleep(5)
+            axes["y"].SVO({"1":True})
+            axes["y"].MOV({"1":args.target[1]})
+            axes["y"].SVO({"1":False})
+            sleep(5)
+
+    # if no target was provided, just display help page
+    elif len(args.target) == 0:
+        goto.print_help()
+        sys.exit()
+    # otherwise, display help
+    else:
+        print("Invalid target. See below.")
+        goto.print_help()
+
+for axis in axes:
+    axes[axis].CloseConnection()

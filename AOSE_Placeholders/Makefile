@@ -8,6 +8,7 @@ override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
 RELLIB = NPS_cmds.py
+RELBIN = CG
 LIBSUB = python
 ##FILES = $(RELBIN)
 
