@@ -1,0 +1,415 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from configparser import ConfigParser
+from atexit import register, unregister
+from time import sleep
+from signal import signal, SIGHUP, SIGTERM
+from subprocess import Popen
+from argparse import ArgumentParser
+import sys, os, logging
+
+# installs
+import numpy as np
+from posix_ipc import Semaphore, O_CREX, ExistentialError
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+from Micronix import Micronix_Device
+
+"""
+THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT'S ADC
+AND NOT FOR USE BY USER
+
+See ADC_cmds or type ADC in terminal to control the stage
+"""
+
+# This scrip is not an import
+if __name__ != "__main__":
+    print("PIAA_Control is not meant to be used as an import.")
+    sys.exit()
+
+# info is most of what we'll be using for logging, so make a shorter command for it
+info = logging.info
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice"""
+    pass
+
+def move(target:list) -> int:
+    """Moves device to target position
+
+    Blocks execution during move
+    Args:
+        target = the positions to move to
+    Returns:
+        into = error code
+    """
+
+    # if we're not connected to the device, return error
+    if not dev.isConnected(): return 2
+
+    err = 0
+
+    if not (dev.isHomed()):
+        info("Movement requested in open loop.")
+        return 1
+    
+    # clear error messages
+    ret = dev.getError([1,2])
+
+    dev.move({idx+1:val for idx, val in enumerate(target)}, True)
+    
+    ret = dev.getError([1,2])
+    # in the case that there was an error
+    if not all([val == 0 for val in ret]):
+        err = [val for val in ret if val != 0][0]
+    
+    return err
+
+def do_state() -> int:
+    """Sends desired state to controller
+
+    Returns:
+        int = any error
+    """
+
+    err = 0
+
+    # clear any errors in the buffer
+    ret = dev.getError([1,2])
+
+    # get requested a current state values
+    req = Stat_P.get_data()[0]
+    cur = Stat_D.get_data()[0]
+
+    # kill script if requested
+    if req & 1: signal_handler(0, 0); return
+
+    # connect/disconnect from device
+    if req & 2 and not dev.isConnected():
+        err = connect()
+        # get updated Stat_D
+        cur = Stat_D.get_data()
+        # set Stat_P values to Stat_D values so we don't change startup values
+        Stat_P.set_data(cur)
+        # reformat cur as an int
+        cur = cur[0]
+        # get updated Stat_P
+        req = cur
+    elif not req & 2 and dev.isConnected():
+        disconnect()
+        return
+
+    # loop closed
+    if req & 4:
+        # movement accurate
+        if req & 8 and not cur & 12:
+            dev.setLoopState({1:3, 2:3}) 
+        # movement clean
+        elif not req & 8 and not cur & 4:
+            dev.setLoopState({1:2, 2:2})
+    # loop open
+    else:
+        # movement accurate
+        if req & 8 and not cur & 12:
+            dev.setLoopState({1:0, 2:0}) 
+        # movement clean
+        elif not req & 8 and not cur & 4:
+            dev.setLoopState({1:1, 2:1})
+
+    # check for home
+    if req & 16 and not all(dev.isHomed([1,2]).values()):
+        dev.home([1,2], True)
+    # check for reset
+    if not req & 16 and any(dev.isHomed([1,2]).values()):
+        dev.reset([1,2], True)
+
+    ret = dev.getError([1,2])
+    # in the case that there was an error and we haven't encountered an error yet
+    if not all([val == 0 for val in ret]) and err == 0:
+        err = [val for val in ret if val != 0][0]
+    
+    return err
+
+def disconnect():
+    """Disconnects device (and preps device for shut off)"""
+
+    dev.close_Connection()
+
+    update_state()
+
+def connect() -> int:
+    """Connects to device
+    
+    Returns:
+        int = error code
+    """
+
+    dev.open_Serial("ttyUSB3", 38400)
+
+    err = update_state()
+    return err
+
+def update_state() -> int:
+    """Updates Stat_D
+    
+    Returns:
+        int = error code
+    """
+
+    # status to store in Stat_D
+    stat = 1
+    err = 0
+
+    if dev.isConnected():
+        # device connected bit
+        stat = stat | 2
+        
+        # check loop state
+        loop = dev.getLoopState([1,2])
+        if not loop[0] == loop[1]: err = 3
+
+        # set Stat_D based on lower FBK error
+        loop = min(loop[0], loop[1])
+
+        # loop closed
+        if loop == 2 or loop == 3:
+            stat = stat | 4
+        # loop clean
+        if loop == 0 or loop == 3:
+            stat = stat | 8
+
+        # check if homed
+        if all(dev.isHomed([1,2]).values()):
+            stat = stat | 16
+
+    Stat_D.set_data(np.array([stat], Stat_D.npdtype))
+
+    return err
+    
+def update_pos():
+    """Updates Pos_D"""
+
+    # if device is not connected, do nothing
+    if not dev.isConnected(): return
+
+    # get positions
+    pos = dev.getPos([1,2])
+
+    pos = [pos[1], pos[2]]
+
+    Pos_D.set_data(np.array(pos, Pos_D.npdtype))
+
+def main():
+    """The main loop"""
+
+    # wait for one of the shms to be updated
+    ShmP.acquire()
+
+    # check to see if we should end
+    if not alive: return
+
+    # variables to store error codes from doing state and move
+    errs = 0
+    errm = 0
+
+    # first make changes requested in Stat_P
+    if Stat_P.mtdata["cnt0"] != Stat_P.get_counter():
+        errs = do_state()
+        # update status of device
+        _ = update_state()
+        if errs == 0 and _ != 0: errs = _
+
+    # then make any change requested in Pos_P
+    if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
+        errp = move(Pos_P.get_data())
+        # update position of device
+        update_pos()
+
+    # prioritize errors that arose when setting status
+    if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
+    elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
+
+def close():
+    """A cleanup method
+
+    Closes all communication with the device, deletes command shared memory
+    and closes the tmux session.
+    """
+
+    info("Killing draw process.")
+    try: draw_proc.terminate()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Deleting command shared memory file.")
+    # We want to delete all command shared memories so scripts can't
+    #   mistakenly think the control script is alive
+    try:
+        for shm in [Stat_P, Pos_P]:
+            try: os.remove(shm.fname)
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Checking if device is connected")
+    try: disconnect()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Updating Stat_D")
+    try:
+        # get current status to just change script bit
+        stat = Stat_D.get_data()
+        # change script bit to 0
+        stat[0] = stat[0] & ~1
+        # store new status
+        Stat_D.set_data(stat)
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Unlinking subscription semaphore")
+    try: ShmP.unlink()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    info("Closing tmux session")
+    # unregister this method now that it's completed to avoid running it twice
+    unregister(close)
+    os.system(config.get("Environment", "end_command"))
+
+def signal_handler(signum, stack):
+    """A method to gracefully end script when a signal is passed"""
+    global alive
+    alive = False
+    try: ShmP.release()
+    except: pass
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[-1]
+
+# when alive is set to False, the script will end
+alive = True
+
+# read config file
+config = ConfigParser()
+config.read(RELDIR+"/data/PIAA.ini")
+
+# set up logging formatting
+log_path = config.get("Communication", "debug_log")
+debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
+
+# set up flag parsers (since this script is not meant to be used by
+#   a user, we excluding formatting and help messages)
+parser = ArgumentParser()
+# flags to set debug modes
+parser.add_argument("-d", default = -1, nargs = "?")
+parser.add_argument("-d!", "--dd", default = -1, nargs = "?")
+
+# parse flags
+args = parser.parse_args()
+
+# set logging level if a logging flag was given
+if args.dd != -1:
+    # if a path was provided, use it
+    if not args.dd is None: log_path = args.dd
+    logging.basicConfig(format = debug_format, datefmt = "%H:%M:%S",
+        filename = log_path)
+    logging.root.setLevel(logging.DEBUG)
+elif args.d != -1:
+    if not args.d is None: log_path = args.d
+    logging.basicConfig(format = debug_format, datefmt = "%H:%M:%S",
+        filename = log_path)
+    logging.root.setLevel(logging.INFO)
+
+# make the folder for the shared memories if it doesn't already exist
+if not os.path.isdir("/tmp/ADC"): os.mkdir("/tmp/ADC")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# connect to Stat_D to see if there's already a control script running
+Stat_D = config.get("Shm Info", "Stat_D").split(",")
+if os.path.isfile(Stat_D[0]):
+    Stat_D = Shm(Stat_D[0])
+
+    stat = Stat_D.get_data()
+    if stat[0] & 1:
+        info("Active control script exists. Raising exception.")
+        msg = "State shared memory status {}.".format(stat[0])
+        raise AlreadyAlive(msg)
+    else:
+        stat[0] = stat[0] | 1
+        Stat_D.set_data(stat)
+else:
+    info("No Stat_D shared memory file. Creating file.")
+    Stat_D = Shm(Stat_D[0]. data = npt.array([1], dtype = type_[Stat_D[1]]),
+        mmap = (Stat_D[2] == "1"))
+
+info("No duplicate control script, continuing with initialization")
+
+# connect to rest of state shms
+Pos_D
+
+# connect to rest of state shms
+Pos_D = config.get("Shm Info", "Pos_D").split(",")
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
+else:
+    info("No Pos_D shared memory file. Creating file.")
+    Pos_D = Shm(Pos_D[0], data = np.array([-5000.], dtype = type_[Pos_D[1]]),
+        mmap = (Pos_D[2] == "1"))
+
+Error = config.get("Shm Info", "Error").split(",")
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
+else:
+    info("No Error shared memory file. Creating file.")
+    Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),
+        mmap = (Error[2] == "1"))
+
+# register cleanup methods
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+# create a subscription semaphore to link all P shms
+ShmP = Semaphore(None, flags = O_CREX)
+
+# create a list to store processes that are updating semaphores
+#   (to be killed at close)
+Sem_Listeners = []
+
+Stat_P = config.get("Shm Info", "Stat_P").split(",")
+Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
+    sem = True, mmap = (Stat_P[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
+
+Pos_P = config.get("Shm Info", "Pos_P").split(",")
+Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = type_[Pos_P[1]]),
+    sem = True, mmap = (Pos_P[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
+
+def Punlink():
+    """Tries to unlink the lock semaphores on the P shms"""
+
+    try: Stat_P.lock.unlink()
+    except (AttributeError, ExistentialError) as ouch:
+        info("Exception on close: {}.".format(ouch))
+
+    try: Pos_P.lock.unlink()
+    except (AttributeError, ExistentialError) as ouch:
+        info("Exception on close: {}.".format(ouch))
+
+# We want to register P shm unlock after creating P shms so they aren't cleaned
+#   up before we have a change to unlink (delete) the lock
+register(Punlink)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+info("Shared memories created successfully.")
+
+info("Starting display drawer")
+# we use Popen to start drawer script in a non-blocking way
+draw_proc = Popen("PIAA_draw")
+
+info("Beginning loop.")
+main()
