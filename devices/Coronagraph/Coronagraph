@@ -158,7 +158,7 @@ if args.command == "off":
         if not dev.is_On():
             print("Device already off.")
             sys.exit()
-        # turn device on
+        # turn device off
         dev.off()
     except ScriptOff as e:
         print("Control script off. Please use 'Coronagraph enable'")

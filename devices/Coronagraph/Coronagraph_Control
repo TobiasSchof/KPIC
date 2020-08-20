@@ -112,7 +112,9 @@ def do_state() -> int:
                 if not axes[axis].qSVO()["1"]: axes[axis].SVO({"1":True})
             except GCSError: err = 1
             try:
-                if not axes[axis].qFRF()["1"]: axes[axis].FNL()
+                if not axes[axis].qFRF()["1"]: 
+                    axes[axis].FNL()
+                    while not axes[axis].qFRF()["1"]: sleep(.1)
             except GCSError: err = 1
     # open the loop if requested
     elif req[-3] == "0" and (cur[-3] == "1" or starting):
@@ -231,16 +233,17 @@ def main():
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data())
 
-        # sleep while moving (for no more than 5 seconds)
-        cnt = 0
-        while cnt < 50 and any([axes[axis].IsMoving() for axis in axes]): sleep(.1); cnt += 1
+        if all([axes[axis].IsConnected() for axis in axes]):
+            # sleep while moving (for no more than 5 seconds)
+            cnt = 0
+            while cnt < 50 and any([axes[axis].IsMoving() for axis in axes]): sleep(.1); cnt += 1
 
-        # update position of device
-        try: curpos = [axes["x"].qPOS()["1"], axes["y"].qPOS()["1"]]
-        except GCSError: 
-            errp = 1
-            curpos = list(Pos_D.get_data())
-        Pos_D.set_data(np.array(curpos, Pos_D.npdtype))
+            # update position of device
+            try: curpos = [axes["x"].qPOS()["1"], axes["y"].qPOS()["1"]]
+            except GCSError: 
+                errp = 1
+                curpos = list(Pos_D.get_data())
+            Pos_D.set_data(np.array(curpos, Pos_D.npdtype))
 
         # prioritize errors that arose when setting status
         if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
