@@ -217,15 +217,17 @@ def main():
     # first make changes requested in Stat_P
     if Stat_P.mtdata["cnt0"] != Stat_P.get_counter():
         errs = do_state()
-        # update status of device
-        _ = update_state()
-        if errs == 0 and _ != 0: errs = _
+    
+    # update status of device
+    _ = update_state()
+    if errs == 0 and _ != 0: errs = _
 
     # then make any change requested in Pos_P
     if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
         errp = move(Pos_P.get_data())
-        # update position of device
-        update_pos()
+        
+    # update position of device
+    if dev.isConnected(): update_pos()
 
     # prioritize errors that arose when setting status
     if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))

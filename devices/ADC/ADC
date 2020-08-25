@@ -1,0 +1,241 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from time import sleep, localtime
+import sys
+
+# nfiuserver libraries
+from ADC_cmds import ADC_cmds
+from dev_Exceptions import *
+
+# instantiate ADC cmds to get presets
+dev = ADC_cmds()
+
+# format help message for no command/invalid command
+main_help = """usage:
+{b:2}ADC [CMD] [-h]
+    
+CMD:
+{b:2}goto   - moves device
+{b:2}status - returns last recorded position
+{b:2}home   - homes device
+{b:2}loop   - sets/gets loop type
+{b:2}enable - turns on control script
+-h:
+{b:2}add "-h" after a command for more info""".format(b = "")
+
+# change ArgumnetParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
+        sys.exit()
+
+# create argument parser
+parser = HelpArgumentParser(add_help = False)
+
+# add subparser so we can add tags to our commands
+#   NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparsers(dest = "command")
+
+# create subparser to handle enable command
+enable = sub.add_parser("enable")
+# add -m flag
+enable.add_argument("-m", dest = "move", action = "store_true",
+    help = "USE WITH CAUTION - device can move on startup")
+# add -d flag
+enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in logging mode. \
+    'PATH' can be specified to change log location")
+# add -d! flag
+enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in debug mode. \
+    'PATH' can be specified to change log location")
+
+# create subparser to handle loop command
+addend = """
+options: open/closed and accurate/clean 
+(for more, see FBK options in Micronix MMC-103 manual)
+
+examples:
+{b:2}ADC loop closed accurate
+{b:2}ADC loop open clean
+{b:2}ADC loop closed"""
+
+loop = sub.add_parser("loop", addend = addend,
+    formatter_class = RawDescriptionHelpFormatter)
+loop.add_argument("type", nargs=*, help="loop options, or none to query")
+
+# create subparser to handle home command
+home = sub.add_parser("home")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
+
+# create subparser to handle goto command
+# format presets and examples for goto help message
+addend = ""
+if len(dev.presets) > 0:
+    addend += "presets:"
+    for preset in dev.presets:
+        addend += "\n{b:2}{name:<10}{val}".format(b = "", 
+            name = preset + ":", val = dev.presets[preset])
+    addend += "\n"
+
+addend += """
+examples:
+{b:2}ADC goto 0 0
+""".format(b = "")
+
+if len(dev.presets) > 0:
+    addend += "{b:2}ADC goto {} {}".format(b = "", 
+        pres = *list(dev.presets.keys())[0]) 
+
+goto = sub.add_parser("goto", epilog = addend,
+    formatter_class = RawDescriptionHelpFormatter)
+goto.add_argument("target", nargs=*, 
+    help = "position to move to (in mm or a preset)")
+
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
+args = parser.parse_args()
+
+# if no arguments were specified (or if -h is used, since we disabled help), print help
+if args.command is None:
+    print(main_help); sys.exit()
+
+# first check for enable command
+if args.command == "enable":
+    if dev.is_Active(): 
+        print("Control script is alread active.")
+        sys.exit()
+    # create append flags if any optional arguments were provided
+    append = ""
+    if args.move:
+        append += " -m"
+    if args.debug != -1:
+        append += " -d!"
+        if args.debug is not None:
+            append += " {}".format(args.debug)
+    elif args.log != -1:
+        append += " -d"
+        if args.log is not None:
+            append += " {}".format(args.log)
+
+    # if we have no flags, make append None
+    if len(append) == 0: append = None
+    
+    # start control script
+    dev.activate_Control_Script(append = append)
+    sys.exit()
+
+# next check loop
+if args.command == "loop"
+    # if no option was given, return loop type
+    if len(args.loop) == 0:
+        acc = "accurate" if dev.is_loop_accurate() else "clean"
+        open = "closed" if dev.is_loop_closed() else "open"
+        print("Loop {open} {acc}".format(acc, open))
+        sys.exit()
+    # validate that we have at most two flags
+    elif len(args.loop) > 2:
+        print("loop command takes at most 2 arguments. See help.")
+        sys.exit()
+    # validate that we don't have conflicting commands
+    try:
+        assert "closed" not in args.loop or "open" not in args.loop
+    except AssertionError:
+        print("closed and open are mutually exclusive")
+    try:
+        assert "accurate" not in args.loop or "clean" not in args.loop
+    except AssertionError:
+        print("accurate and clean are mutually exclusive")
+    # perform requests
+    if "open" in args.loop or "closed" in args.loop:
+        dev.loop_closed("closed" in args.loop)
+    if "accurate" or "clean" in args.loop:
+        dev.loop_accurate("accurate" in args.loop)
+
+# next check home
+if args.command == "home":
+    # if device is already homed, do nothing
+    if dev.is_Homed():
+        print("Device already homed.")
+        sys.exit()
+    # home device
+    try:
+        dev.home()
+        # wait for device to report that it's homed
+        cnt = 0
+        print()
+        while not dev.is_Homed():
+            print("\033[F\033[KWaiting for device to home{}".format("."*((cnt%3)+1)))
+            sleep(.5)
+        # report success
+        print("\033[F\033[KDevice homed.")
+    # catch exceptions
+    except StageOff as e:
+        print("Device off. Please use 'ADC on'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'ADC enable'")
+
+# next check status
+if args.command == "status":
+    # get position
+    try:
+        pos, u_time = dev.get_pos(update = args.push, time = True)
+        # convert UNIX epoch time to local time
+        t = localtime(u_time)
+        print("Position: {} last updated {}/{}/{} {}:{}:{} {}".format(pos, t.tm_year,
+            t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
+    # catch exceptions
+    except StageOff as e:
+        print("Device off. Please use 'ADC on'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'ADC enable'")
+
+
+# last check goto
+if args.command == "goto":
+    # if two positions were provided, convert them to floats
+    if len(args.target) == 2:
+        try: args.target = [float(val) for val in args.target]
+        except: 
+            print("invalid parameters, see below")
+            goto.print_help()
+            sys.exit()
+    # validate/format preset 
+    elif len(args.target) == 1:
+        args.target = args.target[0]
+        if args.target not in dev.presets:
+            print("Invalid preset, see below.")
+            goto.print_help()
+            sys.exit()
+    # if there are more than two parameters, it is invalid
+    elif len(args.target) > 2:
+        print("Valid options are a preset or an x y. See below.")
+        goto.print_help()
+
+    try: dev.set_pos(args.target, block = True)
+    except StageOff as e:
+        print("Device off. Please us 'ADC on'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'ADC enable'")
+    except MovementTimeout as e:
+        print("Device taking too long to move. Check for blockages")
+    except ShmError as e:
+        if e.message == "Error 3.":
+            print("Target outside of limits.")
+        elif e.message == "Error 2.":
+            print("Device unreferenced. Please use 'ADC home'")
+        else:
+            print(e.message)
+    except LoopOpen as e:
+        print("Device in open loop. Please use 'TCP home'.")
+        goto.print_help()
