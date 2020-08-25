@@ -127,11 +127,11 @@ class PyWFS_cmds:
             self._checkOnAndAlive()
 
             # update position counter
-            p_cnt = self.Pos_D.get_counter()
+            d_cnt = self.Pos_D.get_counter()
             # touch Stat_P so that D shms get updated
             self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
-            while p_cnt == self.Pos_D.get_counter(): sleep(1)
+            while d_cnt == self.Pos_D.get_counter(): sleep(1)
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
@@ -222,15 +222,41 @@ class PyWFS_cmds:
 
         if not self.is_Homed(): raise LoopOpen("Please home device.")
 
-        # get current counter for Pos_D so we know when it updates
-        p_cnt = self.Pos_D.get_counter()
-        # keep a counter to wait no more than 2 minutes
-        cnt = 0
-
+        preset = False
         # if a preset was given, translate it to a position
         if type(target) is str:
-            try: target = self.presets[target]
+            try: 
+                target = self.presets[target]
+                preset = True
             except KeyError: msg = target; raise MissingPreset(msg)
+
+        # in lab we noticed that changing the direction we moved into the mirrors
+        #   changed where the beam pointed. To fix this, we always move to the far
+        #   limit before moving to a preset position
+        if preset:
+            # mirrors 1 and 2 still act incorrect when moving to 0 first
+            pre = 0 if target > 170 else 340
+            # send command and wait for device to reach position
+            # get current counter for Pos_D so we know when it updates
+            d_cnt = self.Pos_D.get_counter()
+            # keep a counter to wait no more than 2 minutes
+            cnt = 0
+            # take Pos_P so that we don't need to remake the numpy array
+            pos = self.Pos_P.get_data()
+            pos[0] = pre
+            self.Pos_P.set_data(pos)
+
+            # if we are blocking, wait until Pos_D is updated
+            while cnt < 60 and d_cnt == self.Pos_D.get_counter(): sleep(2); cnt += 1
+
+            if cnt == 60:
+                raise MovementTimeout("Move took longer than 2 minutes, check for blocks")
+
+
+        # get current counter for Pos_D so we know when it updates
+        d_cnt = self.Pos_D.get_counter()
+        # keep a counter to wait no more than 2 minutes
+        cnt = 0
 
         # take Pos_P so that we don't need to remake the numpy array
         pos = self.Pos_P.get_data()
@@ -241,7 +267,7 @@ class PyWFS_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt < 60 and p_cnt == self.Pos_D.get_counter(): sleep(2); cnt += 1
+        while cnt < 60 and d_cnt == self.Pos_D.get_counter(): sleep(2); cnt += 1
 
         if cnt == 60:
             raise MovementTimeout("Move took longer than 2 minutes, check for blocks")
