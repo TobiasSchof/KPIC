@@ -131,13 +131,25 @@ def draw():
     #convert numpy array to list for proper printing
     ppos = [list(Pos_P.get_data()), Pos_P.get_time()]
         
-    #translate the state status for user
-    dstatus={2:"Script: on | Device: moving", 1:"Script: on | Device: on", \
-        0:"Script: on | Device: off"}
-    dstatus=[dstatus[Stat_D.get_data()[0]], Stat_D.get_time()]
+    stat = Stat_D.get_data()[0]
+    if not stat & 1:
+        dstatus = "Script off"
+    elif not stat & 2:
+        dstatus = "Disconnected"
+    elif not stat & 4:
+        dstatus = "Device stationary"
+    else:
+        dstatus = "Device Moving"
+    dstatus=[dstatus, Stat_D.get_time()]
 
     #translate the command status for user
-    pstatus={True:"Device on", False:"Device off"}
+    stat = Stat_P.get_data()[0]
+    if not stat & 1:
+        pstatus = "Script off"
+    elif not stat & 2:
+        pstatus = "Disconnect"
+    else:
+        pstatus = "Connect"
     pstatus=[pstatus[Stat_P.get_data()[0]], Stat_P.get_time()]
 
     #translate the error for user

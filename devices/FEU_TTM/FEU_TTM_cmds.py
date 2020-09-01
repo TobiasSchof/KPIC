@@ -17,21 +17,20 @@ class FEU_TTM_cmds:
     method list:
     Queries:
         is_Active
-        is_On
+        is_Connected
         get_error
         get_pos
         get_target
     Commands:
-        on
-        off
+        connect
+        disconnect
         set_pos
-        center
         activate_Control_Script
+        load_presets
     Internal methods:
         _checkAlive
         _checkOnAndAlive
         _handleShms
-        _setStatus
     """
     
     def __init__(self):
@@ -48,12 +47,9 @@ class FEU_TTM_cmds:
         self.Pos_P = config.get("Shm_Info", "Pos_P").split(",")[0]
         self.Stat_P = config.get("Shm_Info", "Stat_P").split(",")[0]
 
-        #NOTE: center is loaded here. If this changes, class will have to
-        #   be reinitialized.
-        self.mid_1=(config.getfloat("Limits", "min_1") +\
-            config.getfloat("Limits", "max_1"))/2
-        self.mid_2=(config.getfloat("Limits", "min_2") +\
-            config.getfloat("Limits", "max_2"))/2
+        self.presets = []
+        # load presets in
+        self.load_presets()
 
         #for examples on how to use semaphores, see FEU_TTM_draw or _Control 
         self._handleShms()
@@ -72,26 +68,20 @@ class FEU_TTM_cmds:
             return False
         else: return True
 
-    def is_On(self) -> bool:
-        """Checks whether device is on
+    def is_Connected(self) -> bool:
+        """Checks whether device is connected
 
         Returns:
-            bool = True if device is on, False otherwise
+            bool = True if device is connected, False otherwise
         """
 
-        #if Stat_D isn't loaded, load it
-        if type(self.Stat_D) is str: self._handleShms()
+        self._checkAlive()
 
-        #if Stat_D didn't load, we can't get device state
-        #   NOTE: we could use NPS here but we want to avoid direct
-        #   communication with hardware on user side. If a user has the need
-        #   the need to check for power status of device even when there's no
-        #   Stat_D shm, see q_pow in FEU_TTM_Control.py
         if type(self.Stat_D) is str: 
             raise ShmError("No Stat_D shm. Please restart control script.")
 
         #otherwise return based on Stat_D
-        return (self.Stat_D.get_data()[0] in [2, 1, -1])
+        return (self.Stat_D.get_data()[0] & 2)
 
     def get_error(self) -> int:
         """Returns the error currently stored in the shared memory.
@@ -114,8 +104,7 @@ class FEU_TTM_cmds:
         else:
             return chr(-1*err+64)
 
-    union = "list OR list, float"
-    def get_pos(self, time:bool=True, push:bool=True) -> union:
+    def get_pos(self, time:bool=True, push:bool=True):
         """Returns the current position in the device's shared memory.
 
         Inputs:
@@ -158,58 +147,70 @@ class FEU_TTM_cmds:
         except AttributeError:
             raise ShmError("Shm states out of sync. Restart control script.")
 
-    def on(self, block:bool=False):
-        """Turns the device on.
-        
-        Inputs:
-            block = if True, blocks program until device is on
-        """
+    def connect(self):
+        """Connects to the device."""
 
-        self._setStatus(1)
+        self._checkAlive()
 
-        if block:
-            while not self.is_On(): sleep(1)
+        stat = self.Stat_P.get_data()
+        stat[0] = stat[0] | 2
+        self.Stat_P.set_data(stat)
 
-    def off(self):
-        """Turns the device off."""
+    def disconnect(self):
+        """Disconnects from the device"""
 
-        self._setStatus(0)
+        self._checkAlive()
 
-    def set_pos(self, ax1:float, ax2:float) -> list:
-        """Sets target position to [ax1, ax2]
+        stat = self.Stat_P.get_data()
+        stat[0] = stat[0] & ~2
+        self.Stat_P.set_data(stat)
 
-        Throws errors if they any are posted by the control script
-        Inputs:
-            ax1 = the value for axis 1
-            ax2 = the value for axis 2
-        Returns:
-            list = indices: [axis 1, axis 2]. values: the requested positions
+    def set_pos(self, target, block:bool = False):
+        """Sets a new target position
+
+        Args:
+            target = float: the position for the device to move to
+                    or
+                     str:  the name of the preset position to move to
+            block  = whether program execution should be blocked until Pos_D is updated
         """
 
         self._checkOnAndAlive()
 
-        try: pos = self.Pos_P.get_data()
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
+        if not self.is_Homed(): raise LoopOpen("Please home device.")
 
-        #it's easier to modify returns rather than format a numpy array
-        pos[0] = ax1
-        pos[1] = ax2
+        # get current counter for Pos_D so we know when it updates
+        p_cnt = self.Pos_D.get_counter()
+        # wait no more than 10 seconds
+        cnt = 0
 
+
+        # if a preset was given, translate it to a position
+        if type(target) is str:
+            try: target = self.presets[target]
+            except KeyError: msg = target; raise MissingPreset(msg)
+
+        # take Pos_P so that we don't need to remake the numpy array
+        pos = self.Pos_P.get_data()
+        pos[0] = target
         self.Pos_P.set_data(pos)
 
-        #for translation of error codes, see config file
+        # if we don't block, return
+        if not block: return
+
+        # if we are blocking, wait until Pos_D is updated
+        while cnt < 20 and p_cnt == self.Pos_D.get_counter(): sleep(.5); cnt += 1
+
+        if p_cnt == self.Pos_D.get_counter():
+            raise MovementTimeout("Movement is taking too long. Check for blocks.")
+
+        # for translation of error codes, see config file
         error = self.get_error()
         if error == 0: return list(pos)
         elif error == 1: raise MovementRange("Requested move outside limits.")
         elif error == 2: raise LoopOpen("Open loop movement not supported.") 
         elif error == 3: raise StageOff("Turn on device and try again.")
         
-    def center(self):
-        """Moves the TTM to the center of its range"""
-        
-        self.set_pos(ax1=self.mid_1, ax2=self.mid_2)
-
     def activate_Control_Script(self):
         """Activates the control script if it's not already active."""
 
@@ -225,6 +226,18 @@ class FEU_TTM_cmds:
         command = config.get("Environment", "start_command").split("|")
         #the tmux command should be split up by spaces
         Popen(command[0].split(" ")+[command[-1]])
+
+    def load_presets(self):
+        """Loads the preset positions from the config file
+
+        Any presets from self.presets defined in the config file will be overwritten
+        """
+
+        config = ConfigParser()
+        config.read(RELDIR+"/data/FEU_TTM.ini")
+
+        for name in config.options("Presets"):
+            self.presets[name] = config.getfloat("Presets", name)
 
     def _checkAlive(self):
         """Raises an exception if the control script is not active."""
@@ -296,19 +309,3 @@ class FEU_TTM_cmds:
                 name = self.Stat_P.fname
                 self.Stat_P.close()
                 self.Stat_P = name
-
-    def _setStatus(self, status:int):
-        """Sets Stat_P."""
-
-        try: assert status in [1, 0]
-        except AssertionError: raise ValueError("Status must be 1, or 0")
-
-        self._checkAlive()
-
-        #if shm isn't loaded correctly, we'll get an attribute error
-        try: stat = self.Stat_P.get_data()
-        except AttributeError:
-            raise ShmError("Shm states out of sync. Restart control script.")
-
-        stat[0] = status
-        self.Stat_P.set_data(stat)

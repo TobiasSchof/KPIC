@@ -32,6 +32,13 @@ if __name__ != "__main__":
     print("FEU_TTM_Control is not meant to be used as an import.")
     sys.exit()
 
+# connection information
+# Telnet ip to connect to
+addr = "nspecterm"
+# Telnet port to connect to
+port = 10007 
+
+
 # a flag to tell the whole script to end if a signal is passed
 alive = True
 
@@ -64,15 +71,15 @@ def update(error:int=0):
         # a value of -1 means that the serial coms aren't open
         if qMOV == -1:
             if Stat_D.get_data()[0] != 0:
-                Stat_D.set_data(np.array([0], np.int8))
-                Error.set_data(np.array([error], np.int8))
+                Stat_D.set_data(np.array([1], Stat_D.npdtype))
+                Error.set_data(np.array([error], Error.npdtype))
             break
         #if we are moving or just finished moving, update shm
-        elif qMOV or Stat_D.get_data()[0] == 2:
+        elif qMOV or Stat_D.get_data()[0] & 4:
             with dev_lock: curpos=dev.reqPosAct()
-            # if we got a list, it means there was no error
+            # if we got a dict, it means there was no error
             if type(curpos) is dict:
-                Pos_D.set_data(np.array([curpos[1], curpos[2]], np.float32))
+                Pos_D.set_data(np.array([curpos[1], curpos[2]], Pos_D.npdtype))
             # here we have an error
             elif type(curpos) is tuple and error == 0:
                 # if we haven't had an error yet, take one from device errors
@@ -80,22 +87,22 @@ def update(error:int=0):
                 # convert error to an int
                 error = -1*(ord(error)-64)
             
-            stat = 2 if qMOV else 1
-            Stat_D.set_data(np.array([stat], np.int8))
+            stat = 7 if qMOV else 3
+            Stat_D.set_data(np.array([stat], Stat_D.npdtype))
 
-            Error.set_data(np.array([error], np.int8))
+            Error.set_data(np.array([error], Error.npdtype))
         #otherwise, make sure status is set correctly
         else:
-            if Stat_D.get_data()[0] != 1: 
-                Stat_D.set_data(np.array([1], np.int8))
+            if Stat_D.get_data()[0] & 4: 
+                Stat_D.set_data(np.array([3], Stat_D.npdtype))
             with dev_lock: curpos=dev.reqPosAct()
             if type(curpos) is dict:
-                Pos_D.set_data(np.array([curpos[1], curpos[2]], np.float32))
+                Pos_D.set_data(np.array([curpos[1], curpos[2]], Pos_D.npdtype))
             elif type(curpos) is tuple and error == 0:
                 error = list(curpos[1].values())[0]
                 error = -1*(ord(error)-64)    
             if error != 0 or Error.get_data()[0] != error:
-                Error.set_data(np.array([error], np.int8))
+                Error.set_data(np.array([error], Error.npdtype))
             break
 
 def move(target:list) -> int:
@@ -119,8 +126,6 @@ def move(target:list) -> int:
             return 1
 
     #perform movement
-    #TODO: don't send move if TTM is already in position (have to check
-        #precision of encoder)
     req = {1:target[0], 2:target[1]}
     info("Moving axis {} to {}.".format(idx, req))
     with dev_lock: err = dev.moveAbs(newPOS=req)
@@ -129,7 +134,7 @@ def move(target:list) -> int:
     if type(err) is dict: return -1*(ord(list(err.values())[0])-64)
     else: return 0
 
-def connect_device():
+def connect():
     """Connects the TTM. If device is already connected, does nothing.
         
     Reloads limits from config file and, if CAN_MOVE==True, moves.
@@ -137,12 +142,7 @@ def connect_device():
         the config file will be rewrwitten
     """
     
-    #Do nothing if device is off or already connected
-    """
-    with dev_lock:
-        if not q_pow() or not dev.con_type is None: return 
-    """
-
+    #Do nothing if device is already connected
     if not dev.con_type is None: return
 
     info("Connecting TTM Conex controller.")
@@ -171,96 +171,72 @@ def connect_device():
 
     pos = Pos_P.get_data()
 
-    if CAN_MOVE:
-        info("Moving to initial positions.")
-        #load the starting position values into a dict
-        pos_i = {axis:pos[int(axis)-1] for axis in axes}
-        move(pos_i)
+    # Set P shm values to current values
+    info("Setting P shm values to current values")
+    with dev_lock: cur_pos = dev.reqPosAct()
+    # if there were no errors, store values
+    if type(cur_pos) is dict:
+        for axis in axes: pos[int(axis)-1] = cur_pos[axis]
+        Pos_P.set_data(pos)
+    # if there were errors, store those
     else:
-        info("Cannot move to initial positions. Changing command shared " +\
-         "memory values.")
-        with dev_lock: cur_pos = dev.reqPosAct()
-        #get values for each axis
-        if type(cur_pos) is dict:
-            for axis in axes: pos[int(axis)-1] = cur_pos[axis]
-            Pos_P.set_data(pos)
-        else:
-            error = list(curpos[1].values())[0]
-            error = -1*(ord(error)-64)
-            Error.set_data(np.array([error], np.int8))
+        error = list(curpos[1].values())[0]
+        error = -1*(ord(error)-64)
+        Error.set_data(np.array([error], Error.npdtype))
 
-def device_off():
-    """Turns off the TTM using the NPS"""
+def disconnect():
+    """Disconnects from the TTM"""
 
     info("Checking if TTM is connected.")
     if dev is None or dev.con_type is None:
         return
 
-    #update position
-    #if there is an existing update thread, tell it to stop
+    # update position
+    # if there is an existing update thread, tell it to stop
     global cur_thread
     if cur_thread is not None and cur_thread.is_alive():
         cur_thread.join()
-    else: update() #update shm
+    # update shms
+    else: update()
 
     with dev_lock:
         info("Closing connection to TTM.")
         dev.close()
 
-    info("Sending off command to NPS")
-    turn_off()
-
-    info("Waiting for TTM to turn off.")
-    #while q_pow(): sleep(.5)
-        
     update()
-
-def device_on():
-    """Waits for NPS to turn on device and then connects"""
-
-    # if the device is already on, do nothing
-    #if q_pow(): return
-
-    info("Sending on command to NPS")
-    turn_on()
-
-    info("Waiting for NPS to turn on device.")
-    #while not q_pow(): sleep(.1)
-
-    info("Opening connection to TTM.")
-    connect_device()
 
 def listener():
     """A method that performs commands from the command shared memory when 
     updated, and spawns a thread that updates the position of the TTM in shm.
     """
 
+    # update Pos_P and Stat_P counters
     Pos_P.get_counter()
     Stat_P.get_counter()
 
-    #we put the listening process in an infinite loop
+    # we put the listening process in an infinite loop
     while alive:
         info("command shared memory updated")
-        #here we look at metadata instead of reading new metadata to ensure
-        #  we're getting the count of the last time we updated 
-        pos_cnt = Pos_P.mtdata["cnt0"]
-        stat_cnt = Stat_P.mtdata["cnt0"]
         
         error=0
         
-        #check status change first
-        if Stat_P.get_counter() != stat_cnt:
+        # check status change first
+        if Stat_P.mtdatat["cnt0"] != Stat_P.get_counter():
             info("status updated")
             req_stat = Stat_P.get_data()[0]
-            if req_stat == 1:
-                info("Turning on device")
-                device_on()
-            elif req_stat == 0:
-                info("Turning off device")
-                device_off()
+            # kill control script
+            if not req_stat & 1: break
+            # make sure device is connected
+            if req_stat & 2:
+                info("Connecting to device")
+                connect()
+            # make sure device is disconnected
+            else:
+                info("Disconnecting from device")
+                disconnect()
     
         #check position change last
-        if Pos_P.get_counter() != pos_cnt:
+        if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             info("Position updated")
             error = move(Pos_P.get_data())
         
@@ -308,15 +284,13 @@ def close():
     try:    
         if not dev.con_type is None:
             info("Turning off TTM.")
-            device_off()
+            disconnect()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
     
     info("Updating state shared memory file.")
     try:
-        #define how the status should change
-        change = {2:-1, 1:-1, 0:-2, -1:-1, -2:-2}
-        #set state status based on above change
-        Stat_D.set_data(np.array([change[Stat_D.get_data()[0]]], np.int8))
+        # set status bit 1 to 0
+        Stat_D.set_data(np.array([Stat_D.get_data()[0] & ~1], Stat_D.npdtype))
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     #killing semaphore listening processes.
@@ -350,15 +324,11 @@ log_path=config.get("Communication", "debug_log")
 debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
 
 parser = ArgumentParser()
-#boolean flag for CAN_MOVE
-parser.add_argument("-m", action="store_true")
 #flags to put into debug move
 parser.add_argument("-d", default=-1, nargs="?")
 parser.add_argument("-d!", "--dd", default=-1, nargs="?")
 
 args = parser.parse_args()
-
-CAN_MOVE = args.m #whether this device can move on startup
 
 if args.dd != -1:
     if not args.dd is None: log_path=args.dd
@@ -384,37 +354,32 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]): 
     Stat_D = Shm(Stat_D[0])
-    status=Stat_D.get_data()[0]
+    status = Stat_D.get_data()[0]
 
-    if status in [2, 1, 0]:
+    if status & 1:
         info("Active control script exists. Raising exception.")
         msg="State shared memory status {}.".format(status)
         raise AlreadyAlive(msg)
+    else: status[0] = status | 1; Stat_D.set_data(status)
 else:
     info("No state shared memory file. Creating file.")
-    Stat_D = config.get("Shm_Info", "Stat_D").split(",") +\
-        config.get("Shm_Init", "Stat_D").split(",")
-    Stat_D = Shm(Stat_D[0], data=np.array([Stat_D[3:]], 
-                 dtype=type_[Stat_D[1]]), mmap=(Stat_D[2] == "1"))
+    Stat_D = Shm(Stat_D[0], data=np.array([1], dtype=type_[Stat_D[1]]), 
+        mmap=(Stat_D[2] == "1"))
 
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
 if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No state shared memory file. Creating file.")
-    Pos_D = config.get("Shm_Info", "Pos_D").split(",") +\
-        config.get("Shm_Init", "Pos_D").split(",")
-    Pos_D = Shm(Pos_D[0], data=np.array([Pos_D[3:]], dtype=type_[Pos_D[1]]),\
-                mmap=(Pos_D[2] == "1"))
+    Pos_D = Shm(Pos_D[0], data=np.array([0., 0.], dtype=type_[Pos_D[1]]),
+        mmap=(Pos_D[2] == "1"))
 
 Error = config.get("Shm_Info", "Error").split(",")
 if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else:
     info("No state shared memory file. Creating file.")
-    Error = config.get("Shm_Info", "Error").split(",") +\
-        config.get("Shm_Init", "Error").split(",")
-    Error = Shm(Error[0], data=np.array([Error[3:]], dtype=type_[Error[1]]),\
-                mmap=(Error[2] == "1"))
+    Error = Shm(Error[0], data=np.array([0], dtype=type_[Error[1]]),
+        mmap=(Error[2] == "1"))
 
 info("No duplicate control script, continuing with initialization.")
 
@@ -435,15 +400,13 @@ ShmP = posix_ipc.Semaphore(None, flags = posix_ipc.O_CREX)
 #   at close)
 Sem_Listeners = []
 
-Stat_P = config.get("Shm_Info", "Stat_P").split(",") +\
-    config.get("Shm_Init", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data=np.array([Stat_P[3:]], dtype=type_[Stat_P[1]]),\
+Stat_P = config.get("Shm_Info", "Stat_P").split(",")
+Stat_P = Shm(Stat_P[0], data=np.array([1], dtype=type_[Stat_P[1]]),
      sem=True, mmap=(Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
-Pos_P = config.get("Shm_Info", "Pos_P").split(",") +\
-    config.get("Shm_Init", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data=np.array([Pos_P[3:]], dtype=type_[Pos_P[1]]),\
+Pos_P = config.get("Shm_Info", "Pos_P").split(",")
+Pos_P = Shm(Pos_P[0], data=np.array([0., 0.], dtype=type_[Pos_P[1]]),
     sem=True, mmap=(Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
@@ -468,43 +431,14 @@ register(Punlink)
 
 info("Command shared memories successfully created.")
 
-# The FEU TTM is not currently connected to the NPS
-"""
-info("Initializing NPS")
-NPS=NPS_cmds()
-info("Finding TTM port")
-NPS.TTM_port = None
-for port in NPS.devices:
-    if NPS.devices[port] == "FEU TTM":
-        NPS.TTM_port = port
-        break
-if NPS.TTM_port is None:
-    info("Cannot find NPS port")
-    raise NPSError("Cannot find NPS port")
-
-#convenience methods to deal with the NPS
-turn_on = lambda: NPS.turnOn(NPS.TTM_port)
-turn_off = lambda: NPS.turnOff(NPS.TTM_port)
-q_pow = lambda: NPS.getStatusAll()[NPS.TTM_port]
-"""
-
-turn_on = lambda: 0
-turn_off = lambda: 0
-
 #set up device.
 dev=Conex_Device()
-# save address and port to open later
-addr = config.get("Communication", "address")
-port = config.get("Communication", "address")
 
 axes=[1, 2]
 #since we will have multiple threads accessing the device, we need to 
 #  avoid interruption during communication
 dev_lock = threading.Lock()
 
-#if the device is already on, connect to it
-#if q_pow(): connect_device()
-    
 info("Starting display drawer")        
 #we use popen to start the drawing script separately to prevent blocking
 display_cmd = "FEU_TTM_draw"
