@@ -1,9 +1,9 @@
-from serial import serial
+from serial import Serial
 from time import sleep
 from telnetlib import Telnet
 from logging import debug
 
-class TimeoutError(Expection):
+class TimeoutError(Exception):
     """An error to be thrown for a movement timeout"""
     pass
 
@@ -61,7 +61,7 @@ class Micronix_Device():
         debug("Connecting to telnet: {}:{}...".format(host, port))
         self.con = Telnet()
         self.con.open(host, port)
-        self.con_type = "telnet")
+        self.con_type = "telnet"
 
         #TODO: check: is first message ignored?
 
@@ -302,10 +302,10 @@ class Micronix_Device():
         # if there is already a carriage return, no need to add one
         if MSG.endswith("\r"):
             debug("Sending message: {}\\r".format(MSG[:-1]))
-            self.con.write(MSG)
+            self.con.write(MSG.encode())
         else:
             debug("Sending message: {}\\n\\r".format(MSG))
-            self.con.write(MSG+"\n\r")
+            self.con.write((MSG+"\n\r").encode())
 
     def _query(self, MSG:str) -> str:
         """Formats query <MSG> to be sent and returns result
@@ -327,5 +327,5 @@ class Micronix_Device():
         # send query
         self._write(MSG)
 
-        # read response
-        return self.read_until("\n\r")
+        # read response, stripping new line carriage return at end and # at beginning
+        return self.con.read_until("\n\r".encode())[1:-2].decode()
