@@ -36,7 +36,7 @@ if __name__ != "__main__":
 # ip address for the PI device
 IP = "10.136.1.45"
 
-#a flag to tell the update thread to stop what it's doing
+# a flag to tell the update thread to stop what it's doing
 STOP = False
 cur_thread = None
 
