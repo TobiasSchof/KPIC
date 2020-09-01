@@ -17,11 +17,13 @@ main_help = """usage:
 {b:2}ADC [CMD] [-h]
     
 CMD:
-{b:2}goto   - moves device
-{b:2}status - returns last recorded position
-{b:2}home   - homes device
-{b:2}loop   - sets/gets loop type
-{b:2}enable - turns on control script
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}home       - homes device
+{b:2}loop       - sets/gets loop type
+{b:2}connect    - connects to device
+{b:2}disconnect - disconnects from device
+{b:2}enable     - turns on control script
 -h:
 {b:2}add "-h" after a command for more info""".format(b = "")
 
@@ -56,6 +58,10 @@ enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?",
     default = -1, help = "starts control script in debug mode. \
     'PATH' can be specified to change log location")
 
+# create subparsers to handle connect/disconnect
+connect = sub.add_parser("connect")
+disconnect = sub.add_parser("disconnect")
+
 # create subparser to handle loop command
 addend = """
 options: open/closed and accurate/clean 
@@ -66,9 +72,9 @@ examples:
 {b:2}ADC loop open clean
 {b:2}ADC loop closed"""
 
-loop = sub.add_parser("loop", addend = addend,
+loop = sub.add_parser("loop", epilog = addend,
     formatter_class = RawDescriptionHelpFormatter)
-loop.add_argument("type", nargs=*, help="loop options, or none to query")
+loop.add_argument("type", nargs="*", help="loop options, or none to query")
 
 # create subparser to handle home command
 home = sub.add_parser("home")
@@ -94,11 +100,11 @@ examples:
 
 if len(dev.presets) > 0:
     addend += "{b:2}ADC goto {} {}".format(b = "", 
-        pres = *list(dev.presets.keys())[0]) 
+        *list(dev.presets.keys())[0]) 
 
 goto = sub.add_parser("goto", epilog = addend,
     formatter_class = RawDescriptionHelpFormatter)
-goto.add_argument("target", nargs=*, 
+goto.add_argument("target", nargs="*", 
     help = "position to move to (in mm or a preset)")
 
 # parse arguments and load them into args
@@ -135,8 +141,18 @@ if args.command == "enable":
     dev.activate_Control_Script(append = append)
     sys.exit()
 
+# then check connect
+if args.command == "connect":
+    dev.connect()
+    sys.exit()
+
+# then check disconnect
+if args.command == "disconnect":
+    dev.disconnect()
+    sys.exit()
+
 # next check loop
-if args.command == "loop"
+if args.command == "loop":
     # if no option was given, return loop type
     if len(args.loop) == 0:
         acc = "accurate" if dev.is_loop_accurate() else "clean"
@@ -181,7 +197,7 @@ if args.command == "home":
         print("\033[F\033[KDevice homed.")
     # catch exceptions
     except StageOff as e:
-        print("Device off. Please use 'ADC on'")
+        print("Device not connected. Please use 'ADC connect'")
     except ScriptOff as e:
         print("Control script off. Please use 'ADC enable'")
 
@@ -196,7 +212,7 @@ if args.command == "status":
             t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
     # catch exceptions
     except StageOff as e:
-        print("Device off. Please use 'ADC on'")
+        print("Device not connected. Please use 'ADC connect'")
     except ScriptOff as e:
         print("Control script off. Please use 'ADC enable'")
 
@@ -224,18 +240,20 @@ if args.command == "goto":
 
     try: dev.set_pos(args.target, block = True)
     except StageOff as e:
-        print("Device off. Please us 'ADC on'")
+        print("Device not connected. Please us 'ADC connect'")
     except ScriptOff as e:
         print("Control script off. Please use 'ADC enable'")
     except MovementTimeout as e:
         print("Device taking too long to move. Check for blockages")
     except ShmError as e:
-        if e.message == "Error 3.":
-            print("Target outside of limits.")
-        elif e.message == "Error 2.":
+        if e.message == "Error 1.":
             print("Device unreferenced. Please use 'ADC home'")
+        elif e.message == "Error 2.":
+            print("Device not connected. Please use 'ADC connect'")
+        elif e.message == "Error 3.":
+            print("Axes out of sync. Please use 'ADC home'")
         else:
             print(e.message)
     except LoopOpen as e:
-        print("Device in open loop. Please use 'TCP home'.")
+        print("Device in open loop. Please use 'ADC home'.")
         goto.print_help()

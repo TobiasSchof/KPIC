@@ -26,7 +26,7 @@ See ADC_cmds or type ADC in terminal to control the stage
 
 # This scrip is not an import
 if __name__ != "__main__":
-    print("PIAA_Control is not meant to be used as an import.")
+    print("ADC_Control is not meant to be used as an import.")
     sys.exit()
 
 # info is most of what we'll be using for logging, so make a shorter command for it
@@ -77,14 +77,15 @@ def do_state() -> int:
     err = 0
 
     # clear any errors in the buffer
-    ret = dev.getError([1,2])
+    if dev.con_type is not None:
+        ret = dev.getError([1,2])
 
     # get requested a current state values
     req = Stat_P.get_data()[0]
     cur = Stat_D.get_data()[0]
 
     # kill script if requested
-    if req & 1: signal_handler(0, 0); return
+    if not req & 1: signal_handler(0, 0); return 0
 
     # connect/disconnect from device
     if req & 2 and not dev.isConnected():
@@ -99,7 +100,7 @@ def do_state() -> int:
         req = cur
     elif not req & 2 and dev.isConnected():
         disconnect()
-        return
+        return 0
 
     # loop closed
     if req & 4:
@@ -146,7 +147,7 @@ def connect() -> int:
         int = error code
     """
 
-    dev.open_Serial("ttyUSB3", 38400)
+    dev.open_Serial("/dev/ttyUSB3", 38400)
 
     err = update_state()
     return err
@@ -204,34 +205,35 @@ def update_pos():
 def main():
     """The main loop"""
 
-    # wait for one of the shms to be updated
-    ShmP.acquire()
+    while alive:
+        # wait for one of the shms to be updated
+        ShmP.acquire()
 
-    # check to see if we should end
-    if not alive: return
+        # check to see if we should end
+        if not alive: return
 
-    # variables to store error codes from doing state and move
-    errs = 0
-    errm = 0
+        # variables to store error codes from doing state and move
+        errs = 0
+        errp = 0
 
-    # first make changes requested in Stat_P
-    if Stat_P.mtdata["cnt0"] != Stat_P.get_counter():
-        errs = do_state()
+        # first make changes requested in Stat_P
+        if Stat_P.mtdata["cnt0"] != Stat_P.get_counter():
+            errs = do_state()
     
-    # update status of device
-    _ = update_state()
-    if errs == 0 and _ != 0: errs = _
+        # update status of device
+        _ = update_state()
+        if errs == 0 and _ != 0: errs = _
 
-    # then make any change requested in Pos_P
-    if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
-        errp = move(Pos_P.get_data())
-        
-    # update position of device
-    if dev.isConnected(): update_pos()
+        # then make any change requested in Pos_P
+        if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
+            errp = move(Pos_P.get_data())
 
-    # prioritize errors that arose when setting status
-    if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
-    elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
+        # update position of device
+        if dev.isConnected(): update_pos()
+
+        # prioritize errors that arose when setting status
+        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
+        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
 
 def close():
     """A cleanup method
@@ -291,7 +293,7 @@ alive = True
 
 # read config file
 config = ConfigParser()
-config.read(RELDIR+"/data/PIAA.ini")
+config.read(RELDIR+"/data/ADC.ini")
 
 # set up logging formatting
 log_path = config.get("Communication", "debug_log")
@@ -345,20 +347,17 @@ if os.path.isfile(Stat_D[0]):
         Stat_D.set_data(stat)
 else:
     info("No Stat_D shared memory file. Creating file.")
-    Stat_D = Shm(Stat_D[0]. data = npt.array([1], dtype = type_[Stat_D[1]]),
+    Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = type_[Stat_D[1]]),
         mmap = (Stat_D[2] == "1"))
 
 info("No duplicate control script, continuing with initialization")
-
-# connect to rest of state shms
-Pos_D
 
 # connect to rest of state shms
 Pos_D = config.get("Shm Info", "Pos_D").split(",")
 if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No Pos_D shared memory file. Creating file.")
-    Pos_D = Shm(Pos_D[0], data = np.array([-5000.], dtype = type_[Pos_D[1]]),
+    Pos_D = Shm(Pos_D[0], data = np.array([0.,0.], dtype = type_[Pos_D[1]]),
         mmap = (Pos_D[2] == "1"))
 
 Error = config.get("Shm Info", "Error").split(",")
@@ -386,7 +385,7 @@ Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = type_[Pos_P[1]]),
+Pos_P = Shm(Pos_P[0], data = np.array([0.,0.], dtype = type_[Pos_P[1]]),
     sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
@@ -404,14 +403,15 @@ def Punlink():
 # We want to register P shm unlock after creating P shms so they aren't cleaned
 #   up before we have a change to unlink (delete) the lock
 register(Punlink)
-signal(SIGHUP, signal_handler)
-signal(SIGTERM, signal_handler)
 
 info("Shared memories created successfully.")
 
+# connect to micronix device
+dev = Micronix_Device()
+
 info("Starting display drawer")
 # we use Popen to start drawer script in a non-blocking way
-draw_proc = Popen("PIAA_draw")
+draw_proc = Popen("ADC_draw")
 
 info("Beginning loop.")
 main()

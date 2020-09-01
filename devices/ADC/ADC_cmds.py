@@ -172,8 +172,8 @@ class ADC_cmds:
 
         return self.Stat_D.get_data()[0] & 8
 
-    def on(self):
-        """Turns the device on
+    def connect(self):
+        """Connects to device
 
         This is done by setting Stat_P, not through the NPS
         """
@@ -188,8 +188,8 @@ class ADC_cmds:
             stat[0] += 2
             self.Stat_P.set_data(stat)
 
-    def off(self):
-        """Turns the device off
+    def disconnect(self):
+        """Disconnects from the device
 
         This is done by setting Stat_P, not through the NPS
         """
@@ -368,7 +368,7 @@ class ADC_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_On(): raise StageOff("Stage is off. Please use on() method.")
+        if not self.is_Connected(): raise StageOff("Stage is off. Please use on() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""
