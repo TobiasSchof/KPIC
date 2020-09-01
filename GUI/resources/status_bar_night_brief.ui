@@ -1,0 +1,1221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>448</width>
+    <height>725</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <item>
+    <layout class="QGridLayout" name="gridLayout">
+     <item row="23" column="8" colspan="2">
+      <widget class="QLabel" name="track_cam_temp">
+       <property name="text">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Temp (&lt;span style=&quot; vertical-align:super;&quot;&gt;o&lt;/span&gt;C)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="6" colspan="2">
+      <widget class="QLabel" name="track_cam_f_l_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>Both Off</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="0" colspan="12">
+      <widget class="QLabel" name="target_info_2">
+       <property name="text">
+        <string>Target Info</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="28" column="0" colspan="4">
+      <widget class="QLabel" name="error_warning">
+       <property name="text">
+        <string>Error / Warnings</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="0" colspan="12">
+      <widget class="QFrame" name="hline_target_t_2">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="28" column="4" colspan="8">
+      <widget class="QLabel" name="error_warning_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>None</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0" colspan="12">
+      <widget class="QFrame" name="hline_title_t_2">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="6" colspan="2">
+      <widget class="QLabel" name="track_cam_fps_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="4" colspan="2">
+      <widget class="QLabel" name="track_cam_fps">
+       <property name="text">
+        <string>FPS</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="21" column="0" colspan="12">
+      <widget class="QLabel" name="track_cam">
+       <property name="text">
+        <string>Tracking Camera</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="19" column="0" colspan="2">
+      <widget class="QLabel" name="dar">
+       <property name="text">
+        <string>DAR</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="19" column="8" colspan="2">
+      <widget class="QLabel" name="wl_scf">
+       <property name="styleSheet">
+        <string notr="true"/>
+       </property>
+       <property name="text">
+        <string>WL (ScF)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="18" column="0" colspan="4">
+      <widget class="QLabel" name="astro_dist">
+       <property name="text">
+        <string>Astrometry (Dist.)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="20" column="0" colspan="12">
+      <widget class="QFrame" name="hline_track_cam_t">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="4" colspan="2">
+      <widget class="QLabel" name="track_cam_f_l">
+       <property name="text">
+        <string>Fan/LED</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="8" colspan="2">
+      <widget class="QLabel" name="hmag_2">
+       <property name="text">
+        <string>Hmag</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="8" colspan="2">
+      <widget class="QLabel" name="track_cam_dist_map">
+       <property name="text">
+        <string>Dist Map</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="3" colspan="3">
+      <widget class="QLabel" name="track_cam_crop_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>Full Frame</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="8" colspan="2">
+      <widget class="QLabel" name="astro_raw_sep">
+       <property name="text">
+        <string>Sep (mas)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="6" colspan="3">
+      <widget class="QLabel" name="mode">
+       <property name="text">
+        <string>Mode</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="2" colspan="2">
+      <widget class="QLabel" name="track_stat_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>Active</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="16" column="2" colspan="2">
+      <widget class="QLabel" name="track_avg_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>1</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="16" column="9">
+      <widget class="QLabel" name="usr_offset_x_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #ffd494</string>
+       </property>
+       <property name="text">
+        <string>5</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="9">
+      <spacer name="left_col_10">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="8" column="2" colspan="6">
+      <widget class="QLabel" name="target_name_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>Name</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="0" colspan="2">
+      <widget class="QLabel" name="elevation_2">
+       <property name="text">
+        <string>Elevation</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="16" column="8">
+      <widget class="QLabel" name="usr_offset_x">
+       <property name="text">
+        <string>X</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="10" colspan="2">
+      <widget class="QLabel" name="hamg_val_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>Options</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="2" colspan="2">
+      <widget class="QLabel" name="elevation_val_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;XX.XX&lt;span style=&quot; vertical-align:super;&quot;&gt;o&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="2" colspan="2">
+      <widget class="QLabel" name="track_cam_stat_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>Ready</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="10" column="0" colspan="12">
+      <widget class="QFrame" name="hline_tracking_t">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="22" column="0" colspan="12">
+      <widget class="QFrame" name="hline_track_cam_b">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="8" colspan="2">
+      <widget class="QLabel" name="track_cam_ndr">
+       <property name="text">
+        <string>NDR</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="0" colspan="3">
+      <widget class="QLabel" name="track_cam_crop">
+       <property name="text">
+        <string>Crop</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="19" column="6" colspan="2">
+      <widget class="QLabel" name="wl_tc_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX um</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="2">
+      <spacer name="left_col_3">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="9" column="10" colspan="2">
+      <widget class="QLabel" name="rt_val_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>HH:MM</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="10" colspan="2">
+      <widget class="QLabel" name="track_cam_ndr_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="18" column="6" colspan="2">
+      <widget class="QLabel" name="astro_dist_pa_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="6" colspan="2">
+      <widget class="QLabel" name="track_gain_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XX.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="6">
+      <widget class="QLabel" name="track_cam_crop_x">
+       <property name="text">
+        <string>X</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="0" colspan="2">
+      <widget class="QLabel" name="track_cam_tint">
+       <property name="text">
+        <string>Tint (ms)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0" colspan="12">
+      <widget class="QFrame" name="hline_title_t">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="10" colspan="2">
+      <widget class="QLabel" name="track_cam_dist_map_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>Map 1</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="19" column="10" colspan="2">
+      <widget class="QLabel" name="wl_scf_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX um</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="5" colspan="3">
+      <widget class="QLabel" name="track_cam_ps_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XX.XX mas/pix</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="2" colspan="2">
+      <widget class="QLabel" name="track_cam_inst_ang_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;XXX.XX&lt;span style=&quot; vertical-align:super;&quot;&gt;o&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="10" colspan="2">
+      <widget class="QLabel" name="track_cam_crop_y_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>[0:512]</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="9">
+      <widget class="QLabel" name="track_cam_crop_y">
+       <property name="text">
+        <string>Y</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="7" colspan="2">
+      <widget class="QLabel" name="track_cam_crop_x_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>[0:640]</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="0" colspan="12">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;img src=&quot;:/logo/KPIC_logo_resized.png&quot;/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0" colspan="12">
+      <widget class="QLabel" name="title">
+       <property name="text">
+        <string>KPIC</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="4">
+      <widget class="QLabel" name="track_cam_ps">
+       <property name="text">
+        <string>PS</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="0" colspan="2">
+      <widget class="QLabel" name="track_cam_inst_ang">
+       <property name="text">
+        <string>Inst Ang</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="4" colspan="2">
+      <widget class="QLabel" name="track_gain">
+       <property name="text">
+        <string>Gain</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="4" colspan="2">
+      <widget class="QLabel" name="airmass_2">
+       <property name="text">
+        <string>Airmass</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="6">
+      <spacer name="left_col_7">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="16" column="10">
+      <widget class="QLabel" name="usr_offset_y">
+       <property name="text">
+        <string>Y</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="3">
+      <spacer name="left_col_4">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="16" column="4" colspan="4">
+      <widget class="QLabel" name="usr_offset">
+       <property name="text">
+        <string>User offset (pixel)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="27" column="0" colspan="12">
+      <widget class="QFrame" name="hline_error_warning">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0" colspan="2">
+      <widget class="QLabel" name="view">
+       <property name="text">
+        <string>View</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="7" column="0" colspan="12">
+      <widget class="QFrame" name="hline_target_b_2">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="8" colspan="2">
+      <widget class="QLabel" name="track_valid">
+       <property name="text">
+        <string>Validity</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="8" colspan="2">
+      <widget class="QLabel" name="rt_2">
+       <property name="text">
+        <string>RT</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="6" colspan="2">
+      <widget class="QLabel" name="astro_raw_pa_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="0" colspan="2">
+      <widget class="QLabel" name="track_cam_stat">
+       <property name="text">
+        <string>Status</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="9" colspan="3">
+      <widget class="QLabel" name="mode_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>FIU - K</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="5">
+      <spacer name="left_col_6">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="12" column="0" colspan="12">
+      <widget class="QFrame" name="hline_tracking_b">
+       <property name="frameShape">
+        <enum>QFrame::HLine</enum>
+       </property>
+       <property name="frameShadow">
+        <enum>QFrame::Plain</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="6" colspan="2">
+      <widget class="QLabel" name="airmass_val_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>X.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="10" colspan="2">
+      <widget class="QLabel" name="astro_raw_sep_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="18" column="8" colspan="2">
+      <widget class="QLabel" name="astro_dist_sep">
+       <property name="text">
+        <string>Sep (mas)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="0" colspan="2">
+      <widget class="QLabel" name="target_2">
+       <property name="text">
+        <string>Target</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="4">
+      <spacer name="left_col_5">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="29" column="11">
+      <spacer name="left_col_12">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="29" column="7">
+      <spacer name="left_col_8">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="29" column="10">
+      <spacer name="left_col_11">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="16" column="0" colspan="2">
+      <widget class="QLabel" name="tracking_avg">
+       <property name="text">
+        <string>Average</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="8">
+      <spacer name="left_col_9">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="29" column="1">
+      <spacer name="left_col_2">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="19" column="4" colspan="2">
+      <widget class="QLabel" name="wl_tc">
+       <property name="text">
+        <string>WL (TC)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="0" colspan="4">
+      <widget class="QLabel" name="astro_raw">
+       <property name="text">
+        <string>Astrometry (Raw)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="2" colspan="2">
+      <widget class="QLabel" name="track_cam_tint_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXX.XXX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="11" column="0" colspan="12">
+      <widget class="QLabel" name="tracking">
+       <property name="text">
+        <string>Tracking Script</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="10" colspan="2">
+      <widget class="QLabel" name="track_cam_temp_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>-40</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="0" colspan="2">
+      <widget class="QLabel" name="track_stat">
+       <property name="text">
+        <string>Status</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="4" colspan="2">
+      <widget class="QLabel" name="astro_raw_pa">
+       <property name="text">
+        <string>PA (deg)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="0">
+      <spacer name="left_col_1">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeType">
+        <enum>QSizePolicy::Fixed</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="16" column="11">
+      <widget class="QLabel" name="usr_offset_y_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>0</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="19" column="2" colspan="2">
+      <widget class="QLabel" name="dar_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>XXX.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="18" column="10" colspan="2">
+      <widget class="QLabel" name="astro_dist_sep_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>XXXX.XX</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="10" colspan="2">
+      <widget class="QLabel" name="track_valid_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>True</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="2" colspan="4">
+      <widget class="QComboBox" name="view_val">
+       <item>
+        <property name="text">
+         <string>Night - full</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Night - brief</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="18" column="4" colspan="2">
+      <widget class="QLabel" name="astro_dist_pa">
+       <property name="text">
+        <string>PA (deg)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="15" column="9" colspan="3">
+      <widget class="QLabel" name="goal_pos_y_val_2">
+       <property name="styleSheet">
+        <string notr="true">background-color: #ffd494</string>
+       </property>
+       <property name="text">
+        <string>0.57 / 0</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="15" column="5" colspan="4">
+      <widget class="QLabel" name="goal_pos_y">
+       <property name="text">
+        <string>Y (Actual / Goal)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="9" colspan="3">
+      <widget class="QLabel" name="goal_pos_x_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c1ffba</string>
+       </property>
+       <property name="text">
+        <string>0.45 / 0</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="5" colspan="4">
+      <widget class="QLabel" name="goal_pos_x">
+       <property name="text">
+        <string>X (Actual / Goal)</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="2" rowspan="2" colspan="3">
+      <widget class="QLabel" name="target_goal_val">
+       <property name="styleSheet">
+        <string notr="true">background-color: #c7c7c7</string>
+       </property>
+       <property name="text">
+        <string>Custom</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="0" rowspan="2" colspan="2">
+      <widget class="QLabel" name="target_goal">
+       <property name="text">
+        <string>Goal</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="KPIC_logo.qrc"/>
+ </resources>
+ <connections/>
+</ui>
