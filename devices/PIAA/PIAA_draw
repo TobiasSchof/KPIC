@@ -103,12 +103,6 @@ def loop():
     Waits 5 seconds between iterations.
     """
 
-    # get counts of last update on each of the shms that we need to log
-    #   This will tell us which has been updated
-    Dstat_cnt = Stat_D.mtdata["cnt0"]
-    Dpos_cnt  = Pos_D.mtdata["cnt0"]
-    Error_cnt = Error.mtdata["cnt0"]
-
     # wait for one of the shms to be updated
     shm_update.acquire()
 
@@ -116,9 +110,9 @@ def loop():
     if not alive: return
 
     updates = []
-    if Stat_D.get_counter() != Dstat_cnt: updates.append(1)
-    if Pos_D.get_counter() != Dpos_cnt:   updates.append(2)
-    if Error.get_counter() != Error_cnt:  updates.append(3)
+    if Stat_D.mtdata["cnt0"] != Stat_D.get_counter(): updates.append(1)
+    if Pos_D.mtdata["cnt0"] != Pos_D.get_counter():   updates.append(2)
+    if Error.mtdata["cnt0"] != Error.get_counter():  updates.append(3)
 
     update(updates)
     draw()
@@ -132,23 +126,23 @@ def draw():
     ppos = [Pos_P.get_data()[0], Pos_P.get_time()]
 
     # translate status for user
-    def stat_trans(stat:str) -> str:
+    def stat_trans(stat:int) -> str:
         """Translates a status bit code to user readable values
 
         Args:
-            stat = 8 bit binary representation of the contents of a status shm
+            stat = contents of a status shm
         Returns:
             str = human-readable string
         """
 
         msg = "Device: {} | {}"
 
-        if stat[-2] == "0": return msg.format("off", "---")
+        if not stat & 2: return msg.format("disconnected", "---")
         else:
-            app = "ready" if stat[-3] == "1" else "loop open"
-            return msg.format("on", app)
-    dstatus = [stat_trans(format(Stat_D.get_data()[0], "08b")), Stat_D.get_time()]
-    pstatus = [stat_trans(format(Stat_P.get_data()[0], "08b")), Stat_P.get_time()]
+            app = "ready" if stat & 4 else "loop open"
+            return msg.format("connected", app)
+    dstatus = [stat_trans(Stat_D.get_data()[0]), Stat_D.get_time()]
+    pstatus = [stat_trans(Stat_P.get_data()[0]), Stat_P.get_time()]
 
     # translate error for user
     derror = {0:"No Error", 1:"GCS Error (PI)", 2:"Loop Open", 3:"Movement Range"}
