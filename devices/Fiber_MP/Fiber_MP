@@ -17,12 +17,12 @@ main_help = """usage:
 {b:2}Fiber_MP [CMD] [-h]
     
 CMD:
-{b:2}goto   - moves device
-{b:2}status - returns last recorded position
-{b:2}home   - homes device
-{b:2}on     - turns on device
-{b:2}off    - turns off device
-{b:2}enable - turns on control script
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}home       - homes device
+{b:2}connect    - connects to device
+{b:2}disconnect - disconnects from device
+{b:2}enable     - turns on control script
 -h:
 {b:2}add "-h" after a command for more info""".format(b = "")
 
@@ -63,9 +63,6 @@ sub = parser.add_subparsers(dest = "command")
 
 # create subparser to handle enable command
 enable = sub.add_parser("enable")
-# add -m flag
-enable.add_argument("-m", dest = "move", action = "store_true",
-    help = "USE WITH CAUTION - device can move on startup")
 # add -d flag
 enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
     default = -1, help = "starts control script in logging mode. \
@@ -75,11 +72,11 @@ enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?",
     default = -1, help = "starts control script in debug mode. \
     'PATH' can be specified to change log location")
 
-# create subparser to handle on command
-on = sub.add_parser("on")
+# create subparser to handle connect command
+connect = sub.add_parser("connect")
 
-# create subparser to handle off command
-off = sub.add_parser("off")
+# create subparser to handle disconnect command
+disconnect = sub.add_parser("disconnect")
 
 # create subparser to handle home command
 home = sub.add_parser("home")
@@ -109,8 +106,6 @@ if args.command == "enable":
         sys.exit()
     # create append flags if any optional arguments were provided
     append = ""
-    if args.move:
-        append += " -m"
     if args.debug != -1:
         append += " -d!"
         if args.debug is not None:
@@ -127,37 +122,37 @@ if args.command == "enable":
     dev.activate_Control_Script(append = append)
     sys.exit()
 
-# next check on
-if args.command == "on": 
+# next check connect
+if args.command == "connect": 
     try:
-        # if device is already on, do nothing
-        if dev.is_On():
-            print("Device already on.")
+        # if device is already connected, do nothing
+        if dev.is_Connected():
+            print("Device already connected.")
             sys.exit()
-        # turn device on
-        dev.on()
-        # wait for device to report that it's on
+        # connect to device
+        dev.connect()
+        # wait for device to report that it's connected
         cnt = 0
         print()
-        while not dev.is_On(): 
+        while not dev.is_Connected(): 
             # \033[F moves to the beginning of the previous line
             # \033[K clears the line from cursor position to end
-            print("\033[F\033[KWaiting for device to turn on{}".format("."*((cnt%3)+1)))
+            print("\033[F\033[KWaiting for device to connect{}".format("."*((cnt%3)+1)))
             sleep(.5)
         # report success
-        print("\033[F\033[KDevice on.")
+        print("\033[F\033[KDevice connected.")
     except ScriptOff as e:
         print("Control script off. Please use 'Fiber_MP enable'")
 
 # next check off
-if args.command == "off": 
+if args.command == "disconnect": 
     try:
-        # if device is already off, do nothing
-        if not dev.is_On():
-            print("Device already off.")
+        # if device is already disconnected, do nothing
+        if not dev.is_Connected():
+            print("Device already disconnected.")
             sys.exit()
-        # turn device on
-        dev.off()
+        # disconnect from device
+        dev.disconnect()
     except ScriptOff as e:
         print("Control script off. Please use 'Fiber_MP enable'")
 
@@ -180,7 +175,7 @@ if args.command == "home":
         print("\033[F\033[KDevice homed.")
     # catch exceptions
     except StageOff as e:
-        print("Device off. Please use 'Fiber_MP on'")
+        print("Device disconnected. Please use 'Fiber_MP connect'")
     except ScriptOff as e:
         print("Control script off. Please use 'Fiber_MP enable'")
 
@@ -195,7 +190,7 @@ if args.command == "status":
             t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
     # catch exceptions
     except StageOff as e:
-        print("Device off. Please use 'Fiber_MP on'")
+        print("Device disconnected. Please use 'Fiber_MP connect'")
     except ScriptOff as e:
         print("Control script off. Please use 'Fiber_MP enable'")
 
@@ -210,7 +205,7 @@ if args.command == "goto":
     if type(args.target) is float or args.target in dev.presets:
         try: dev.set_pos(args.target, block = True)
         except StageOff as e:
-            print("Device off. Please us 'Fiber_MP on'")
+            print("Device disconnected. Please us 'Fiber_MP connect'")
         except ScriptOff as e:
             print("Control script off. Please use 'Fiber_MP enable'")
         except MovementTimeout as e:
@@ -223,7 +218,7 @@ if args.command == "goto":
             else:
                 print(e.message)
         except LoopOpen as e:
-            print("Device in open loop. Please use 'TCP home'.")
+            print("Device in open loop. Please use 'Fiber_MP home'.")
     # otherwise, display help
     else:
         print("Invalid target. See below.")

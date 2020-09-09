@@ -18,14 +18,14 @@ class TCP_cmds:
     method list:
     Queries:
         is_Active
-        is_On
+        is_Connected
         is_Homed
         get_error
         get_pos
         get_target
     Commands
-        on
-        off
+        connect
+        disconnect
         home
         open_loop
         set_pos
@@ -33,7 +33,7 @@ class TCP_cmds:
         load_presets
     Internal methods:
         _checkAlive
-        _checkOnAndAlive
+        _checkConnectedAndAlive
         _handleShms
     """
 
@@ -67,22 +67,20 @@ class TCP_cmds:
         if type(self.Stat_D) is str: self._handleShms()
 
         # check if first Stat_D bit is 1
-        try: return (format(self.Stat_D.get_data()[0], "08b")[-1] == "1")
+        try: return bool(self.Stat_D.get_data()[0] & 1)
         # if Stat_D is a still a string, it means there is not shm file
         except AttributeError: return False
 
-    def is_On(self) -> bool:
-        """Returns true if device is on
-
-        Checks Stat_D for on status, does not directly check the NPS
+    def is_Connected(self) -> bool:
+        """Returns true if device is connected
 
         Returns:
-            bool = whether the TCP is on
+            bool = whether the TCP is connected
         """
 
         self._checkAlive()
 
-        return (format(self.Stat_D.get_data()[0], "08b")[-2] == "1")
+        return bool(self.Stat_D.get_data()[0] & 2)
 
     def is_Homed(self) -> bool:
         """Returns true if device is homed
@@ -91,9 +89,9 @@ class TCP_cmds:
             bool = whether the TCP is in a referenced state
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        return (format(self.Stat_D.get_data()[0], "08b")[-3] == "1")
+        return bool(self.Stat_D.get_data()[0] & 4)
 
     def get_error(self) -> str:
         """Returns the error stored in shared memory
@@ -108,8 +106,7 @@ class TCP_cmds:
 
         err = self.Error.get_data()[0]
 
-        if err < 0: return chr(-1*err + 64)
-        else: return err
+        return err
 
     def get_pos(self, update:bool=True, time:bool=False) -> float:
         """Return the current position of the TCP
@@ -125,16 +122,14 @@ class TCP_cmds:
 
         if update: 
             # if we want to update, device has to be on
-            self._checkOnAndAlive()
+            self._checkConnectedAndAlive()
 
             # update position counter
             p_cnt = self.Pos_D.get_counter()
-            # wait for no longer than 10 seconds
-            cnt = 0
             # touch Stat_P so that D shms get updated
             self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
-            while cnt < 10 and p_cnt == self.Pos_D.get_counter(): sleep(1); cnt+=1
+            while and p_cnt == self.Pos_D.get_counter(): sleep(1)
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
@@ -149,37 +144,31 @@ class TCP_cmds:
         """
 
         # getting target position doesn't make sense unless device is on
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         return self.Pos_P.get_data()[0]
 
-    def on(self):
-        """Turns the device on
-
-        This is done by setting Stat_P, not through the NPS
-        """
+    def connect(self):
+        """Connects to device"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-2] == "1": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is connected, do nothing
+        if stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] += 2
             self.Stat_P.set_data(stat)
 
-    def off(self):
-        """Turns the device off
-
-        This is done by setting Stat_P, not through the NPS
-        """
+    def disconnect(self):
+        """Disconnects from device"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-2] == "0": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is on, do nothing
+        if not stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] -= 2
@@ -188,11 +177,11 @@ class TCP_cmds:
     def home(self):
         """Homes the device"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-3] == "1": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is homed, do nothing
+        if stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] += 4
@@ -201,11 +190,11 @@ class TCP_cmds:
     def open_loop(self):
         """Opens the loop on the device"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-3] == "0": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is open loop, do nothing
+        if not stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] -= 4
@@ -221,15 +210,12 @@ class TCP_cmds:
             block  = whether program execution should be blocked until Pos_D is updated
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         if not self.is_Homed(): raise LoopOpen("Please home device.")
 
         # get current counter for Pos_D so we know when it updates
         p_cnt = self.Pos_D.get_counter()
-        # wait no more than 10 seconds
-        cnt = 0
-
 
         # if a preset was given, translate it to a position
         if type(target) is str:
@@ -245,10 +231,8 @@ class TCP_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt < 20 and p_cnt == self.Pos_D.get_counter(): sleep(.5); cnt += 1
+        while p_cnt == self.Pos_D.get_counter(): sleep(.5)
 
-        if p_cnt == self.Pos_D.get_counter():
-            raise MovementTimeout("Movement is taking too long. Check for blocks.")
         # raise an error if there is an error
         err = self.Error.get_data()[0]
         if err < 0: 
@@ -280,7 +264,7 @@ class TCP_cmds:
             command = command[:idx] + append + command[idx:]
 
         #the tmux command should be split up by spaces
-        for cmd in command: Popen(cmd.split(" "))
+        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file
@@ -303,7 +287,7 @@ class TCP_cmds:
         # if shms haven't been loaded, load them
         if type(self.Pos_P) is str: self._handleShms()
 
-    def _checkOnAndAlive(self):
+    def _checkConnectedAndAlive(self):
         """Raises a StageOff error if the device is off"""
 
         # first make sure control script is alive

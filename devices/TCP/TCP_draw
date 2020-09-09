@@ -143,10 +143,10 @@ def draw():
 
         msg = "Device: {} | {}"
 
-        if stat[-2] == "0": return msg.format("off", "---")
+        if stat[-2] == "0": return msg.format("disconnected", "---")
         else:
             app = "ready" if stat[-3] == "1" else "loop open"
-            return msg.format("on", app)
+            return msg.format("connected", app)
     dstatus = [stat_trans(format(Stat_D.get_data()[0], "08b")), Stat_D.get_time()]
     pstatus = [stat_trans(format(Stat_P.get_data()[0], "08b")), Stat_P.get_time()]
 

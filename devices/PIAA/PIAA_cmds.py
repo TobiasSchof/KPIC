@@ -146,15 +146,12 @@ class PIAA_cmds:
         return self.Pos_P.get_data()[0]
 
     def connect(self):
-        """Turns the device on
-
-        This is done by setting Stat_P, not through the NPS
-        """
+        """Turns the device on"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is on, do nothing
         if stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
@@ -162,15 +159,12 @@ class PIAA_cmds:
             self.Stat_P.set_data(stat)
 
     def disconnect(self):
-        """Turns the device off
-
-        This is done by setting Stat_P, not through the NPS
-        """
+        """Turns the device off"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is on, do nothing
         if not stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
@@ -182,8 +176,8 @@ class PIAA_cmds:
 
         self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is on, do nothing
         if stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:

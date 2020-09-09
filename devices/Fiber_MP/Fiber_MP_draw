@@ -15,7 +15,7 @@ from posix_ipc import Semaphore, O_CREX, ExistentialError
 from KPIC_shmlib import Shm
 
 """
-A script to continuously maintian a distplay of shm values in the Fiber_MP tmux 
+A script to continuously maintian a display of shm values in the Fiber_MP tmux 
 session and log any changes to the state shared memory. Does not run faster than 
 once per 5 seconds
 """
@@ -143,10 +143,10 @@ def draw():
 
         msg = "Device: {} | {}"
 
-        if not (stat & 2): return msg.format("off", "---")
+        if not (stat & 2): return msg.format("disconnected", "---")
         else:
             app = "ready" if (stat & 4) else "loop open"
-            return msg.format("on", app)
+            return msg.format("connected", app)
     dstatus = [stat_trans(Stat_D.get_data()[0]), Stat_D.get_time()]
     pstatus = [stat_trans(Stat_P.get_data()[0]), Stat_P.get_time()]
 

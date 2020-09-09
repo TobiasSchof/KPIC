@@ -18,14 +18,14 @@ class Coronagraph_cmds:
     method list:
     Queries:
         is_Active
-        is_On
+        is_Connected
         is_Homed
         get_error
         get_pos
         get_target
     Commands
-        on
-        off
+        connect
+        disconnect
         home
         open_loop
         set_pos
@@ -33,7 +33,7 @@ class Coronagraph_cmds:
         load_presets
     Internal methods:
         _checkAlive
-        _checkOnAndAlive
+        _checkConnectedAndAlive
         _handleShms
     """
 
@@ -67,22 +67,20 @@ class Coronagraph_cmds:
         if type(self.Stat_D) is str: self._handleShms()
 
         # check if first Stat_D bit is 1
-        try: return (format(self.Stat_D.get_data()[0], "08b")[-1] == "1")
+        try: return bool(self.Stat_D.get_data()[0] & 1)
         # if Stat_D is a still a string, it means there is not shm file
         except AttributeError: return False
 
-    def is_On(self) -> bool:
+    def is_Connected(self) -> bool:
         """Returns true if device is on
 
-        Checks Stat_D for on status, does not directly check the NPS
-
         Returns:
-            bool = whether the Coronagraph is on
+            bool = whether the Coronagraph is active
         """
 
         self._checkAlive()
 
-        return (format(self.Stat_D.get_data()[0], "08b")[-2] == "1")
+        return bool(self.Stat_D.get_data()[0] & 2)
 
     def is_Homed(self) -> bool:
         """Returns true if device is homed
@@ -91,9 +89,9 @@ class Coronagraph_cmds:
             bool = whether the Coronagraph is in a referenced state
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        return (format(self.Stat_D.get_data()[0], "08b")[-3] == "1")
+        return bool(self.Stat_D.get_data()[0] & 4)
 
     def get_error(self) -> str:
         """Returns the error stored in shared memory
@@ -124,7 +122,7 @@ class Coronagraph_cmds:
 
         if update: 
             # if we want to update, device has to be on
-            self._checkOnAndAlive()
+            self._checkConnectedAndAlive()
 
             # update Position counter
             p_cnt = self.Pos_D.get_counter()
@@ -133,7 +131,7 @@ class Coronagraph_cmds:
             # touch Stat_P so that D shms get updated
             self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
-            while cnt < 10 and p_cnt == self.Pos_D.get_counter(): sleep(1); cnt+=1
+            while p_cnt == self.Pos_D.get_counter(): sleep(1)
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
@@ -148,27 +146,24 @@ class Coronagraph_cmds:
         """
 
         # getting target position doesn't make sense unless device is on
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         return list(self.Pos_P.get_data())
 
-    def on(self):
-        """Turns the device on
-
-        This is done by setting Stat_P, not through the NPS
-        """
+    def connect(self):
+        """Connects to device"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-2] == "1": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is connected, do nothing
+        if stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] += 2
             self.Stat_P.set_data(stat)
 
-    def off(self):
+    def disconnect(self):
         """Turns the device off
 
         This is done by setting Stat_P, not through the NPS
@@ -176,9 +171,9 @@ class Coronagraph_cmds:
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-2] == "0": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is disconnected, do nothing
+        if not stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] -= 2
@@ -187,11 +182,11 @@ class Coronagraph_cmds:
     def home(self):
         """Homes the device"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-3] == "1": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is homed, do nothing
+        if stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] += 4
@@ -200,11 +195,11 @@ class Coronagraph_cmds:
     def open_loop(self):
         """Opens the loop on the device"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-3] == "0": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is open loop, do nothing
+        if not stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] -= 4
@@ -220,17 +215,17 @@ class Coronagraph_cmds:
             block  = whether program execution should be blocked until Pos_D is updated
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         if not self.is_Homed(): raise LoopOpen("Please home device.")
-
-        # get current counter for Pos_D so we know when it updates
-        cnt = self.Pos_D.mtdata["cnt0"]
 
         # if a preset was given, translate it to a position
         if type(target) is str:
             try: target = self.presets[target]
             except KeyError: msg = target; raise MissingPreset(msg)
+
+        # update Pos_D count
+        self.Pos_D.get_counter()
 
         # take Pos_P so that we don't need to remake the numpy array
         pos = self.Pos_P.get_data()
@@ -242,7 +237,7 @@ class Coronagraph_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt == self.Pos_D.get_counter(): sleep(.5)
+        while self.Pos_D.mtdata["cnt0"] == self.Pos_D.get_counter(): sleep(.5)
 
         # raise an error if there is an error
         err = self.Error.get_data()[0]
@@ -271,8 +266,9 @@ class Coronagraph_cmds:
             if idx == -1: raise Exception("Cannot find where to append")
             command = command[:idx] + append + command[idx:]
 
-        #the tmux command should be split up by spaces
-        for cmd in command: Popen(cmd.split(" "))
+        # the tmux command should be split up by spaces
+        # a short sleep is required for the system to register that a tmux has been created if it's the first one.
+        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file
@@ -296,14 +292,14 @@ class Coronagraph_cmds:
         # if shms haven't been loaded, load them
         if type(self.Pos_P) is str: self._handleShms()
 
-    def _checkOnAndAlive(self):
+    def _checkConnectedAndAlive(self):
         """Raises a StageOff error if the device is off"""
 
         # first make sure control script is alive
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_On(): raise StageOff("Stage is off. Please use on() method.")
+        if not self.is_Connected(): raise StageOff("Stage is off. Please use connect() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""

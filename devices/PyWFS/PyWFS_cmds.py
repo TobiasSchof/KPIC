@@ -17,14 +17,14 @@ class PyWFS_cmds:
     method list:
     Queries:
         is_Active
-        is_On
+        is_Connected
         is_Homed
         get_error
         get_pos
         get_target
     Commands
-        on
-        off
+        connect
+        disconnect
         home
         reset
         set_pos
@@ -32,7 +32,7 @@ class PyWFS_cmds:
         load_presets
     Internal methods:
         _checkAlive
-        _checkOnAndAlive
+        _checkConnectedAndAlive
         _handleShms
     """
 
@@ -66,22 +66,20 @@ class PyWFS_cmds:
         if type(self.Stat_D) is str: self._handleShms()
 
         # check if first Stat_D bit is 1
-        try: return (format(self.Stat_D.get_data()[0], "08b")[-1] == "1")
+        try: return self.Stat_D.get_data()[0] & 1
         # if Stat_D is a still a string, it means there is not shm file
         except AttributeError: return False
 
-    def is_On(self) -> bool:
-        """Returns true if device is on
-
-        Checks Stat_D for on status, does not directly check the NPS
+    def is_Connected(self) -> bool:
+        """Returns true if device is active
 
         Returns:
-            bool = whether the PyWFS is on
+            bool = whether the PyWFS is active
         """
 
         self._checkAlive()
 
-        return (format(self.Stat_D.get_data()[0], "08b")[-2] == "1")
+        return self.Stat_D.get_data()[0] & 2
 
     def is_Homed(self) -> bool:
         """Returns true if device is homed
@@ -90,9 +88,9 @@ class PyWFS_cmds:
             bool = whether the PyWFS is in a referenced state
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        return (format(self.Stat_D.get_data()[0], "08b")[-3] == "1")
+        return self.Stat_D.get_data()[0] & 4
 
     def get_error(self) -> str:
         """Returns the error stored in shared memory
@@ -124,7 +122,7 @@ class PyWFS_cmds:
 
         if update: 
             # if we want to update, device has to be on
-            self._checkOnAndAlive()
+            self._checkConnectedAndAlive()
 
             # update position counter
             d_cnt = self.Pos_D.get_counter()
@@ -146,37 +144,31 @@ class PyWFS_cmds:
         """
 
         # getting target position doesn't make sense unless device is on
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         return self.Pos_P.get_data()[0]
 
-    def on(self):
-        """Turns the device on
-
-        This is done by setting Stat_P, not through the NPS
-        """
+    def connect(self):
+        """Connects to the device"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-2] == "1": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is connected, do nothing
+        if stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] += 2
             self.Stat_P.set_data(stat)
 
-    def off(self):
-        """Turns the device off
-
-        This is done by setting Stat_P, not through the NPS
-        """
+    def disconnect(self):
+        """Disconnects from the device"""
 
         self._checkAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-2] == "0": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is not connected, do nothing
+        if not stat[0] & 2: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] -= 2
@@ -185,11 +177,11 @@ class PyWFS_cmds:
     def home(self):
         """Homes the PyWFS"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-3] == "1": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is on, do nothing
+        if stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] += 4
@@ -198,11 +190,11 @@ class PyWFS_cmds:
     def reset(self):
         """Resets the device (puts it into an unreferenced state)"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
-        stat = self.Stat_P.get_data()
-        # If Stat_P reflects that the device is on, do nothing
-        if format(stat[0], "08b")[-3] == "0": return
+        stat = self.Stat_D.get_data()
+        # If Stat_D reflects that the device is on, do nothing
+        if not stat[0] & 4: return
         # Otherwise, flip the device bit in Stat_P
         else:
             stat[0] -= 4
@@ -218,7 +210,7 @@ class PyWFS_cmds:
             block  = whether program execution should be blocked until Pos_D is updated
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         if not self.is_Homed(): raise LoopOpen("Please home device.")
 
@@ -239,24 +231,16 @@ class PyWFS_cmds:
             # send command and wait for device to reach position
             # get current counter for Pos_D so we know when it updates
             d_cnt = self.Pos_D.get_counter()
-            # keep a counter to wait no more than 2 minutes
-            cnt = 0
             # take Pos_P so that we don't need to remake the numpy array
             pos = self.Pos_P.get_data()
             pos[0] = pre
             self.Pos_P.set_data(pos)
 
             # if we are blocking, wait until Pos_D is updated
-            while cnt < 60 and d_cnt == self.Pos_D.get_counter(): sleep(2); cnt += 1
-
-            if cnt == 60:
-                raise MovementTimeout("Move took longer than 2 minutes, check for blocks")
-
+            while d_cnt == self.Pos_D.get_counter(): sleep(2)
 
         # get current counter for Pos_D so we know when it updates
         d_cnt = self.Pos_D.get_counter()
-        # keep a counter to wait no more than 2 minutes
-        cnt = 0
 
         # take Pos_P so that we don't need to remake the numpy array
         pos = self.Pos_P.get_data()
@@ -267,10 +251,7 @@ class PyWFS_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while cnt < 60 and d_cnt == self.Pos_D.get_counter(): sleep(2); cnt += 1
-
-        if cnt == 60:
-            raise MovementTimeout("Move took longer than 2 minutes, check for blocks")
+        while d_cnt == self.Pos_D.get_counter(): sleep(2)
 
         # raise an error if there is an error
         err = self.Error.get_data()[0]
@@ -303,7 +284,7 @@ class PyWFS_cmds:
             command = command[:idx] + append + command[idx:]
 
         #the tmux command should be split up by spaces
-        for cmd in command: Popen(cmd.split(" "))
+        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file
@@ -326,7 +307,7 @@ class PyWFS_cmds:
         # if shms haven't been loaded, load them
         if type(self.Pos_P) is str: self._handleShms()
 
-    def _checkOnAndAlive(self):
+    def _checkConnectedAndAlive(self):
         """Raises a StageOff error if the device is off"""
 
         # first make sure control script is alive

@@ -125,13 +125,13 @@ if args.command == "enable":
 # next check connect
 if args.command == "connect": 
     try:
-        # if device is already on, do nothing
+        # if device is already connected, do nothing
         if dev.is_Connected():
-            print("Device already on.")
+            print("Device already connected.")
             sys.exit()
         # connect to device
         dev.connect()
-        # wait for device to report that it's on
+        # wait for device to report that it's connected
         cnt = 0
         print()
         while not dev.is_Connected(): 
@@ -147,9 +147,9 @@ if args.command == "connect":
 # next check disconnect
 if args.command == "disconnect": 
     try:
-        # if device is already off, do nothing
+        # if device is already disconnected, do nothing
         if not dev.is_Connected():
-            print("Device already off.")
+            print("Device already disconnected.")
             sys.exit()
         # disconnect from device
         dev.disconnect()

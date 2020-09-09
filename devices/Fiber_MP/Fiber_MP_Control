@@ -17,7 +17,6 @@ from posix_ipc import Semaphore, O_CREX, ExistentialError
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
-from NPS_cmds import NPS_cmds
 
 """
 THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT'S Fiber_MP
@@ -36,10 +35,6 @@ if __name__ != "__main__":
 
 # info is most of what we'll be using from logging, so make a shorter command for it
 info = logging.info
-
-class NPSError(Exception):
-    """An exception to be thrown if there is an error with the NPS"""
-    pass
 
 class AlreadyAlive(Exception):
     """An exception to be thrown if control code is initialized twice."""
@@ -87,28 +82,21 @@ def do_state() -> int:
     # kill script if requested
     if not (req[0] & 1): signal_handler(0, 0); return
 
-    starting = False
-    # turn device on/off as requested
+    # connect/disconnect to/from device as requested
     if (req[0] & 2) and not (cur[0] & 2): 
-        err = device_on()
-        # if we can't move, update P shms
-        if not CAN_MOVE:
-            Stat_P.set_data(Stat_D.get_data())
-            try: Pos_P.set_data(np.array([dev.qPOS()["1"]], Pos_P.npdtype))
-            except GCSError: err = 1
-            return err
-        starting = True
-        cur[0] = Stat_D.get_data()[0]
-    elif not (req[0] & 2) and (cur[0] & 2): return device_off()
+        err = connect()
+        cur = Stat_D.get_data()
+        req = Stat_P.get_data()
+    elif not (req[0] & 2) and (cur[0] & 2): return disconnect()
 
     # close the loop and home if requested
-    if (req[0] & 4) and (not (cur[0] & 4) or starting):
+    if req[0] & 4 and not cur[0] & 4:
         try:
             if not dev.qSVO()["1"]: dev.SVO({"1":True})
             if not dev.qFRF()["1"]: dev.FNL()
         except GCSError: err = 1
     # open the loop if requested
-    elif not (req[0] & 4) and ((cur[0] & 4) or starting):
+    elif not req[0] & 4 and cur[0] & 4:
         try:
             if dev.qSVO()["1"]: dev.SVO({"1":False})
         except GCSError: err = 1
@@ -118,66 +106,59 @@ def do_state() -> int:
         else: cur[0] = cur[0] & ~4
     except GCSError:
         err = 1
-        cur[0] = cur[0] & ~4
+        cur[0] = (1 | 2*dev.IsConnected) & ~4
     # update state shared memory
     Stat_D.set_data(cur)
 
-    # if we just turned on and can move, move
-    if starting: 
-        if err == 0: err = move(Pos_P.get_data()[0])
-        else: move(Pos_P.get_data()[0])
-
     return err
 
-def device_off() -> int:
-    """Disconnects from and turns off controller
+def disconnect() -> int:
+    """Disconnects from controller
     
     Returns:
         int = error code
     """
 
+    if not dev.IsConnected(): return
+
     err = 0
 
     try:
-        if dev.IsConnected():
-            dev.SVO({"1":False})
-            dev.CloseConnection()
+        dev.SVO({"1":False})
+        dev.CloseConnection()
     except GCSError: err = 1
-
-    # TODO: add NPS support
 
     # get the current status
     stat = Stat_D.get_data()
     # set device power bit and device ready bit to "0"
-    stat[0] = stat[0] & ~2 & ~4
+    stat[0] = stat[0] & ~6
     # store new status
     Stat_D.set_data(stat)
 
     return err
 
-def device_on() -> int:
-    """Turns on and connects to controller and then loads limits
+def connect() -> int:
+    """Connects to controller and then loads limits
     
     Returns:
         int = any error
     """
 
+    if dev.IsConnected(): return
+
     err = 0
 
-    # TODO: add NPS support, check for if device is already on
-
     # connect both controllers
-    if not dev.IsConnected():
-        try: dev.ConnectRS232(DEVNM, BAUD)
-        except GCSError: err = 1
+    try: dev.ConnectRS232(DEVNM, BAUD)
+    except GCSError: err = 1
 
-        # define limits as the larger of the min values between config file and software limits, vice 
-        #   versa for maxes
-        global limits
-        try:
-            limits = [max(dev.qTMN()["1"], config.getfloat("Limits", "min")),
-                min(dev.qTMX()["1"], config.getfloat("Limits", "max"))]
-        except GCSError: err = 1
+    # define limits as the larger of the min values between config file and software limits, vice 
+    #   versa for maxes
+    global limits
+    try:
+        limits = [max(dev.qTMN()["1"], config.getfloat("Limits", "min")),
+            min(dev.qTMX()["1"], config.getfloat("Limits", "max"))]
+    except GCSError: err = 1
 
     # get the current status
     stat = Stat_D.get_data()
@@ -186,12 +167,18 @@ def device_on() -> int:
     # set device ready bit to "1" if device is closed loop and homed
     try:
         if dev.qSVO()["1"] and dev.qFRF()["1"]: stat[0] = stat[0] | 4
-        else: stat[0] = stat[0] & ~4
+        else: (stat[0] = 1 | 2*dev.IsConnected()) & ~4
     except GCSError: 
-        stat[0] = stat[0] & ~4
+        stat[0] = (stat[0] = 1 | 2*dev.IsConnected()) & ~4
         err = 1
     # store new status
     Stat_D.set_data(stat)
+
+    try: Pos_D.set_data(np.array([dev.qPOS()["1"]], Pos_D.npdtype))
+    except GCSError: err = 1
+
+    Stat_P.set_data(Stat_D.get_data())
+    Pos_P.set_data(Pos_D.get_data())
 
     return err
 
@@ -222,11 +209,17 @@ def main():
         while cnt < 50 and dev.IsMoving(): sleep(.1); cnt += 1
 
         # update position of device
-        try: curpos = dev.qPOS()["1"]
-        except GCSError:
-            errp = 1
-            curpos = Stat_D.get_data()
-        Pos_D.set_data(np.array([curpos], Pos_D.npdtype))
+        if dev.IsConnected()
+            try: curpos = dev.qPOS()["1"]
+            except GCSError:
+                errp = 1
+                curpos = Stat_D.get_data()
+            Pos_D.set_data(np.array([curpos], Pos_D.npdtype))
+
+        # update status
+        try: stat = 1 | 2*dev.IsConnected() | 4*(dev.qSVO()["1"] and dev.qFRF()["1"])
+        except GCSError: stat = 1 | 2*dev.IsConnected()
+        Stat_D.set_data(np.array([stat], Stat_D.npdtype))
 
         # prioritize errors that arose when setting status
         if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
@@ -253,7 +246,7 @@ def close():
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Checking if device is connected")
-    try: device_off()
+    try: disconnect()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Updating Stat_D file")
@@ -303,16 +296,11 @@ log_path = config.get("Communication", "debug_log")
 debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
 
 parser = ArgumentParser()
-# boolean flag for CAN_MOVE
-parser.add_argument("-m", action = "store_true")
 # flags to set debug modes
 parser.add_argument("-d", default = -1, nargs = "?")
 parser.add_argument("-d!", "--dd", default = -1, nargs = "?")
 
 args = parser.parse_args()
-
-# whether this device can move on startup
-CAN_MOVE = args.m
 
 if args.dd != -1:
     if not args.dd is None: log_path = args.dd
@@ -406,19 +394,13 @@ def Punlink():
 # We want to register P shm unlock after creating P shms so they aren't cleaned
 #   up before we have a change to unlink (delete) the lock
 register(Punlink)
-signal(SIGHUP, signal_handler)
-signal(SIGTERM, signal_handler)
 
 info("Shared memories created successfully.")
-
-# TODO: add NPS support
 
 # define axes for this device
 dev = GCSDevice()
 # create a dictionary to hold limit information
 limits = {}
-
-# TODO: if device is on (NPS), connect to it
 
 info("Starting display drawer")
 # we use Popen to start drawer script in a non-blocking way
