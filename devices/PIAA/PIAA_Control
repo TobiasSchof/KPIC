@@ -85,7 +85,7 @@ def do_state() -> int:
     if req & 2 and not cur & 2: 
         err = connect()
         req = Stat_P.get_data()[0]
-        cur = Stat_D.get_data{}[0]
+        cur = Stat_D.get_data()[0]
     elif not req & 2 and cur & 2: return disconnect()
     # otherwise deal with the loop
     else:
@@ -214,11 +214,11 @@ def main():
                 curpos = Pos_D.get_data()
             Pos_D.set_data(np.array([curpos], Pos_D.npdtype))
         # update status
-         if dev.IsConnected():
-             try: stat = 3 | 4*(dev.qFRF()["1"] and dev.qSVO()["1"])
-             except GCSError: stat = 3
-         else:
-             stat = 1
+        if dev.IsConnected():
+            try: stat = 3 | 4*(dev.qFRF()["1"] and dev.qSVO()["1"])
+            except GCSError: stat = 3
+        else:
+            stat = 1
 
         Stat_D.set_data(np.array([stat], Stat_D.npdtype))
 
