@@ -1,0 +1,225 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from time import sleep, localtime
+import sys
+
+# nfiuserver libraries
+from Filter_Wh_cmds import Filter_Wh_cmds
+from dev_Exceptions import *
+
+# instantiate Filter_Wh cmds to get presets
+dev = Filter_Wh_cmds()
+
+# format help message for no command/invalid command
+main_help = """usage:
+{b:2}Filter_Wh [CMD] [-h]
+    
+CMD:
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}home       - homes device
+{b:2}connect    - connects to device
+{b:2}disconnect - disconnects from device
+{b:2}enable     - turns on control script
+-h:
+{b:2}add "-h" after a command for more info""".format(b = "")
+
+# format presets and examples for goto help message
+goto_addend = ""
+if len(dev.presets) > 0:
+    goto_addend += "presets:"
+    for preset in dev.presets:
+        goto_addend += "\n{b:2}{name:<10}{val}".format(b = "", 
+            name = preset + ":", val = dev.presets[preset])
+    goto_addend += "\n"
+
+goto_addend += """
+examples:
+{b:2}Filter_Wh goto 0
+""".format(b = "")
+
+if len(dev.presets) > 0:
+    goto_addend += "{b:2}Filter_Wh goto {pres}".format(b = "", 
+        pres = list(dev.presets.keys())[0]) 
+
+# change ArgumnetParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
+        sys.exit()
+
+# create argument parser
+parser = HelpArgumentParser(add_help = False)
+
+# add subparser so we can add tags to our commands
+#   NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparsers(dest = "command")
+
+# create subparser to handle enable command
+enable = sub.add_parser("enable")
+# add -d flag
+enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in logging mode. \
+    'PATH' can be specified to change log location")
+# add -d! flag
+enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in debug mode. \
+    'PATH' can be specified to change log location")
+
+# create subparser to handle connect command
+connect = sub.add_parser("connect")
+
+# create subparser to handle disconnect command
+disconnect = sub.add_parser("disconnect")
+
+# create subparser to handle home command
+home = sub.add_parser("home")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
+
+# create subparser to handle goto command
+goto = sub.add_parser("goto", epilog = goto_addend,
+    formatter_class = RawDescriptionHelpFormatter)
+goto.add_argument("target", help = "position to move to (in mm or a preset)")
+
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
+args = parser.parse_args()
+
+# if no arguments were specified (or if -h is used, since we disabled help), print help
+if args.command is None:
+    print(main_help); sys.exit()
+
+# first check for enable command
+if args.command == "enable":
+    if dev.is_Active(): 
+        print("Control script is alread on.")
+        sys.exit()
+    # create append flags if any optional arguments were provided
+    append = ""
+    if args.debug != -1:
+        append += " -d!"
+        if args.debug is not None:
+            append += " {}".format(args.debug)
+    elif args.log != -1:
+        append += " -d"
+        if args.log is not None:
+            append += " {}".format(args.log)
+
+    # if we have no flags, make append None
+    if len(append) == 0: append = None
+    
+    # start control script
+    dev.activate_Control_Script(append = append)
+    sys.exit()
+
+# next check connect
+if args.command == "connect": 
+    try:
+        # if device is already connected, do nothing
+        if dev.is_On():
+            print("Device already connected.")
+            sys.exit()
+        # connect to device
+        dev.connect()
+        # wait for device to report that it's connected
+        cnt = 0
+        print()
+        while not dev.is_Connected(): 
+            # \033[F moves to the beginning of the previous line
+            # \033[K clears the line from cursor position to end
+            print("\033[F\033[KWaiting for device to connect{}".format("."*((cnt%3)+1)))
+            sleep(.5)
+        # report success
+        print("\033[F\033[KDevice connected.")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Filter_Wh enable'")
+
+# next check disconnect
+if args.command == "disconnect": 
+    try:
+        # if device is already disconnected, do nothing
+        if not dev.is_Connected():
+            print("Device already disconnected.")
+            sys.exit()
+        # disconnect from device
+        dev.disconnect()
+    except ScriptOff as e:
+        print("Control script off. Please use 'Filter_Wh enable'")
+
+# next check home
+if args.command == "home":
+    # if device is already homed, do nothing
+    if dev.is_Homed():
+        print("Device already homed.")
+        sys.exit()
+    # home device
+    try:
+        dev.home()
+        # wait for device to report that it's homed
+        cnt = 0
+        print()
+        while not dev.is_Homed():
+            print("\033[F\033[KWaiting for device to home{}".format("."*((cnt%3)+1)))
+            sleep(.5)
+        # report success
+        print("\033[F\033[KDevice homed.")
+    # catch exceptions
+    except StageOff as e:
+        print("Device disconnected. Please use 'Filter_Wh connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Filter_Wh enable'")
+
+# next check status
+if args.command == "status":
+    # get position
+    try:
+        pos, u_time = dev.get_pos(update = args.push, time = True)
+        # convert UNIX epoch time to local time
+        t = localtime(u_time)
+        print("Position: {} last updated {}/{}/{} {}:{}:{} {}".format(pos, t.tm_year,
+            t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
+    # catch exceptions
+    except StageOff as e:
+        print("Device disconnected. Please use 'Filter_Wh connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Filter_Wh enable'")
+
+
+# last check goto
+if args.command == "goto":
+    # if a position was provided, convert it to a float
+    try: args.target = float(args.target)
+    except: pass
+
+    # if target is a float or a preset, try it
+    if type(args.target) is float or args.target in dev.presets:
+        try: dev.set_pos(args.target, block = True)
+        except StageOff as e:
+            print("Device disconnected. Please us 'Filter_Wh connect'")
+        except ScriptOff as e:
+            print("Control script off. Please use 'Filter_Wh enable'")
+        except MovementTimeout as e:
+            print("Device taking too long to move. Check for blockages")
+        except ShmError as e:
+            if e.message == "Error 3.":
+                print("Target outside of limits.")
+            elif e.message == "Error 2.":
+                print("Device unreferenced. Please use 'Filter_Wh home'")
+            else:
+                print(e.message)
+        except LoopOpen as e:
+            print("Device in open loop. Please use 'Filter_Wh home'.")
+    # otherwise, display help
+    else:
+        print("Invalid target. See below.")
+        goto.print_help()
