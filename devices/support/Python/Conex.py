@@ -194,9 +194,9 @@ class Conex_Device:
         '''
         #Does not check if port is open to avoid slow-downs from checking
             #if port is open repeatedly when back-to-back reads are performed 
-        if self.con_type is "telnet":
+        if self.con_type == "telnet":
             return self.con.read_until(bytes('\r\n', 'utf-8'), tmt).strip().decode('utf-8')
-        elif self.con_type is "serial":
+        elif self.con_type == "serial":
             self.con.timeout = tmt
             return self.con.readline().strip().decode("utf-8")
 
