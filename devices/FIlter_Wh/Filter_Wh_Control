@@ -22,9 +22,13 @@ from Conex import Conex_Device
 THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT'S FILTER WHEEL ROTATOR
 AND NOT FOR USE BY USER
 
-See FEU_TTM_cmds or type FEU_TTM in terminal to control the TTM
+See Filter_Wh_cmds or type Filter_Wh in terminal to control the stage
 
 """
+
+# define connection information
+devnm = ""
+baud = 921600 
 
 # This script is not meant to be imported
 if __name__ != "__main__":

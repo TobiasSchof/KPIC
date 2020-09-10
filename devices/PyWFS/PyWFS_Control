@@ -22,9 +22,12 @@ from Conex import Conex_Device
 THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT'S PYRAMID WAVEFRONT SENSOR PICKOFF
 AND NOT FOR USE BY USER
 
-See FEU_TTM_cmds or type FEU_TTM in terminal to control the TTM
+See PyWFS_cmds or type PyWFS in terminal to control the stage
 
 """
+
+devnm = "/dev/ttyUSB1"
+baud = 921600
 
 # This script is not meant to be imported
 if __name__ != "__main__":
@@ -94,21 +97,19 @@ def connect():
             info("Changing {} limit to {}.".format(max_, softlim[axis][1]))
             limits[max_] = softlim[axis][1]
 
-    info("Getting command shared memory")
-
     # update Pos_D
     curpos = dev.reqPosAct()
     if type(curpos) is dict: 
         Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
     # update Stat_D
-    stat = ("1" if dev.isReady() else "0") + "11"
-    Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype)) 
+    stat = 3 | 4*dev.isReady()
+    Stat_D.set_data(np.array([stat], Stat_D.npdtype)) 
 
     Pos_P.set_data(Pos_D.get_data())
     Stat_P.set_data(Stat_D.get_data())
 
 def disconnect():
-    """A method to be implemented that closes connection and turns off the device"""
+    """A method that closes connection to the device"""
 
     # close connection to device if it's open
     if not dev.con_type is None: dev.close()
@@ -386,9 +387,6 @@ info("Command shared memories successfully created.")
 
 # set up device
 dev = Conex_Device()
-# save devnm and port
-devnm = config.get("Communication", "devnm")
-baud = config.get("Communication", "baud")
 
 # define this stage's axes
 axes = [1]
