@@ -1,0 +1,400 @@
+#!/usr/bin/env kpython3
+
+# inherent python libraries
+from configparser import ConfigParser
+from atexit import register, unregister
+from time import sleep
+from signal import signal, SIGHUP, SIGTERM
+from subprocess import Popen
+from argparse import ArgumentParser
+import sys, os, logging
+
+# installs
+import numpy as np
+from posix_ipc import Semaphore, O_CREX, ExistentialError
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+from Conex import Conex_Device
+
+"""
+
+THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT'S LIGHT SOURCE
+AND NOT FOR USE BY USER
+
+See Light_Src_cmds.py or type Light_Src in terminal to control the 
+
+"""
+
+# stage connection information
+devnm = ""
+baud = 921600
+
+# This script is not meant to be imported
+if __name__ != "__main__":
+    print("Light_Src_Control is not meant to be used as an import.")
+    sys.exit()
+
+# a flag to device whether this script should die
+alive = True
+
+# define info from logging
+info = logging.info
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice."""
+    pass
+
+def move(target:float) -> int:
+    """Performs a requested move
+
+    If target is outside of limits, returns an error message (but does not
+    throw any errors)
+
+    Args:
+        target = the target position to move to
+    Returns:
+        int = the error message (check Light_Src.ini for translation)
+    """
+
+    # Check whether target is valid before moving
+    if target < limits["min_1"] or target > limits["max_1"]:
+        info("Movement requested outside of motion range.")
+        return 1
+
+    # perform movement
+    info("Moveing to {}.".format(target))
+    err = dev.moveAbs(newPOS = {1:target}, isBlocking = True)
+
+    # if moveAbs returned a dict, it's an error
+    if type(err) is dict: return -1*(ord(err[1])-64)
+    else: return 0
+
+def do_state():
+    """Performs any state changes requested in Stat_P
+
+    Returns:
+        int = the error message (check Light_Src.ini for translation)
+    """
+
+    err = 0
+
+    cur = Stat_D.get_data()[0]
+    req = Stat_P.get_data()[0]
+
+    # kill script if requested
+    if not req & 1: signal_handler(0, 0); return
+
+    # turn device on/off as requested
+    if req & 2 and not cur & 2:
+        err = connect()
+        req = Stat_P.get_data()[0]
+        cur = Stat_D.get_data()[0]
+    elif not req & 2 and cur & 2: return disconnect()
+
+    # close the loop and home if requested
+    if req & 4 and not cur & 4:
+        if not dev.isReady(): 
+            _ = dev.home(isBlocking=True)
+            if _ is not None: 
+                err = _
+    # reset if requested
+    if not req & 4 and cur & 4:
+        dev.reset()
+
+    if type(err) is dict: return -1*(ord(err[1])-64)
+    elif type(err) is str: return -1*(ord(err)-64)
+    else: return 0
+
+def connect():
+    """Connects to the device"""
+
+    # Do nothing if device is already connected
+    if not dev.con_type is None: return
+    
+    info("Connecting to Conex controller")
+    dev.open_Serial(devnm, baud)
+
+    info("Extracting limits from config file")
+    global limits
+    limits = {name:config.getfloat("Limits", name) for name in\
+            config.options("Limits")}
+    info("Config limits: {}".format(limits))
+
+    info("Checking that config limits are within software limits.")
+    # get software limits
+    softlim = dev.lims
+    for axis in axes:
+        min_ = "min_{}".format(axis)
+        max_ = "max_{}".format(axis)
+        if limits[min_] < softlim[axis][0]:
+            info("Changing {} limit to {}.".format(min_, softlim[axis][0]))
+            limits[min_] = softlim[axis][0]
+        if limits[max_] > softlim[axis][1]:
+            info("Changing {} limit to {}.".format(max_, softlim[axis][1]))
+            limits[max_] = softlim[axis][1]
+
+    # update Pos_D
+    curpos = dev.reqPosAct()
+    if type(curpos) is dict:
+        Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
+    # update Stat_D
+    stat = 3 | 4*dev.isReady()
+    Stat_D.set_data(np.array([stat], Stat_D.npdtype))
+
+    Pos_P.set_data(Pos_D.get_dat())
+    Stat_P.set_data(Stat_D.get_data())
+
+def disconnect():
+    """A method that closes connection to the device"""
+
+    # close connection to device if it's open
+    if not dev.con_type is None: dev.close()
+
+    # change device bit to 0
+    stat = Stat_D.get_data()
+    stat[0] = 1
+    Stat_DD.set_data(stat)
+
+def main():
+    """The main loop"""
+
+    while alive:
+
+        # wait for one of the shms to be updated
+        ShmP.acquire()
+
+        # check to see if we should end
+        if not alive: return
+
+        errs = 0
+        errp = 0
+
+        # first we make any changes requested in Stat_P
+        if Stat_P.mtdata["cnt0"] != Stat_P.get_counter():
+            errs = do_state()
+
+        # then make any changes requested in Pos_P
+        if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
+            errp = move(Pos_P.get_data()[0])
+
+        if dev.con_type is not None:
+            # wait if device is moving (for no longer than 5 seconds)
+            cnt = 0
+            while cnt < 50 and dev.isMoving(): sleep(.1); cnt+=1
+
+            # update position of device
+            curpos = dev.reqPosAct()
+            if type(curpos) is dict:
+                Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
+
+        # update current state
+        if dev.con_type is None: stat = 1
+        else: stat = 3 | 4*dev.isReady()
+
+        Stat_D.set_data(np.array([stat], Stat_D.npdtype))
+
+        # update error if necessary, prioritizing status errors
+        if errs != 0: Error.set_data(np.array([errs], Error.npdtype))
+        elif errp != 0 or Error.get_data()[0] != 0: Error.set_data(np.array([errp], Error.npdtype))
+
+def close():
+    """A method to perform a clean close of this control script
+    
+    Closes all communication with the device, deletes command shared memory files,
+    and closes tmux session
+    """
+
+    # stop the drawer
+    info("Killing draw process")
+    try: draw_proc.terminate()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # delete command shared memory files
+    info("Deleting command shared memory files.")
+    try:
+        for shm in [Stat_P, Pos_P]:
+            try: os.remove(shm.fname)
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # TODO: turn off device if it is on
+    try: disconnect()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # Update state shared memory file
+    try:
+        stat = format(Stat_D.get_data()[0], "08b")
+        stat = stat[:-1] + "0"
+        Stat_D.set_data(np.array([int(stat, 2)], Stat_D.npdtype))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # Kill semaphore listeners
+    info("Killing semaphore listeners")
+    try:
+        for proc in Sem_Listeners:
+            try: proc.terminate()
+            except Exception as ouch: info("Exception on close: {}".format(ouch))
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # Unlink (delete) the semaphore we were using to listen for updates
+    info("Unlinking ShmP")
+    try: ShmP.unlink()
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # unregister this method incase it's not being run in a tmux session
+    info("Unregistering cleanup method")
+    try: unregister(close)
+    except Exception as ouch: info("Exception on close: {}".format(ouch))
+
+    # Close tmux session
+    info("Closing tmux session")
+    os.system(config.get("Environment", "end_command"))
+
+def signal_handler(signum, stack):
+    """A method to close gracefully when a signal is received"""
+
+    # connect to global variable to change it
+    global alive
+    alive = False
+
+    # try to release semaphore so that listener loop iterates
+    try: ShmP.release()
+    except: pass
+
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+# read config file
+config = ConfigParser()
+config.read(RELDIR+"/data/Light_src.ini")
+
+log_path = config.get("Communication", "debug_log")
+debug_format = "%(filename)s.%(funcName)s@%(asctime)s = %(levelname)s: %(message)s"
+
+parser = ArgumentParser()
+# flags to start in debug mode
+parser.add_argument("-d", default = -1, nargs = "?")
+parser.add_argument("-d!", "--dd", default = -1, nargs = "?")
+
+args = parser.parse_args()
+
+if args.dd != -1:
+    # if a path was specified, use that
+    if not args.dd is None: log_path = args.dd
+    logging.basicConfig(format = debug_format, datefmt = "%H:%M:%S",\
+        filename = log_path)
+    logging.root.setLevel(logging.DEBUG)
+elif args.d != -1:
+    # if a path was specified, use that
+    if not args.d is None: log_path = args.d
+    logging.basicConfig(format = debug_format, datefmt = "%H:%M:%S",\
+        filename = log_path)
+    logging.root.setLevel(logging.INFO)
+
+# make the folder for shared memories if it doesn't already exist
+if not os.path.isdir("/tmp/Light_src"): os.mkdir("/tmp/Light_src")
+
+# create a dictionary to translate strings into numpy data types
+types_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32, "uint64":np.uint64,
+    "float16":np.float16, "float32":np.float32, "float64":np.float64,
+    "complex64":np.complex64, "complex128":np.complex128}
+
+# for now we just want to connect to shm to see if there's already a script
+Stat_D = config.get("Shm Info", "Stat_D").split(",")
+if os.path.isfile(Stat_D[0]):
+    Stat_D = Shm(Stat_D[0])
+    status = Stat_D.get_data()
+
+    if status[0] & 1:
+        info("Active control script exists. Raising exception.")
+        raise AlreadAlive("State status shared memory script bit is 1.")
+    else:
+        status[0] = status[0] | 1
+        Stat_D.set_data(np.array(status)
+else:
+    info("No state shared memory file. Creating file.")
+    Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = types_[Stat_D[1]]),
+        mmap = (Stat_D[2] == "1"))
+
+Pos_D = config.get("Shm Info", "Pos_D").split(",")
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
+else:
+    info("No state shared memory file. Creating file.")
+    Pos_D = Shm(Pos_D[0], data = np.array([-5000], dtype = types_[Pos_D[1]]),
+        mmap = (Pos_D[2] == "1"))
+
+Error = config.get("Shm Info", "Error").split(",")
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
+else:
+    info("No state shared memory file. Creating file.")
+    Error = Shm(Error[0], data = np.array([0], dtype = types_[Error[1]]),
+        mmap = (Error[2] == "1"))
+
+info("No duplicate control script, continuing with intialization.")
+
+# NOTE: we want to register cleanup after Shm_D is initialized so we can
+#   edit it in the cleanup method
+
+# register handles keyboard interrupts and exceptions
+# signal handles tmux kill-ses and terminates
+info("Registering cleanup.")
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+info("Initializing command shared memory from config file.")
+
+# create a subscription semaphore to link all P shms
+ShmP = Semaphore(None, flags = O_CREX)
+
+# create a list to store processes that are updating semaphores
+#   (to be killed at close)
+Sem_Listeners = []
+
+Stat_P = config.get("Shm Info", "Stat_P").split(",")
+Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = types_[Stat_P[1]]),
+    sem = True, mmap = (Stat_P[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
+
+Pos_P = config.get("Shm Info", "Pos_P").split(",")
+Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = types_[Pos_P[1]]),
+    sem = True, mmap = (Pos_P[2] == "1"))
+Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
+
+def Punlink():
+    """Tries to unlink the lock semaphores on the P shms"""
+
+    try: Stat_P.lock.unlink()
+    except (AttributeError, ExistentialError) as ouch:
+        info("Exception on close: {}".format(ouch))
+
+    try: Pos_P.lock.unlink()
+    except (AttributeError, ExistentialError) as ouch:
+        info("Exception on close: {}".format(ouch))
+
+    unregister(Punlink)
+
+# We want to register lock unlinking after making shms so that Punlink
+#   is called before the shm is cleaned up
+register(Punlink)
+
+info("Command shared memories successfully created.")
+
+# set up device
+dev = Conex_Device()
+
+# define this stage's axes
+axes = [1]
+
+info("Starting display drawer")
+# we use Popen to start the drawing script separately to prevent blocking
+display_cmd = "Light_src_draw"
+draw_proc = Popen(display_cmd.split(" "))
+
+error = 0
+
+info("Beginning loop.")
+listener()
