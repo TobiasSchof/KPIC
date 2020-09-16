@@ -19,8 +19,8 @@ sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/dev/lib")
 from sce_shmlib import shm
 
 # open the sep and pa shms
-sep = shm("/tmp/Tracking/SEP.im.shm", np.array([0,0], np.float))
-pa  = shm("/tmp/Tracking/PA.im.shm", np.array([0,0], np.float))
+sep = shm("/tmp/Tracking/SEP.shm", np.array([0,0], np.float))
+pa  = shm("/tmp/Tracking/PA.shm", np.array([0,0], np.float))
 
 # TODO:
 # subscribe to ktl service in charge of rotator
