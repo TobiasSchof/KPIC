@@ -177,11 +177,11 @@ def listener():
             info("position updated")
             error = move(Pos_P.get_data()[0])
 
-        # up # update error if necessary
+        # update error if necessary
         if error != Error.get_data()[0] or error != 0:
             Error.set_data(np.array([error], Error.npdtype))
             
-        #update current position
+        # update current position
         curpos = dev.reqPosAct()
         if type(curpos) is dict: 
             Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
