@@ -41,6 +41,7 @@ class Micronix_Device():
         self.con = Serial()
         self.con.port = devnm
         self.con.baudrate = baud
+        self.con.timeout = 1
         self.con.open()
         self.con_type = "serial"
 
@@ -60,6 +61,7 @@ class Micronix_Device():
         
         debug("Connecting to telnet: {}:{}...".format(host, port))
         self.con = Telnet()
+        self.con.timeout = 1
         self.con.open(host, port)
         self.con_type = "telnet"
 
@@ -263,7 +265,8 @@ class Micronix_Device():
         if type(axes) is int: axes = [axes]
 
         # query position for each axis and store results
-        ret = {axis:self._query("{}POS?".format(axis)) for axis in axes}
+        # the controller returns position as theoretical,actual
+        ret = {axis:self._query("{}POS?".format(axis)).split(",")[1] for axis in axes}
 
         return ret
 
@@ -281,8 +284,16 @@ class Micronix_Device():
         # if a single axis was supplied, store it as a list
         if type(axes) is int: axes = [axes]
 
+        # if there's no error, we'll get a timeout, so set timeout to a short time
+        tmp = self.con.timeout
+        self.con.timeout = .1
+
         # query error for each axis and store results
         ret = {axis:self._query("{}ERR?".format(axis)) for axis in axes}
+        ret = {axis:0 if ret[axis] == '' else int(ret[axis].split(" ")[1]) for axis in ret}
+
+        # change timeout back
+        self.con.timeout = tmp
 
         return ret
 
