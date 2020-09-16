@@ -27,7 +27,7 @@ See Light_Src_cmds.py or type Light_Src in terminal to control the
 """
 
 # stage connection information
-devnm = ""
+devnm = "/dev/ttyUSB6"
 baud = 921600
 
 # This script is not meant to be imported
@@ -68,6 +68,7 @@ def move(target:float) -> int:
 
     # if moveAbs returned a dict, it's an error
     if type(err) is dict: return -1*(ord(err[1])-64)
+    elif type(err) is str: return -1*(ord(err)-64)
     else: return 0
 
 def do_state():
@@ -83,7 +84,7 @@ def do_state():
     req = Stat_P.get_data()[0]
 
     # kill script if requested
-    if not req & 1: signal_handler(0, 0); return
+    if not req & 1: signal_handler(0, 0); return 0
 
     # turn device on/off as requested
     if req & 2 and not cur & 2:
@@ -142,7 +143,7 @@ def connect():
     stat = 3 | 4*dev.isReady()
     Stat_D.set_data(np.array([stat], Stat_D.npdtype))
 
-    Pos_P.set_data(Pos_D.get_dat())
+    Pos_P.set_data(Pos_D.get_data())
     Stat_P.set_data(Stat_D.get_data())
 
 def disconnect():
@@ -154,7 +155,9 @@ def disconnect():
     # change device bit to 0
     stat = Stat_D.get_data()
     stat[0] = 1
-    Stat_DD.set_data(stat)
+    Stat_D.set_data(stat)
+
+    return 0
 
 def main():
     """The main loop"""
@@ -178,6 +181,12 @@ def main():
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data()[0])
 
+        # update error if necessary, prioritizing status errors
+        if errs != 0: Error.set_data(np.array([errs], Error.npdtype))
+        elif errp != 0 or Error.get_data()[0] != 0:
+            Error.set_data(np.array([errp], Error.npdtype))
+
+        # update current position
         if dev.con_type is not None:
             # wait if device is moving (for no longer than 5 seconds)
             cnt = 0
@@ -193,10 +202,6 @@ def main():
         else: stat = 3 | 4*dev.isReady()
 
         Stat_D.set_data(np.array([stat], Stat_D.npdtype))
-
-        # update error if necessary, prioritizing status errors
-        if errs != 0: Error.set_data(np.array([errs], Error.npdtype))
-        elif errp != 0 or Error.get_data()[0] != 0: Error.set_data(np.array([errp], Error.npdtype))
 
 def close():
     """A method to perform a clean close of this control script
@@ -218,7 +223,6 @@ def close():
             except Exception as ouch: info("Exception on close: {}".format(ouch))
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-    # TODO: turn off device if it is on
     try: disconnect()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
@@ -268,7 +272,7 @@ if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 # read config file
 config = ConfigParser()
-config.read(RELDIR+"/data/Light_src.ini")
+config.read(RELDIR+"/data/Light_Src.ini")
 
 log_path = config.get("Communication", "debug_log")
 debug_format = "%(filename)s.%(funcName)s@%(asctime)s = %(levelname)s: %(message)s"
@@ -294,7 +298,7 @@ elif args.d != -1:
     logging.root.setLevel(logging.INFO)
 
 # make the folder for shared memories if it doesn't already exist
-if not os.path.isdir("/tmp/Light_src"): os.mkdir("/tmp/Light_src")
+if not os.path.isdir("/tmp/Light_Src"): os.mkdir("/tmp/Light_Src")
 
 # create a dictionary to translate strings into numpy data types
 types_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
@@ -313,7 +317,7 @@ if os.path.isfile(Stat_D[0]):
         raise AlreadAlive("State status shared memory script bit is 1.")
     else:
         status[0] = status[0] | 1
-        Stat_D.set_data(np.array(status)
+        Stat_D.set_data(status)
 else:
     info("No state shared memory file. Creating file.")
     Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = types_[Stat_D[1]]),
@@ -355,13 +359,11 @@ ShmP = Semaphore(None, flags = O_CREX)
 Sem_Listeners = []
 
 Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = types_[Stat_P[1]]),
-    sem = True, mmap = (Stat_P[2] == "1"))
+Stat_P = Shm(Stat_P[0], data = Stat_D.get_data(), sem = True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = types_[Pos_P[1]]),
-    sem = True, mmap = (Pos_P[2] == "1"))
+Pos_P = Shm(Pos_P[0], data = Pos_D.get_data(), sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
 def Punlink():
@@ -391,10 +393,10 @@ axes = [1]
 
 info("Starting display drawer")
 # we use Popen to start the drawing script separately to prevent blocking
-display_cmd = "Light_src_draw"
+display_cmd = "Light_Src_draw"
 draw_proc = Popen(display_cmd.split(" "))
 
 error = 0
 
 info("Beginning loop.")
-listener()
+main()
