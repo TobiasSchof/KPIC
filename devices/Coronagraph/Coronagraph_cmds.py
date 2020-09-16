@@ -219,10 +219,31 @@ class Coronagraph_cmds:
 
         if not self.is_Homed(): raise LoopOpen("Please home device.")
 
+        # validate target
+        if type(target) is list:
+            if len(target) == 1:
+                if type(target[0]) is str: 
+                    try: target = self.presets[target[0]]
+                    except KeyError:
+                        msg = "Can't find preset {}.".format(target)
+                        raise MissingPreset(msg)
+                else: raise ValueError("Either two floats or one preset is required.")
+            elif len(target) == 2:
+                try:
+                    target[0] = float(target[0])
+                    target[1] = float(target[1])
+                except ValueError:
+                    raise ValueError("Either two floats or one preset is required.")
+            else:
+                raise ValueError("Either two floats or one preset is required.")
         # if a preset was given, translate it to a position
-        if type(target) is str:
+        elif type(target) is str:
             try: target = self.presets[target]
-            except KeyError: msg = target; raise MissingPreset(msg)
+            except KeyError:
+                msg = "Can't find preset {}.".format(target)
+                raise MissingPreset(msg)
+        else:
+            raise ValueError("target must be a list or a string.")
 
         # update Pos_D count
         self.Pos_D.get_counter()

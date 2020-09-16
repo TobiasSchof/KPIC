@@ -136,7 +136,7 @@ if args.command == "connect":
         # wait for device to report that it's on
         cnt = 0
         print()
-        while not dev.is_On(): 
+        while not dev.is_Connected(): 
             # \033[F moves to the beginning of the previous line
             # \033[K clears the line from cursor position to end
             print("\033[F\033[KWaiting for device to connect{}".format("."*((cnt%3)+1)))
@@ -226,7 +226,7 @@ if args.command == "goto":
             else:
                 print(e.message)
         except LoopOpen as e:
-            print("Device in open loop. Please use 'TCP home'.")
+            print("Device in open loop. Please use 'Coronagraph home'.")
     # if no target was provided, just display help page
     elif len(args.target) == 0:
         goto.print_help()

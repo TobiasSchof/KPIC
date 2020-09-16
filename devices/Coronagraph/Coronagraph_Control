@@ -88,29 +88,23 @@ def do_state() -> int:
     # turn device on/off as requested
     if req & 2 and not cur & 2: 
         err = connect()
-        ####### stopped editing here #######
-        # if we can't move, update P shms
-        if not CAN_MOVE:
-            Stat_P.set_data(Stat_D.get_data())
-            Pos_P.set_data(np.array([axes["x"].qPOS()["1"], axes["y"].qPOS()["1"]], Pos_P.npdtype))
-            return err
-        starting = True
-        cur = format(Stat_D.get_data()[0], "08b")
-    elif req[-2] == "0" and cur[-2] == "1": return device_off()
+        req = Stat_P.get_data()[0]
+        cur = Stat_D.get_data()[0]
+    elif not req & 2 and cur & 2: return disconnect()
 
     # close the loop and home all axes if requested
-    if req[-3] == "1" and (cur[-3] == "0" or starting):
+    if req & 4 and not cur & 4:
         for axis in axes:
             try:
                 if not axes[axis].qSVO()["1"]: axes[axis].SVO({"1":True})
             except GCSError: err = 1
             try:
                 if not axes[axis].qFRF()["1"]: 
-                    axes[axis].FNL()
+                    axes[axis].FPL()
                     while not axes[axis].qFRF()["1"]: sleep(.1)
             except GCSError: err = 1
     # open the loop if requested
-    elif req[-3] == "0" and (cur[-3] == "1" or starting):
+    elif not req & 4 and cur & 4:
         for axis in axes:
             try:
                 if axes[axis].qSVO()["1"]: axes[axis].SVO({"1":False})
@@ -118,23 +112,21 @@ def do_state() -> int:
 
     # update state shared memory
     try: 
-        readybit = "1" if all([axes[axis].qSVO()["1"] and axes[axis].qFRF()["1"] for axis in axes]) else "0"
+        readybit = 4 if all([axes[axis].qSVO()["1"] and axes[axis].qFRF()["1"] for axis in axes]) else 0
     except GCSError:
+        readybit = 0
+    try:
+        cur = 1 | 2*all([dev.IsConnected() for dev in axes.values()]) | readybit
+    except GCSError:
+        cur = 1
         err = 1
-        readybit = "0"
-    cur = cur[:-3] + readybit + cur[-2:]
-    Stat_D.set_data(np.array([int(cur, 2)], Stat_D.npdtype))
-
-    # if we just turned on and can move, move
-    if starting:
-        if err == 0: err = move(Stat_P.get_data())
-        else: move(Stat_P.get_data())
+    Stat_D.set_data(np.array([cur], Stat_D.npdtype))
 
     return err
 
-def device_off() -> int:
-    """Disconnects both axes and turns off controllers
-    
+def disconnect() -> int:
+    """Disconnects both axes 
+
     Returns:
         int = error code
     """
@@ -148,16 +140,14 @@ def device_off() -> int:
                 axes[axis].CloseConnection()
         except GCSError: err = 1
 
-    # TODO: add NPS support
-
     # get the current status
     stat = Stat_D.get_data()
-    # convert status to bits
-    bits = format(stat[0], "08b")
     # set device power bit and device ready bit to "0"
-    bits = bits[:-3] + "00" + bits[-1]
+    try:
+        stat[0] = 3 | 4*all([dev.qSVO()["1"] and dev.qFRF()["1"] for dev in axes.values()])
+    except GCSError:
+        stat[0] = 1 | 2*all([dev.IsConnected() for dev in axes.values()])
     # store new status
-    stat[0] = int(bits, 2)
     Stat_D.set_data(stat)
 
     return err
@@ -169,7 +159,7 @@ def connect() -> int:
         int = any error
     """
 
-    if dev.IsConnected(): return
+    if all([dev.IsConnected() for dev in axes.values()]): return
 
     err = 0
 
@@ -192,9 +182,9 @@ def connect() -> int:
     # set device power bit to "1"
     # set device ready bit to "1" if all devices are closed loop and homed
     try:
-        stat[0] = 3 | 4*(all([dev.qSVO()["1"] and dev.qFRF()["1"] for dev in axes.values()]))
+        stat[0] = 3 | 4*all([dev.qSVO()["1"] and dev.qFRF()["1"] for dev in axes.values()])
     except GCSError:
-        stat[0] = 1 | dev.IsConnected()
+        stat[0] = 1 | 2*all([dev.IsConnected() for dev in axes.values()])
         err = 1
 
     # store new status
@@ -351,7 +341,7 @@ Stat_D = config.get("Shm Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]):
     Stat_D = Shm(Stat_D[0])
     
-    stat = Stat_D.get_data
+    stat = Stat_D.get_data()
     if stat[0] & 1:
         info("Active control script exists. Raising exception.")
         msg = "State shared memory status {}.".format(int(bits, 2))
@@ -394,13 +384,11 @@ ShmP = Semaphore(None, flags = O_CREX)
 Sem_Listeners = []
 
 Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
-    sem = True, mmap = (Stat_P[2] == "1"))
+Stat_P = Shm(Stat_P[0], data = Stat_D.get_data(), sem = True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([-5000., -5000.], dtype = type_[Pos_P[1]]),
-    sem = True, mmap = (Pos_P[2] == "1"))
+Pos_P = Shm(Pos_P[0], data = Pos_D.get_data(), sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
 def Punlink():
