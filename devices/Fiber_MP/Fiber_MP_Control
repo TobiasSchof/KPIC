@@ -204,16 +204,16 @@ def main():
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data()[0])
 
-        # wait if device is moving (for no longer than 5 seconds)
-        cnt = 0
-        while cnt < 50 and dev.IsMoving(): sleep(.1); cnt += 1
-
         # prioritize errors that arose when setting status
         if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
         elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
 
         # update position of device
         if dev.IsConnected():
+            # wait if device is moving (for no longer than 5 seconds)
+            cnt = 0
+            while cnt < 50 and dev.IsMoving(): sleep(.1); cnt += 1
+
             try: curpos = dev.qPOS()["1"]
             except GCSError:
                 errp = 1
