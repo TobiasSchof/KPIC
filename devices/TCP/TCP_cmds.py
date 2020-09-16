@@ -129,7 +129,7 @@ class TCP_cmds:
             # touch Stat_P so that D shms get updated
             self.Stat_P.set_data(self.Stat_D.get_data())
             # wait until Pos_D is updated
-            while and p_cnt == self.Pos_D.get_counter(): sleep(1)
+            while p_cnt == self.Pos_D.get_counter(): sleep(1)
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
@@ -294,7 +294,7 @@ class TCP_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_On(): raise StageOff("Stage is off. Please use on() method.")
+        if not self.is_Connected(): raise StageOff("Stage is off. Please use on() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""
