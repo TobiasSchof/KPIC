@@ -25,7 +25,7 @@ PICKOFF AND NOT FOR USE BY USER
 See TCP_cmds or type TCP in terminal to control the stage
 """
 
-devnm = "/dev/ttyUSB0"
+devnm = "/dev/ttyUSB1"
 baud = "9600"
 
 # This script is not an import
@@ -106,7 +106,7 @@ def do_state() -> int:
     except GCSError:
         err = 1
         readybit = 0
-    stat = 1 | dev.IsConnected() | readybit
+    stat = 1 | 2*dev.IsConnected() | readybit
     # update state shared memory
     Stat_D.set_data(np.array([stat], Stat_D.npdtype))
 
@@ -166,15 +166,15 @@ def connect() -> int:
     stat = Stat_D.get_data()
     # set device power bit to "1"
     # set device ready bit to "1" if device is closed loop and homed
-    try: stat[0] = 1 | dev.IsConnected() | (dev.qSVO()["1"] and dev.qFRF()["1"])
+    try: stat[0] = 1 | 2*dev.IsConnected() | 4*(dev.qSVO()["1"] and dev.qFRF()["1"])
     except GCSError: 
-        stat[0] = 1 | dev.IsConnected()
+        stat[0] = 1 | 2*dev.IsConnected()
         err = 1
     # store new status
     Stat_D.set_data(stat)
 
     # get current position
-    try: Stat_D.set_data(np.array([dev.qPOS()["1"]], Stat_D.npdtype))
+    try: Pos_D.set_data(np.array([dev.qPOS()["1"]], Pos_D.npdtype))
     except GCSError: err = 1
 
     # set P shm values
@@ -370,13 +370,11 @@ ShmP = Semaphore(None, flags = O_CREX)
 Sem_Listeners = []
 
 Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
-    sem = True, mmap = (Stat_P[2] == "1"))
+Stat_P = Shm(Stat_P[0], Stat_D.get_data(), sem = True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = type_[Pos_P[1]]),
-    sem = True, mmap = (Pos_P[2] == "1"))
+Pos_P = Shm(Pos_P[0], data = Pos_D.get_data(), sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
 def Punlink():
