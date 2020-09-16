@@ -200,6 +200,10 @@ def main():
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data()[0])
 
+        # prioritize errors that arose when setting status
+        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
+        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
+
         # wait if device is moving (for no longer than 5 seconds)
         cnt = 0
         try:
@@ -210,7 +214,7 @@ def main():
         if dev.IsConnected():
             try: curpos = dev.qPOS()["1"]
             except GCSError:
-                errp = 1
+                Error.set_data(np.array([1], Error.npdtype))
                 curpos = Pos_D.get_data()
             Pos_D.set_data(np.array([curpos], Pos_D.npdtype))
         # update status
@@ -221,10 +225,6 @@ def main():
             stat = 1
 
         Stat_D.set_data(np.array([stat], Stat_D.npdtype))
-
-        # prioritize errors that arose when setting status
-        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
-        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
 
 def close():
     """A cleanup method

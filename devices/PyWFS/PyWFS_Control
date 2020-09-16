@@ -26,7 +26,7 @@ See PyWFS_cmds or type PyWFS in terminal to control the stage
 
 """
 
-devnm = "/dev/ttyUSB1"
+devnm = "/dev/ttyUSB4"
 baud = 921600
 
 # This script is not meant to be imported
@@ -177,7 +177,11 @@ def listener():
             info("position updated")
             error = move(Pos_P.get_data()[0])
 
-        # update current position
+        # up # update error if necessary
+        if error != Error.get_data()[0] or error != 0:
+            Error.set_data(np.array([error], Error.npdtype))
+            
+        #update current position
         curpos = dev.reqPosAct()
         if type(curpos) is dict: 
             Pos_D.set_data(np.array([curpos[1]], Pos_D.npdtype))
@@ -190,10 +194,6 @@ def listener():
         Stat_D.set_data(np.array([stat], Stat_D.npdtype)) 
         # update cur_stat
         cur_stat = stat
-
-        # update error if necessary
-        if error != Error.get_data()[0] or error != 0:
-            Error.set_data(np.array([error], Error.npdtype))
 
         # wait for shared memory to be updated
         ShmP.acquire()
@@ -315,7 +315,7 @@ if os.path.isfile(Stat_D[0]):
         raise AlreadAlive("State status shared memory script bit is 1.")
     else:
         status[0] = status[0] | 1
-        Stat_D.set_data(np.array(status)
+        Stat_D.set_data(status)
 else:
     info("No state shared memory file. Creating file.")
     Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = types_[Stat_D[1]]),

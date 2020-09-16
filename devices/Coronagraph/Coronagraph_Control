@@ -222,6 +222,10 @@ def main():
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             errp = move(Pos_P.get_data())
 
+        # prioritize errors that arose when setting status
+        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
+        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
+
         if all([axes[axis].IsConnected() for axis in axes]):
             # sleep while moving (for no more than 5 seconds)
             cnt = 0
@@ -230,13 +234,9 @@ def main():
             # update position of device
             try: curpos = [axes["x"].qPOS()["1"], axes["y"].qPOS()["1"]]
             except GCSError: 
-                errp = 1
+                Error.set_data(np.array([1], Error.npdtype))
                 curpos = list(Pos_D.get_data())
             Pos_D.set_data(np.array(curpos, Pos_D.npdtype))
-
-        # prioritize errors that arose when setting status
-        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
-        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
 
 def close():
     """A cleanup method
