@@ -314,7 +314,8 @@ class Filter_Wh_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_On(): raise StageOff("Stage is off. Please use on() method.")
+        if not self.is_Connected():
+            raise StageOff("Stage is disconnected. Please use connect() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""

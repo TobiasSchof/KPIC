@@ -27,12 +27,12 @@ See Filter_Wh_cmds or type Filter_Wh in terminal to control the stage
 """
 
 # define connection information
-devnm = ""
+devnm = "/dev/ttyUSB5"
 baud = 921600 
 
 # This script is not meant to be imported
 if __name__ != "__main__":
-    print("Filter_WH is not meant to be used as an import.")
+    print("Filter_Wh is not meant to be used as an import.")
     sys.exit()
 
 # a flag to decide whether this script should die
@@ -54,7 +54,7 @@ def move(target:float) -> int:
     Args:
         target = the target position to move to
     Returns:
-        int = the error message (check Filter_WH.ini for translation)
+        int = the error message (check Filter_Wh.ini for translation)
     """
 
     # Check whether target is valid before moving
@@ -180,6 +180,10 @@ def listener():
             info("position updated")
             error = move(Pos_P.get_data()[0])
 
+        # update error if necessary
+        if error != Error.get_data()[0] or error != 0:
+            Error.set_data(np.array([error], Error.npdtype))
+
         # update current position
         curpos = dev.reqPosAct()
         if type(curpos) is dict: 
@@ -193,10 +197,6 @@ def listener():
         Stat_D.set_data(np.array([stat], Stat_D.npdtype)) 
         # update cur_stat
         cur_stat = stat
-
-        # update error if necessary
-        if error != Error.get_data()[0] or error != 0:
-            Error.set_data(np.array([error], Error.npdtype))
 
         # wait for shared memory to be updated
         ShmP.acquire()
@@ -273,7 +273,7 @@ if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 # read config file
 config = ConfigParser()
-config.read(RELDIR+"/data/Filter_WH.ini")
+config.read(RELDIR+"/data/Filter_Wh.ini")
 
 log_path = config.get("Communication", "debug_log")
 debug_format = "%(filename)s.%(funcName)s@%(asctime)s = %(levelname)s: %(message)s"
@@ -299,7 +299,7 @@ elif args.d != -1:
     logging.root.setLevel(logging.INFO)
 
 # make the folder for shared memories if it doesn't already exist
-if not os.path.isdir("/tmp/Filter_WH"): os.mkdir("/tmp/Filter_WH")
+if not os.path.isdir("/tmp/Filter_Wh"): os.mkdir("/tmp/Filter_Wh")
 
 # create a dictionary to translate strings into numpy data types
 types_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
@@ -318,7 +318,7 @@ if os.path.isfile(Stat_D[0]):
         raise AlreadAlive("State status shared memory script bit is 1.")
     else:
         status[0] = status[0] | 1
-        Stat_D.set_data(np.array(status)
+        Stat_D.set_data(status)
 else:
     info("No state shared memory file. Creating file.")
     Stat_D = Shm(Stat_D[0], data = np.array([1], dtype = types_[Stat_D[1]]),
@@ -360,13 +360,11 @@ ShmP = Semaphore(None, flags = O_CREX)
 Sem_Listeners = []
 
 Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = types_[Stat_P[1]]),
-    sem = True, mmap = (Stat_P[2] == "1"))
+Stat_P = Shm(Stat_P[0], data = Stat_D.get_data(), sem = True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = types_[Pos_P[1]]),
-    sem = True, mmap = (Pos_P[2] == "1"))
+Pos_P = Shm(Pos_P[0], data = Pos_D.get_data(), sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
 def Punlink():
@@ -390,16 +388,13 @@ info("Command shared memories successfully created.")
 
 # set up device
 dev = Conex_Device()
-# save devnm and port
-devnm = config.get("Communication", "devnm")
-baud = config.get("Communication", "baud")
 
 # define this stage's axes
 axes = [1]
 
 info("Starting display drawer")
 # we use Popen to start the drawing script separately to prevent blocking
-display_cmd = "Filter_WH_draw"
+display_cmd = "Filter_Wh_draw"
 draw_proc = Popen(display_cmd.split(" "))
 
 error = 0

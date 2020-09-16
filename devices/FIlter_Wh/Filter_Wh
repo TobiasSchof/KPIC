@@ -126,7 +126,7 @@ if args.command == "enable":
 if args.command == "connect": 
     try:
         # if device is already connected, do nothing
-        if dev.is_On():
+        if dev.is_Connected():
             print("Device already connected.")
             sys.exit()
         # connect to device
@@ -211,10 +211,8 @@ if args.command == "goto":
         except MovementTimeout as e:
             print("Device taking too long to move. Check for blockages")
         except ShmError as e:
-            if e.message == "Error 3.":
+            if e.args[0] == "Error 1.":
                 print("Target outside of limits.")
-            elif e.message == "Error 2.":
-                print("Device unreferenced. Please use 'Filter_Wh home'")
             else:
                 print(e.message)
         except LoopOpen as e:
