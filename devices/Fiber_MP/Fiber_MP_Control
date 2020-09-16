@@ -25,7 +25,7 @@ AND NOT FOR USE BY USER
 See Fiber_MP_cmds or type Fiber_MP in terminal to control the stage
 """
 
-DEVNM = "/dev/ttyS0"
+DEVNM = "/dev/ttyUSB3"
 BAUD = 115200
 
 # This script is not an import
@@ -167,9 +167,9 @@ def connect() -> int:
     # set device ready bit to "1" if device is closed loop and homed
     try:
         if dev.qSVO()["1"] and dev.qFRF()["1"]: stat[0] = stat[0] | 4
-        else: (stat[0] = 1 | 2*dev.IsConnected()) & ~4
+        else: stat[0] = 1 | 2*dev.IsConnected()
     except GCSError: 
-        stat[0] = (stat[0] = 1 | 2*dev.IsConnected()) & ~4
+        stat[0] = stat[0] = 1 | 2*dev.IsConnected()
         err = 1
     # store new status
     Stat_D.set_data(stat)
@@ -208,8 +208,12 @@ def main():
         cnt = 0
         while cnt < 50 and dev.IsMoving(): sleep(.1); cnt += 1
 
+        # prioritize errors that arose when setting status
+        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
+        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
+
         # update position of device
-        if dev.IsConnected()
+        if dev.IsConnected():
             try: curpos = dev.qPOS()["1"]
             except GCSError:
                 errp = 1
@@ -220,10 +224,6 @@ def main():
         try: stat = 1 | 2*dev.IsConnected() | 4*(dev.qSVO()["1"] and dev.qFRF()["1"])
         except GCSError: stat = 1 | 2*dev.IsConnected()
         Stat_D.set_data(np.array([stat], Stat_D.npdtype))
-
-        # prioritize errors that arose when setting status
-        if errs != 0 or errp == 0: Error.set_data(np.array([errs], Error.npdtype))
-        elif errp != 0: Error.set_data(np.array([errp], Error.npdtype))
 
 def close():
     """A cleanup method
@@ -371,13 +371,11 @@ ShmP = Semaphore(None, flags = O_CREX)
 Sem_Listeners = []
 
 Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], data = np.array([1], dtype = type_[Stat_P[1]]),
-    sem = True, mmap = (Stat_P[2] == "1"))
+Stat_P = Shm(Stat_P[0], data = Stat_D.get_data(), sem = True, mmap = (Stat_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, ShmP.name]))
 
 Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], data = np.array([-5000.], dtype = type_[Pos_P[1]]),
-    sem = True, mmap = (Pos_P[2] == "1"))
+Pos_P = Shm(Pos_P[0], data = Pos_D.get_data(), sem = True, mmap = (Pos_P[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, ShmP.name]))
 
 def Punlink():

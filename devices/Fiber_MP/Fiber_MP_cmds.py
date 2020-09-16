@@ -226,14 +226,11 @@ class Fiber_MP_cmds:
         if not block: return
 
         # if we are blocking, wait until Pos_D is updated
-        while and p_cnt == self.Pos_D.get_counter(): sleep(.5)
+        while p_cnt == self.Pos_D.get_counter(): sleep(.5)
 
         # raise an error if there is an error
         err = self.Error.get_data()[0]
-        if err < 0: 
-            msg = "Error {}.".format(chr(-1*err + 64))
-            raise ShmError(msg)
-        elif err > 0: 
+        if err != 0: 
             msg = "Error {}.".format(err)
             raise ShmError(msg)
 
@@ -289,7 +286,8 @@ class Fiber_MP_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_On(): raise StageOff("Stage is off. Please use on() method.")
+        if not self.is_Connected():
+            raise StageOff("Stage is disconnected. Please use connect() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""
