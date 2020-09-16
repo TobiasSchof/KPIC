@@ -1,8 +1,18 @@
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QSizePolicy
+#!/usr/bin/env kpython3
+
+# inherent python libraries
 from configparser import ConfigParser
 from time import sleep
-from views import Expanded, Brief
 import sys
+
+# installs
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QSizePolicy
+
+# import different views for status bar
+from expanded_view import Expanded
+from brief_view import Brief
+# night_view_widgets holds all the widgets for the night views
+from night_view_widgets import *
 
 class Stack(QStackedWidget):
 
@@ -15,6 +25,10 @@ class Stack(QStackedWidget):
 
         self.show()
 
+        self.test = "Test"
+
+        self.currentWidget().update_vals()
+
     def set_view(self):
         # ignore size policy of the view we are no longer using
         self.currentWidget().setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -26,7 +40,10 @@ class Stack(QStackedWidget):
         self.currentWidget().setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
         # set size to sizehint of current view
-        self.setFixedSize(self.currentWidget().sizeHint())
+        self.setBaseSize(self.currentWidget().sizeHint())
+
+        # update values for new view
+        self.currentWidget().update_vals()
 
     def sizeHint(self):
         return self.currentWidget().sizeHint()
@@ -34,9 +51,11 @@ class Stack(QStackedWidget):
     def minimumSizeHint(self):
         return self.currentWidget().sizeHint()
 
+# path to the resource files (.ui, images, etc.)
+resources = "/home/nfiudev/dev/Status_Bar/resources"
 
 app = QApplication(sys.argv)
-views = [Expanded(), Brief()]
+views = [Expanded(resources), Brief(resources)]
 stack = Stack(views)
 # in order to resize to current widget, we set stack's size policy to maximum (which has shrink flag)
 stack.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
