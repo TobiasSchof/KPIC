@@ -156,8 +156,10 @@ def draw():
     pstatus = [stat_trans(Stat_P.get_data()[0]), Stat_P.get_time()]
 
     # translate error for user
-    derror = {0:"No Error", 1:"GCS Error (PI)", 2:"Loop Open", 3:"Movement Range"}
-    derror = derror[Error.get_data()[0]]
+    derror = {0:"No Error", 1:"Unreferenced movement", 2:"Device not connected",
+        3:"axes out of sync"}
+    err_num = Error.get_data()[0]
+    derror = derror[err_num] if err_num in derror else "Micronix error: {}".format(err_num)
     derror = [derror, Error.get_time()]
 
     def t(time:float):

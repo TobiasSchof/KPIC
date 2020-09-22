@@ -100,18 +100,8 @@ class Micronix_Device():
         debug("Performing the following moves: {}".format(newPOS))
 
         # for each axis, prep a syncronous move
-        msg = ""
         for axis in newPOS:
-            msg += "{}MSA{};".format(axis, newPOS[axis])
-
-        # get rid of last semicolon
-        msg = msg[:-1]
-
-        # add run command to execute
-        msg += "\n0RUN"
-
-        # send command
-        self._write(msg)
+            self._write("{}MVA{}".format(axis, newPOS[axis]))
 
         # if program execution should be blocked, sleep until position is within precision
         # block for no more than 5 seconds
@@ -135,7 +125,7 @@ class Micronix_Device():
         if type(axes) is int: axes = [axes]
 
         # for each axis, get status and check bit 3
-        ret = {axis:(self._query("{}STA?".format(axis) & 8)) for axis in axes}
+        ret = {axis:not (int(self._query("{}STA?".format(axis))) & 8) for axis in axes}
 
         # return values
         return ret
@@ -172,32 +162,6 @@ class Micronix_Device():
         if isBlocking:
             for axis in axes:
                 while not self.isHomed(axis)[axis] and cnt < 500:
-                    sleep(.01)
-                    cnt += 1
-
-    def reset(self, axes:list, isBlocking:bool = False):
-        """A method to reset the given axes
-
-        Args:
-            axes = the axes to reset. Also accepts an int
-            isBlocking = whether this method should block execution until all 
-                home commands are complete
-        """
-
-        debug("Homing the following axes: {}".format(axes))
-
-        # convert axes to list if an int was provided
-        if type(axes) is int: axes = [axes]
-
-        # request a reset for each axis
-        for axis in axes:
-            self._write("{}RST".format(axis))
-
-        # block for no more than 5 seconds
-        cnt = 0
-        if isBlocking:
-            for axis in axes:
-                while self.isHomed(axis)[axis] and cnt < 500:
                     sleep(.01)
                     cnt += 1
 
@@ -246,7 +210,7 @@ class Micronix_Device():
         if type(axes) is int: axes = [axes]
 
         # request homed status for each axis
-        ret = {axis:self._query("{}HOM?".format(axis)) for axis in axes}
+        ret = {axis:bool(int(self._query("{}HOM?".format(axis)))) for axis in axes}
 
         return ret
 

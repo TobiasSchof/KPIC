@@ -135,8 +135,8 @@ class ADC_cmds:
         # otherwise we just need to check if the control script is alive
         else: self._checkAlive()
 
-        if time: return self.Pos_D.get_data()[0], self.Pos_D.get_time()
-        else: return self.Pos_D.get_data()[0]
+        if time: return list(self.Pos_D.get_data()), self.Pos_D.get_time()
+        else: return list(self.Pos_D.get_data())
 
     def get_target(self) -> float:
         """Returns the target position from the shm
@@ -226,16 +226,16 @@ class ADC_cmds:
 
         self._checkOnAndAlive()
 
-        stat = self.Stat_P.get_data()
+        stat = self.Stat_D.get_data()
         if closed:
-            # If Stat_P reflects that the device is closed loop, do nothing
+            # If Stat_D reflects that the device is closed loop, do nothing
             if stat[0] & 4: return
             # Otherwise, flip the device bit in Stat_P
             else:
                 stat[0] += 4
                 self.Stat_P.set_data(stat)
         else:
-            # If Stat_P reflects that the device is open loop, do nothing
+            # If Stat_D reflects that the device is open loop, do nothing
             if not stat[0] & 4: return
             # Otherwise, flip the device bit in Stat_P
             else:
@@ -251,16 +251,16 @@ class ADC_cmds:
 
         self._checkOnAndAlive()
 
-        stat = self.Stat_P.get_data()
+        stat = self.Stat_D.get_data()
         if accurate:
-            # If Stat_P reflects that the device is closed loop, do nothing
+            # If Stat_D reflects that the device is closed loop, do nothing
             if stat[0] & 8: return
             # Otherwise, flip the device bit in Stat_P
             else:
                 stat[0] += 8
                 self.Stat_P.set_data(stat)
         else:
-            # If Stat_P reflects that the device is open loop, do nothing
+            # If Stat_D reflects that the device is open loop, do nothing
             if not stat[0] & 8: return
             # Otherwise, flip the device bit in Stat_P
             else:
@@ -281,17 +281,21 @@ class ADC_cmds:
 
         if not self.is_Homed(): raise UnreferencedAxis("Please home device.")
         if not self.is_loop_closed(): raise LoopOpen("Please close loop")
-        if type(target) is not list or target.size() != 2: 
-            raise ValueError("Target should be a two element list")
 
+        if type(target) is list and type(target[0]) is str:
+            if len(target) > 1: raise ValuError("Only one preset accepted")
+            else: target = target[0]
         # if a preset was given, translate it to a position
         if type(target) is str:
             try: target = self.presets[target]
             except KeyError: msg = target; raise MissingPreset(msg)
 
+        if type(target) is not list or len(target) != 2: 
+            raise ValueError("Target should be a two element list")
+
         # if blocking, update counter on Pos_D
         if block:
-            d_cnt = Pos_D.get_counter()
+            d_cnt = self.Pos_D.get_counter()
 
         # take Pos_P so that we don't need to remake the numpy array
         pos = self.Pos_P.get_data()
@@ -338,7 +342,7 @@ class ADC_cmds:
             command = command[:idx] + append + command[idx:]
 
         #the tmux command should be split up by spaces
-        for cmd in command: Popen(cmd.split(" "))
+        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file
