@@ -17,14 +17,14 @@ class FIU_TTM_cmds:
     method list:
     Queries:
         is_Active
-        is_On
+        is_Connected
         is_loop_closed
         get_error
         get_pos
         get_target
     Commands:
-        on
-        off
+        connect
+        disconnect
         close_loop
         open_loop
         set_pos
@@ -32,7 +32,7 @@ class FIU_TTM_cmds:
         load_presets
     Internal methods:
         _checkAlive
-        _checkOnAndAlive
+        _checkConnectedAndAlive
         _handleShms
     """
     
@@ -71,11 +71,11 @@ class FIU_TTM_cmds:
         else:
             return bool(self.Stat_D.get_data()[0] & 1)
 
-    def is_On(self) -> bool:
-        """Checks whether device is on
+    def is_Connected(self) -> bool:
+        """Checks whether device is connected
 
         Returns:
-            bool = True if device is on, False otherwise
+            bool = True if device is connected, False otherwise
         """
 
         self._checkAlive()
@@ -89,7 +89,7 @@ class FIU_TTM_cmds:
             bool = whether the servo is on (True) or off (False)
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         return bool(self.Stat_D.get_data()[0] & 8)
 
@@ -100,7 +100,7 @@ class FIU_TTM_cmds:
             int = the error message. See FIU_TTM.ini for translation
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         return self.Error.get_data()[0]
 
@@ -118,7 +118,7 @@ class FIU_TTM_cmds:
 
         #if push is required, we need control script.
         if update:
-            self._checkOnAndAlive()
+            self._checkConnectedAndAlive()
             self.Pos_D.get_counter()
             # this will throw an Attribute error if Stat_P is a string
             self.Stat_P.set_data(self.Stat_P.get_data())
@@ -141,19 +141,21 @@ class FIU_TTM_cmds:
             list = indices: [axis 1, axis 2]. values: float - the position
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         #if shm isn't loaded, Pos_P won't have get_data attribute
         return list(self.Pos_P.get_data())
 
-    def on(self, block:bool = False):
-        """Turns the device on.
+    def connect(self, block:bool = False):
+        """Connects to device.
         
         Inputs:
             block = if True, blocks program until device is on
         """
 
         self._checkAlive()
+
+        self.Error.get_counter()
 
         # change the device power bit to '1'
         stat = self.Stat_P.get_data()
@@ -162,10 +164,16 @@ class FIU_TTM_cmds:
 
         if not block: return
 
-        while not self.is_On(): sleep(.5)
+        while not self.is_Connected():
+            if self.Error.mtdata["cnt0"] == self.Error.get_counter():
+                sleep(.5)
+            elif self.Error.get_data()[0] != 0:
+                raise ShmError("Error {}.".format(self.Error.get_data()[0]))
+            else:
+                sleep(.5)
 
-    def off(self, block:bool = False):
-        """Turns the device off.
+    def disconnect(self, block:bool = False):
+        """Disconnects form device.
         
         Args:
             block = if True, blocks program until device is off
@@ -180,12 +188,12 @@ class FIU_TTM_cmds:
 
         if not block: return
 
-        while not self.is_On(): sleep(.5)
+        while not self.is_Connected(): sleep(.5)
 
     def open_loop(self):
         """Opens the loop"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         stat = self.Stat_P.get_data()
         #change servo bit to '0'
@@ -195,7 +203,7 @@ class FIU_TTM_cmds:
     def close_loop(self):
         """Closes the loop"""
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         stat = self.Stat_P.get_data()
         #change servo bit to '1'
@@ -214,7 +222,7 @@ class FIU_TTM_cmds:
             list = indices: [axis 1, axis 2]. values: the requested positions
         """
 
-        self._checkOnAndAlive()
+        self._checkConnectedAndAlive()
 
         if type(target) is str:
             try: target = self.presets[target]
@@ -251,8 +259,7 @@ class FIU_TTM_cmds:
         elif error == 2: raise LoopOpen("Open loop movement not supported.") 
         elif error == 3: raise StageOff("Turn on device and try again.")
 
-        
-    def activate_Control_Script(self):
+    def activate_Control_Script(self, append = None):
         """Activates the control script if it's not already active."""
 
         if self.is_Active(): 
@@ -260,14 +267,20 @@ class FIU_TTM_cmds:
             raise ScriptAlreadActive(msg)
 
         config = ConfigParser()
-        config.read("FIU_TTM.ini")
+        config.read(RELDIR+"/data/FIU_TTM.ini")
 
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
+
+        if not append is None:
+            # the command to start the control script will be the last set of quotes
+            idx = command.rfind("\"")
+            if idx == -1: raise Exception("Cannot find where to append")
+            command = command[:idx] + append + command[idx:]
+
         #the tmux command should be split up by spaces
-        for cmd in command:
-            Popen(cmd.split(" "))
+        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file
@@ -293,7 +306,7 @@ class FIU_TTM_cmds:
         #if one of the P shms is a string, shms probably have to be loaded.
         if type(self.Pos_P) is str: self._handleShms()
 
-    def _checkOnAndAlive(self):
+    def _checkConnectedAndAlive(self):
         """Raises an exception if the control script or device is off.
         
         Additionally, load shared memories if they're not already loaded."""
@@ -302,8 +315,8 @@ class FIU_TTM_cmds:
         self._checkAlive()
 
         #then check if device is on
-        if not self.is_On():
-            raise StageOff("Stage is off. Please turn on.")
+        if not self.is_Connected():
+            raise StageOff("Stage is disconnected. Please connect.")
             
     def _handleShms(self):
         """Loads shms that need to be loaded, closes ones that need to be

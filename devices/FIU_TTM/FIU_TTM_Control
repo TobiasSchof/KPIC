@@ -17,7 +17,6 @@ import posix_ipc
 
 #nfiuserver libraries
 from KPIC_shmlib import Shm
-from NPS_cmds import NPS_cmds
 
 """
 
@@ -39,6 +38,8 @@ IP = "10.136.1.45"
 # a flag to tell the update thread to stop what it's doing
 STOP = False
 cur_thread = None
+# global variable to store current error
+error = 0
 
 # a flag to tell this script when to end
 alive = True
@@ -53,15 +54,23 @@ class AlreadyAlive(Exception):
     """An exception to be thrown if control code is initialized twice"""
     pass
 
-def update(error:int=0):
+def update():
     """A method to be used in a thread that continuously checks the
     state of the TTM and updates the shm if necessary.
     """
 
+    global error
+
     #continuously check device info
     while not STOP:
         try:
-            with pi_lock: qMOV=pidev.IsMoving()
+            with pi_lock:
+                qMOV=pidev.IsMoving()
+                # when device gets close to target, it intermittently reports not moving (anti-backlash?)
+                #   so double check that we're not moving
+                if not qMOV["1"] and not qMOV["2"]:
+                    sleep(.01)
+                qMOV=pidev.IsMoving()
             stat = Stat_D.get_data()[0]
             #if we are moving update shm
             if qMOV["1"] or qMOV["2"]:
@@ -98,61 +107,67 @@ def update(error:int=0):
             Error.set_data(np.array([error], Error.npdtype))
             break
 
-def move(target:list) -> int:
+def move(target:list):
     """Tries to move TTM to target position.
 
     If target is outside of limits, returns an error message (but does not
     throw any errors).
 
-    Inputs:
+    Args:
         target = a list with two floats. Index n is axis n+1.
-    Outputs:
-        int = the error message (check FIU_TTM.ini for translation)
     """
+
+    global error
 
     with pi_lock:
         try: check = pidev.qSVO()
-        except GCSError: info("Device off. Can't move."); return 3
+        except GCSError: 
+            info("Device disconnected. Can't move.")
+            error = 3
+            return
         if not all([check[axis] for axis in axes]):
             info("Loop open")
-            return 2
+            error = 2
+            return
 
     #check whether target is valid before moving
     for idx in axes:
         req = target[int(idx)-1]
         if req < limits["min_"+idx] or req > limits["max_"+idx]:
             info("Movement requested outside of motion range")
-            return 1
+            error = 1
+            return
 
     #perform movement
-    for idx in axes:
-        req = target[int(idx)-1]
-        info("Moving axis {} to {}.".format(idx, req))
-        with pi_lock: pidev.MOV(idx, req)
+    try:
+        with pi_lock: pidev.MOV({axis:target[int(axis) - 1] for axis in axes})
+    except GCSError:
+        error = 4
+        return
 
-    return 0
+    error = 0
 
-def connect_device():
+def connect():
     """Connects the TTM. If device is already connected, does nothing.
         
-    Reloads limits from config file and, if CAN_MOVE==True, moves.
+    Reloads limits from config file
     """
     
     #Do nothing if device is off or already connected
     with pi_lock:
-        if not nps.getStatus() or pidev.IsConnected(): return 
+        if pidev.IsConnected(): return 
+
+    global error
 
     info("Connecting TTM PI controller.")
     with pi_lock:
-        while True:
-            try:
-                pidev.ConnectTCPIP(ipaddress=IP)
-                info("FIU TTM Connected.")
-                break
-            except GCSError:
-                info("Trouble connecting FIU TTM.")
-                print("Connection to FIU TTM...")
-                sleep(1)
+        try:
+            pidev.ConnectTCPIP(ipaddress=IP)
+            info("FIU TTM Connected.")
+        except GCSError:
+            info("Trouble connecting FIU TTM.")
+            error = 4
+            return
 
     info("Extracting limits from config file.")
     global limits
@@ -176,132 +191,98 @@ def connect_device():
                 limits[max_] = softmax[axis]
 
     # update D shms
-    update(0)
+    error = 0
+    update()
 
-    info("Getting command shared memory")
-    if CAN_MOVE:
-        stat = Stat_P.get_data()[0]
-        pos = Pos_P.get_data()
+    # set P shms to current values
+    Pos_P.set_data(Pos_D.get_data())
+    Stat_P.set_data(Stat_D.get_data())
 
-        info("Setting servos to initial values.")
-        #load the starting servo values into a dict
-        svo_set = {axis:bool(stat & 8) for axis in axes}
-        with pi_lock: pidev.SVO(svo_set)
-        info("Moving to initial positions.")
-        #load the starting position values into a dict
-        pos_i = {axis:pos[int(axis)-1] for axis in axes}
-        with pi_lock: pidev.MOV(pos_i)
-    else:
-        info("Cannot move to initial positions. Changing command shared " +\
-         "memory values.")
-        # set P shms to current values
-        Pos_P.set_data(Pos_D.get_data())
-        Stat_P.set_data(Stat_D.get_data())
+def disconnect():
+    """Disconnects from the TTM"""
 
-def device_off():
-    """Turns off the TTM using the NPS"""
-
-    # do nothing if nps port is already off
-    if not nps.getStatus(): return
+    global error
 
     info("Checking if TTM is connected.")
     with pi_lock:
         if pidev is not None and pidev.IsConnected():
-            #Standard procedure for turning off TTM
+            # Standard procedure for turning off TTM
             info("Turning off servos.")
             pidev.SVO({axis:0 for axis in axes})
             info("Zeroing voltage.")
             pidev.SVA({axis:0 for axis in axes})
 
-            #update needs pi_lock so release it for now
+            # update needs pi_lock so release it for now
             pi_lock.release()
             
-            #update position
-            #if there is an existing update thread, tell it to stop
+            # update position
             global cur_thread
-            if cur_thread is not None and cur_thread.is_alive():
-                cur_thread.join()
-            else: update() #update shm
+            if cur_thread is None or not cur_thread.is_alive():
+                error = 0
+                update()
 
             pi_lock.acquire()
             
             info("Closing connection to TTM.")
             pidev.CloseConnection()
-
-    info("Sending off command to NPS")
-    nps.turnOff()
-
-    info("Waiting for TTM to turn off.")
-    while nps.getStatus(): sleep(.5)
-
-    Stat_D.set_data(np.array([1], np.int8))
-
-def device_on():
-    """Waits for NPS to turn on device and then connects"""
-
-    # if device is already on, do nothing
-    if nps.getStatus(): return
-
-    info("Sending on command to NPS")
-    nps.turnOn()
-
-    info("Waiting for NPS to turn on device.")
-    while not nps.getStatus(): sleep(.1)
-
-    info("Opening connection to TTM.")
-    connect_device()
+    
+    error = 0
+    Stat_D.set_data(np.array([1], Stat_D.npdtype))
 
 def listener():
     """A method that performs commands from the command shared memory when 
     updated, and spawns a thread that updates the position of the TTM in shm.
     """
 
-    # variable to store old status
-    old_stat = Stat_P.get_data()[0]
+    global error
 
     #we put the listening process in an infinite loop
     while alive:
 
+        # start ech request act with 0 error
+        error = 0
+
         info("command shared memory updated")
         
-        error=0
-        
         # check status change first
-        new_stat = Stat_P.get_data()[0]
-        change = new_stat ^ old_stat
+        req = Stat_P.get_data()[0]
+        cur = Stat_D.get_data()[0]
         # xor bit-wise to see if any bits have flipped
+        change = req ^ cur
+
         if (change):
             info("status updated")
             # if script bit is off, close
-            if not (new_stat & 1): signal_handler(None, None); break
+            if not (req & 1): signal_handler(None, None); break
             # check device bit 
-            if change & new_stat & 2:
-                info("Turning on device")
-                device_on()
-            elif change & ~new_stat & 2:
-                info("Turning off device")
-                device_off()
+            if change & req & 2:
+                info("connecting to device")
+                connect()
+            elif change & ~req & 2:
+                info("disconnecting from device")
+                disconnect()
             # check open/close loop bit
-            if change & new_stat & 8:
-                with pi_lock: pidev.SVO({axis:True for axis in axes})
-            elif change & ~new_stat & 8:
-                with pi_lock: pidev.SVO({axis:False for axis in axes})
+            elif change & req & 8:
+                try:
+                    with pi_lock: pidev.SVO({axis:True for axis in axes})
+                except GCSError:
+                    if dev.IsConnected(): error = 4
+            elif change & ~req & 8:
+                try:
+                    with pi_lock: pidev.SVO({axis:False for axis in axes})
+                except GCSError:
+                    if dev.IsConnected(): error = 4
     
-        #check position change last
+        # check position change last
         if Pos_P.mtdata["cnt0"] != Pos_P.get_counter():
             info("Position updated")
-            error = move(Pos_P.get_data())
+            move(Pos_P.get_data())
         
-        #if there is an existing update thread, tell it to stop
         global cur_thread
-        if cur_thread is not None and cur_thread.is_alive():
-            global STOP
-            STOP = True
-            cur_thread.join()
-            STOP = False
-        #start a new update thread with the new error value
-        cur_thread = threading.Thread(target=update, args=(error,), daemon=True)
-        cur_thread.start()
+        # start a new update thread if there is no current update thread
+        if cur_thread is None or not cur_thread.is_alive():
+            cur_thread = threading.Thread(target=update, daemon=True)
+            cur_thread.start()
 
         # wait for a new update
         ShmP.acquire()
@@ -313,6 +294,7 @@ def close():
     and closes tmux session.
     """
 
+    # end current update thread
     try:
         global STOP
         STOP = True
@@ -325,8 +307,8 @@ def close():
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Deleting command shared memory file.")
-    #We want to delete all command shared memories  so scripts can't 
-    #mistakenly think the control script is alive.
+    # We want to delete all command shared memories  so scripts can't 
+    #    mistakenly think the control script is alive.
     try:
         for shm in [Stat_P, Pos_P]:
             try: os.remove(shm.fname)
@@ -335,9 +317,8 @@ def close():
 
     info("Checking if TTM is connected.")
     try:    
-        if pidev.IsConnected():
-            info("Turning off TTM.")
-            device_off()
+        info("Disconnecting from TTM.")
+        disconnect()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
     
     info("Updating state shared memory file.")
@@ -379,15 +360,11 @@ log_path=config.get("Communication", "debug_log")
 debug_format = "%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
 
 parser = ArgumentParser()
-#boolean flag for CAN_MOVE
-parser.add_argument("-m", action="store_true")
 #flags to put into debug mode
 parser.add_argument("-d", default=-1, nargs="?")
 parser.add_argument("-d!", "--dd", default=-1, nargs="?")
 
 args = parser.parse_args()
-
-CAN_MOVE = args.m #whether this device can move on startup
 
 if args.dd != -1:
     if not args.dd is None: log_path=args.dd
@@ -493,16 +470,6 @@ register(Punlink)
 
 info("Command shared memories successfully created.")
 
-info("Initializing NPS")
-try: nps = NPS_cmds("FIU TTM")
-except:
-    info("Cannot find NPS port")
-    raise NPSError("Cannot find NPS port")
-
-if not nps.is_Active():
-    info("No NPS control script")
-    raise NPSError("No Active NPS control script.")
-
 #set up PI device.
 pidev=GCSDevice()
 #the controller actually has 4 axis but the latter 2 are for calibration,
@@ -512,13 +479,9 @@ axes=["1", "2"]
 #  avoid interruption during communication
 pi_lock = threading.Lock()
 
-#if the device is already on, connect to it
-if nps.getStatus(): connect_device()
-    
 info("Starting display drawer")        
 #we use popen to start the drawing script separately to prevent blocking
-display_cmd = "FIU_TTM_draw"
-draw_proc=Popen(display_cmd.split(" "))
+draw_proc=Popen("FIU_TTM_draw")
 
 error = 0
 

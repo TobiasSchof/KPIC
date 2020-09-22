@@ -125,13 +125,13 @@ def draw():
     s_time = Stat_D.get_time() 
     if stat & 1:
         if not (stat & 2):
-            dstatus = dstatus.format("ON", "OFF")
+            dstatus = dstatus.format("ON", "NOT CON.")
         elif not (stat & 8):
             dstatus = dstatus.format("ON", "NOT REF.")
         elif stat & 4:
             dstatus = dstatus.format("ON", "MOVING")
         else:
-            dstatus = dstatus.format("ON", "ON")
+            dstatus = dstatus.format("ON", "CON.")
     else:
         dstatus = dstatus.format("OFF", "---")
     dstatus=[dstatus, s_time]
@@ -142,20 +142,20 @@ def draw():
     s_time = Stat_P.get_time() 
     if stat & 1:
         if not (stat & 2):
-            pstatus = pstatus.format("ON", "OFF")
+            pstatus = pstatus.format("ON", "NOT CON.")
         elif not (stat & 8):
             pstatus = pstatus.format("ON", "NOT REF.")
         elif stat & 4:
             pstatus = pstatus.format("ON", "MOVING")
         else:
-            pstatus = pstatus.format("ON", "ON")
+            pstatus = pstatus.format("ON", "CON.")
     else:
         pstatus = pstatus.format("OFF", "---")
     pstatus=[pstatus, s_time]
 
     #translate the error for user
     derror={0:"No error", 1:"Move requested beyond limits", 2:"Loop open",\
-        3:"Device off"}
+        3:"Device off", 4:"GCS Error"}
     derror=[derror[Error.get_data()[0]], Error.get_time()]
 
     def t(time:float):

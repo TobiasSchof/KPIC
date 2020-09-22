@@ -1,276 +1,240 @@
 #!/usr/bin/env kpython3
 
-#inherent python libraries
-from subprocess import Popen
-from argparse import ArgumentParser, SUPPRESS
-from configparser import ConfigParser
-from time import sleep, ctime
-import sys, io, os
+# inherent python libraries
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from time import sleep, localtime
+import sys
 
-#installed libraries
-import numpy as np
-
-#nfiuserver libraries
+# nfiuserver libraries
 from FIU_TTM_cmds import FIU_TTM_cmds
-from dev_Exceptions import ScriptOff, StageOff, MissingPreset
+from dev_Exceptions import *
 
-if __name__ != "__main__": sys.exit()
-
-"""
-
-executable to control the TTM quickly from the command line
-
-"""
-
-RELDIR = os.environ.get("RELDIR")
-if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
-
-config=ConfigParser()
-config.read(RELDIR+"/data/FIU_TTM.ini")
-
-_debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
-_logDefault=config.get("Communication", "debug_log")
-
-parser=ArgumentParser(conflict_handler="resolve")
-
-#for help message, see bottom
-
-#add subparser to handle device commands.
-dev=parser.add_subparsers()
-	
-#Return the current position of the TTM.
-pos=dev.add_parser("status")
-pos.add_argument("-status")
-pos.add_argument("-push", action="store_true")
-
-#Enables the TTM control script.
-enable=dev.add_parser("enable")
-enable.add_argument("-enable")
-enable.add_argument("-m", action="store_true")
-enable.add_argument("-d", "--debug", default=-1, nargs="?")
-enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?")
-
-#Disables the TTM control script.
-disable=dev.add_parser("disable")
-disable.add_argument("-disable")
-
-#Moves TTM to the given position.
-moveAbs=dev.add_parser("goto")
-moveAbs.add_argument("-goto")
-moveAbs.add_argument("target", nargs="?", default=None)
-moveAbs.add_argument("y", nargs="?", default=None)
-moveAbs.add_argument("-move")
-
-#Displays whether axes are in open loop
-qol=dev.add_parser("ol?")
-qol.add_argument("-qol")
-
-#Opens the loop
-open_=dev.add_parser("open")
-open_.add_argument("-open")
-
-#Closes the loop
-close_=dev.add_parser("close")
-close_.add_argument("-close")
-
-#Turns the TTM on
-on=dev.add_parser("on")
-on.add_argument("-on")
-
-#Turns the TTM off
-off=dev.add_parser("off")
-off.add_argument("-off")
-
-#override -h flag to show the "usage" window
-parser.add_argument("-h", action="store_true")
-	
-args=parser.parse_args()
-
-#start control script if enable tag was used
-if "enable" in args:
-    #vertical pipe separates tmux command from python command
-    command=config.get("Environment", "start_command").split("|")
-    if args.m:
-        command[-1] += (" -m")
-    if args.debug != -1:
-        command[-1] += (" -d")
-        if args.debug is not None:
-            command += args.debug
-
-    for cmd in command:
-        Popen(cmd.split(" "))
-    sys.exit()
-
-if "disable" in args:
-    command=config.get("Environment", "end_command").split(" ")
-    Popen(command)
-    sys.exit()
-
+# instantiate FIU_TTM cmds to get presets
 dev = FIU_TTM_cmds()
 
-# get status
-if "status" in args: 
-    try: 
-        pos, time = dev.get_pos(time = True, update = args.push)
-        print("Position: {}. Data was updated {}.".format(list(pos), ctime(time)))
-    except ScriptOff as e:
-        print("Issue getting status. Try 'FIU_TTM enable'")
-
-    sys.exit()
-
-if "on" in args:
-    try: dev.on()
-    except ScriptOff as e:
-        print("Control script off. Try 'FIU_TTM enable' first.")
-
-    cnt = 2
-    while not dev.is_On():
-        cnt = (cnt % 3) + 1
-        print("\033[FTurning device on{:<3}".format("."*cnt))
-        sleep(1)
-
-    print("\033[FDevice on.\033[K")
-
-    sys.exit()
-
-if "off" in args:
-    try: dev.off()
-    except ScriptOff as e:
-        print("Control script off. Try 'FIU_TTM enable' first.")
+# format help message for no command/invalid command
+main_help = """usage:
+{b:2}FIU_TTM [CMD] [-h]
     
+CMD:
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}loop       - sets/gets loop type
+{b:2}connect    - connects to device
+{b:2}disconnect - disconnects from device
+{b:2}enable     - turns on control script
+-h:
+{b:2}add "-h" after a command for more info""".format(b = "")
+
+# format presets and examples for goto help message
+goto_addend = ""
+
+if len(dev.presets) > 0:
+    goto_addend += "presets:"
+    for preset in dev.presets:
+        goto_addend += "\n{b:2}{name:<10}{val}".format(b = "", 
+            name = preset + ":", val = dev.presets[preset])
+    goto_addend += "\n"
+
+goto_addend += """
+examples:
+{b:2}FIU_TTM goto 0 0
+""".format(b = "")
+
+if len(dev.presets) > 0:
+    goto_addend += "{b:2}FIU_TTM goto {pres}".format(b = "", 
+        pres = list(dev.presets.keys())[0]) 
+
+# change ArgumentParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
+        sys.exit()
+
+# create argument parser
+parser = HelpArgumentParser(add_help = False)
+
+# add subparser so we can add tags to our commands
+#   NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparsers(dest = "command")
+
+# create subparser to handle enable command
+enable = sub.add_parser("enable")
+# add -d flag
+enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in logging mode. \
+    'PATH' can be specified to change log location")
+# add -d! flag
+enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in debug mode. \
+    'PATH' can be specified to change log location")
+
+# create subparser to handle connect command
+connect = sub.add_parser("connect")
+
+# create subparser to handle disconnect command
+disconnect = sub.add_parser("disconnect")
+
+# create subparser to handle loop command
+addend = """
+options: open/closed and accurate/clean 
+(for more, see FBK options in Micronix MMC-103 manual)
+
+examples:
+{b:2}ADC loop closed accurate
+{b:2}ADC loop open clean
+{b:2}ADC loop closed"""
+
+loop = sub.add_parser("loop", epilog = addend,
+    formatter_class = RawDescriptionHelpFormatter)
+loop.add_argument("type", nargs="?", help="open/close, or none to query")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
+
+# create subparser to handle goto command
+goto = sub.add_parser("goto", epilog = goto_addend,
+    formatter_class = RawDescriptionHelpFormatter)
+goto.add_argument("target", nargs = "*",
+    help = "position to move to (in mm or a preset)")
+
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
+args = parser.parse_args()
+
+# if no arguments were specified (or if -h is used, since we disabled help), print help
+if args.command is None:
+    print(main_help); sys.exit()
+
+# first check for enable command
+if args.command == "enable":
+    if dev.is_Active(): 
+        print("Control script is alread on.")
+        sys.exit()
+    # create append flags if any optional arguments were provided
+    append = ""
+    if args.debug != -1:
+        append += " -d!"
+        if args.debug is not None:
+            append += " {}".format(args.debug)
+    elif args.log != -1:
+        append += " -d"
+        if args.log is not None:
+            append += " {}".format(args.log)
+
+    # if we have no flags, make append None
+    if len(append) == 0: append = None
+    
+    # start control script
+    dev.activate_Control_Script(append = append)
     sys.exit()
 
-if "qol" in args:
-    try: 
-        if dev.is_loop_closed():
-            print("Loop closed.")
-        else: print("Loop open.")
-    except ScriptOff as e:
-        print("Control script off. Try 'FIU_TTM enable' first.")
-    except StageOff as e:
-        print("Device off. Try 'FIU_TTM on' first")
-    
-    sys.exit()
-         
-if "open" in args:
-    try: dev.open_loop()
-    except ScriptOff as e:
-        print("Control script off. Try 'FIU_TTM enable' first.")
-    except StageOff as e:
-        print("Device off. Try 'FIU_TTM on' first")
-    sys.exit()
-        
-if "close" in args:
-    try: dev.close_loop()
-    except ScriptOff as e:
-        print("Control script off. Try 'FIU_TTM enable' first.")
-    except StageOff as e:
-        print("Device off. Try 'FIU_TTM on' first")
-    sys.exit()
-        
-if "goto" in args and not args.target is None:
-    # if only first argument was provided, it should be a preset
-    if args.y is None:
-        try: 
-            dev.set_pos(args.target, block = True)
+# next check connect
+if args.command == "connect": 
+    try:
+        # if device is already connected, do nothing
+        if dev.is_Connected():
+            print("Device already connected.")
             sys.exit()
-        except MissingPreset as e:
-            print("Invalid preset '{}'. See below.".format(args.target))
-        except ScriptOff as e:
-            print("Control script off. Try 'FIU_TTM enable' first.")
+        # connect to device
+        dev.connect()
+        # wait for device to report that it's connected
+        cnt = 0
+        print()
+        no_error = lambda : dev.Error.mtdata["cnt0"] == dev.Error.get_counter() or dev.Error.get_data()[0] == 0
+        while not dev.is_Connected() and no_error(): 
+            # \033[F moves to the beginning of the previous line
+            # \033[K clears the line from cursor position to end
+            print("\033[F\033[KWaiting for device to connect{}".format("."*((cnt%3)+1)))
+            cnt += 1
+            sleep(.5)
+        if dev.is_Connected():
+            # report success
+            print("\033[F\033[KDevice connected.")
+        else:
+            # report failure
+            print("\033[F\033[KError reported while connecting.")
+    except ScriptOff as e:
+        print("Control script off. Please use 'FIU_TTM enable'")
+
+# next check disconnect
+if args.command == "disconnect": 
+    try:
+        # if device is already disconnected, do nothing
+        if not dev.is_Connected():
+            print("Device already disconnected.")
             sys.exit()
-        except StageOff as e:
-            print("Device is off. Try 'FIU_TTM on' first.")
-            sys.exit()
+        # disconnect from device
+        dev.disconnect()
+    except ScriptOff as e:
+        print("Control script off. Please use 'FIU_TTM enable'")
+
+# next check loop
+if args.command == "loop":
+    # if no argument was provided, return loop status
+    if args.type is None:
+        print("Loop closed.") if dev.is_loop_closed() else print("Loop open.")
     else:
-        try:
-            args.target = float(args.target)
-            args.y = float(args.y)
-            dev.set_pos([args.target, args.y], block = True)
-            sys.exit()
-        except ValueError as e:
-            print("Invalid arguments. See below.")
-        except ScriptOff as e:
-            print("Control script off. Try 'FIU_TTM enable' first.")
-            sys.exit()
+        if args.type.lower() == "open":
+            dev.open_loop()
+        elif args.type.lower() == "closed":
+            dev.close_loop()
+        else:
+            print("Argument not understood")
+            loop.print_help()
+
+# next check status
+if args.command == "status":
+    # get position
+    try:
+        pos, u_time = dev.get_pos(update = args.push, time = True)
+        # convert UNIX epoch time to local time
+        t = localtime(u_time)
+        print("Position: {} last updated {}/{}/{} {}:{}:{} {}".format(pos, t.tm_year,
+            t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
+    # catch exceptions
+    except StageOff as e:
+        print("Device disconnected. Please use 'FIU_TTM connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'FIU_TTM enable'")
+
+
+# last check goto
+if args.command == "goto":
+    # check that target is 1 or 2 values
+    if not len(args.target) in [1, 2]:
+        if len(args.target) > 2:
+            print("Invalid target. See below.")
+        goto.print_help()
+        sys.exit()
+
+    # if a position was provided, convert it to a float
+    try: args.target = [float(val) for val in args.target]
+    except: args.target = args.target[0]
+
+    # if target is a float or a preset, try it
+    if type(args.target) is list or args.target in dev.presets:
+        try: dev.set_pos(args.target, block = True)
         except StageOff as e:
-            print("Device is off. Try 'FIU_TTM on' first.")
-            sys.exit()
-
-#before finding limits, we display usage (note the only tag left to parse is
-#  'center' which comes with 'move', so it's ok to display this first.
-if not "move" in args:
-    cmds=["goto", "status"]
-    print("""
---------------------------------------------
-Movement:
-      - - - - - - - - - - - - - - - -      
-FIU_TTM <CMD> [<POS> <POS>] [PRESET]
---------------------------------------------
-CMD:
-{b:3}{:<8}move to an absoluate position
-
-Type FIU_TTM <CMD> for examples and limits
---------------------------------------------
-Query:
-      - - - - - - - - - - - - - - - -      
-FIU_TTM <CMD> [-push]
---------------------------------------------
-CMD:
-{b:3}{:<8}get position and time from
-{b:11}shared memory
-[-push]:
-{b:3}optional tag for query commands that 
-{b:11}updates shared memory before
-{b:11}returning.
-EXAMPLES:
-{b:3}FIU_TTM status
-{b:3}FIU_TTM status -push
---------------------------------------------
-
-Type man FIU_TTM for comprehensive command list
-
-""".format(*cmds, b=""))
-    sys.exit()
-            
-min1=config.getfloat("TTM_Limits", "min_1")
-max1=config.getfloat("TTM_Limits", "max_1")
-min2=config.getfloat("TTM_Limits", "min_2")
-max2=config.getfloat("TTM_Limits", "max_2")
-
-lim_msgx="(x: must be between {} and {})".format(min1, max1)
-lim_msgy="(y: must be between {} and {})".format(min2, max2)
-thirdx=(max1-min1)/3
-thirdy=(max2-min2)/3
-use1="{:.2f} {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
-use2="{:.0f} {:.3f}".format(min1+2*thirdx, min2+.5*thirdy)
-if len(dev.presets) != 0:
-    use3 = "{}".format(list(dev.presets.keys())[0])
-else:
-    use3 = "{} {}".format(min1, max2)
-
-pres_msg = ""
-for pres in dev.presets:
-    pres_msg += "{b:5}{name:<10}: {val}\n".format(b = "", name = pres,
-                val = dev.presets[pres])
-
-print("""
---------------------------------------------
-Usage: FIU_TTM goto [<POS> <POS>] [PRESET]
---------------------------------------------
-POS:
-{b:3}the absolute position to move to
-{b:5}{lim_msgx}
-{b:5}{lim_msgy}
-PRESET:
-{b:3}one of the following (values shown too)
-{presets}
-EXAMPLES:
-{b:3}FIU_TTM goto {use1}
-{b:3}FIU_TTM goto {use2}
-{b:3}FIU_TTM goto {use3}
---------------------------------------------
-
-ERROR: invalid ARG. Please see above.
-""".format(presets = pres_msg, use1=use1, use2=use2, use3=use3,
-    lim_msgx=lim_msgx, lim_msgy=lim_msgy, b=""))
+            print("Device disconnected. Please us 'FIU_TTM connect'")
+        except ScriptOff as e:
+            print("Control script off. Please use 'FIU_TTM enable'")
+        except MovementTimeout as e:
+            print("Device taking too long to move. Check for blockages")
+        except ShmError as e:
+            if e.args[0] == "Error 1.":
+                print("Target outside of limits.")
+            else:
+                print(e.message)
+        except LoopOpen as e:
+            print("Device in open loop. Please use 'FIU_TTM loop closed'.")
+    # otherwise, display help
+    else:
+        print("Invalid target. See below.")
+        goto.print_help()
