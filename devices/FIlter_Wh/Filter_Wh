@@ -44,7 +44,7 @@ if len(dev.presets) > 0:
     goto_addend += "{b:2}Filter_Wh goto {pres}".format(b = "", 
         pres = list(dev.presets.keys())[0]) 
 
-# change ArgumnetParser so it prints help menu if no valid
+# change ArgumentParser so it prints help menu if no valid
 #   option is used
 class HelpArgumentParser(ArgumentParser):
     def error(self, message):
