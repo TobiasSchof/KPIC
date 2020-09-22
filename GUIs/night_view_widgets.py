@@ -1,3 +1,6 @@
+# inherent python libraries
+import sys
+
 # installed libraries
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtCore import QTimer
@@ -8,11 +11,14 @@ from ktl import Service
 from epics import PV
 # module python libraries
 from FIU_TTM_cmds import FIU_TTM_cmds
-from Tracking_cmds import Tracking_cmds
 # library to get sep/pa
 from get_distort import get_dis_sep, get_raw_sep, get_dis_pa, get_raw_pa
 # has various exceptions thrown by python libraries
 from dev_Exceptions import *
+
+# libraries from dev directory
+sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/dev/lib")
+from Tracking_cmds import Tracking_cmds
 
 # for the following sections, we don't want to redefine variables, so we check that a variable either
 #   doesn't exist, or is None before assigning a value to it
@@ -51,6 +57,16 @@ if not dcs2['airmass']._getMonitored(): dcs2['airmass'].subscribe()
 if not dcs2['rotmode']._getMonitored(): dcs2['rotmode'].subscribe()
 if not dcs2['rotposn']._getMonitored(): dcs2['rotposn'].subscribe()
 if not dcs2['instangl']._getMonitored(): dcs2['instangl'].subscribe()
+
+try:
+    assert type(ao2) is Service
+except NameError:
+    ao2 = Service("ao2")
+except AssertionError:
+    Exception("ao2 is already defined, but is not a ktl Service. Please free this variable.")
+
+if not ao2["obimname"]._getMonitored(): ao2["obimname"].subscribe()
+if not ao2["obsfname"]._getMonitored(): ao2["obsfname"].subscribe()
 
 ########## Connect to necessary epics channels ##########
 try:
@@ -136,7 +152,12 @@ class Elevation(QLabel):
         """updates the size and text in the widget"""
 
         # update elevation
-        self.setText(str(dcs2["el"]))
+        try:
+            self.setText("{:05.2f}".format(float(dcs2["el"])))
+            self.setStyleSheet(grey)
+        except ValueError:
+            self.setText("?")
+            self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
         # start timer again
@@ -166,7 +187,12 @@ class Airmass(QLabel):
         """updates the size and text in the widget"""
 
         # update airmass
-        self.setText(str(dcs2["airmass"]))
+        try:
+            self.setText("{:05.2f}".format(float(dcs2["airmass"])))
+            self.setStyleSheet(grey)
+        except ValueError:
+            self.setText("?")
+            self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
         # start timer again
@@ -291,7 +317,7 @@ class Track_gain(QLabel):
 class Track_valid:
 """
 
-class Track_goal:
+class Track_goal(QLabel):
     """A widget to get the current goal of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -327,7 +353,7 @@ class Track_goal:
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Goal_pos_x:
+class Goal_pos_x(QLabel):
     """A widget to get the current x position of the goal of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -369,7 +395,7 @@ class Goal_pos_x:
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Goal_pos_y:
+class Goal_pos_y(QLabel):
     """A widget to get the current y position of the goal of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -415,7 +441,7 @@ class Goal_pos_y:
 class Track_avg:
 """
 
-class Usr_offset_x:
+class Usr_offset_x(QLabel):
     """A widget to get the x scan offset of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -454,7 +480,7 @@ class Usr_offset_x:
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Usr_offset_y:
+class Usr_offset_y(QLabel):
     """A widget to get the y scan offset of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -705,7 +731,7 @@ class Rot_mode(Qlabel):
         """updates the size and text in the widget"""
 
         # update value
-        self.setText(dcs2["rotmode"])
+        self.setText(str(dcs2["rotmode"]))
         # run QLabel's update method
         super().update()
         # start timer again
@@ -738,7 +764,7 @@ class Rot_pos_val(Qlabel):
         try:
             self.setText("{:04.2f}".format(float(dcs2["rotposn"]) - float(dcs2["instangl"])))
             self.setStyleSheet(grey)
-        except:
+        except ValueError:
             self.setText("?")
             self.setStyleSheet(red)
         self.setText(dcs2["rotmode"])
@@ -749,9 +775,42 @@ class Rot_pos_val(Qlabel):
 
 """
 ########## FIU setup ##########
+"""
+class NIRSPEC_po(QLabel):
+    """A widget to get the nirspec pickoff position"""
 
-class NIRSPEC_po:
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for nirspec po widget
 
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        val = str(ao2["obimname"])
+        if val == "out":
+            self.setText(green)
+        else:
+            self.setText(red)
+        self.setText(val)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+"""
 class KPIC_po:
 
 class PYWFS_po:
@@ -761,9 +820,42 @@ class TC_po:
 class Calib_src:
 
 class Keck_src:
+"""
+class SFP(QLabel):
+    """A widget to get the SFP"""
 
-class SFP:
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for SFP widget
 
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        val = str(ao2["obsfname"])
+        if val == "telescope":
+            self.setText(green)
+        else:
+            self.setText(red)
+        self.setText(val)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+"""
 class Kilo_DM:
 
 class Humid:
