@@ -55,6 +55,7 @@ class Conex_Device:
 
         debug("Connecting to serial: {}:{}...".format(devnm, baud))
         self.con = serial.Serial()
+        self.con.timeout = 3
         self.con.port = devnm
         self.con.baudrate = baud
         self.con.open()
@@ -93,7 +94,7 @@ class Conex_Device:
         else:
             debug('Connecting to telnet: {}:{}...'.format(host, port))
             self.con = telnetlib.Telnet()
-            self.con.open(host, port)
+            self.con.open(host, port, 3)
             self.con_type = "telnet"
             
             #Send 'ID?' command to synchronize comms with device:
