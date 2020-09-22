@@ -42,7 +42,12 @@ class Expanded(QWidget):
         
         ###### load brief pane ######
         Brief._load_elements(self)
+        ###### load AO elements ######
+        self.elements["rot_mode_val"] = self.findChild(Rot_mode, "rot_mode_val")
+        self.elements["rot_pos_val"] = self.findChild(Rot_pos_val), "rot_pos_val"
         ###### load FIU setup elements ######
+        self.elements["nirspec_po_val"] = self.findChild(NIRSPEC_po, "nirspec_po_val")
+        self.elements["sfp_val"] = self.findChild(SFP, "sfp_val")
         self.elements["fiu_ttm_val"] = self.findChild(FIU_TTM_stat, "fiu_ttm_val")
         self.elements["fiu_ttm_x_val"] = self.findChild(FIU_TTM_x, "fiu_ttm_x_val")
         self.elements["fiu_ttm_y_val"] = self.findChild(FIU_TTM_y, "fiu_ttm_y_val")

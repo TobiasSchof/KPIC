@@ -41,6 +41,13 @@ class Brief(QWidget):
         self.elements["airmass_val"] = self.findChild(Airmass, "airmass_val")
         self.elements["rt_val"] = self.findChild(RT, "rt_val")
         ###### load Tracking Script elements ######
+        self.elements["track_stat_val"] = self.findChild(Track_stat, "track_stat_val")
+        self.elements["track_gain_val"] = self.findChild(Track_gain, "track_gain_val")
+        self.elements["target_goal_val"] = self.findChild(Track_goal, "target_goal_val")
+        self.elements["goal_pos_x_val"] = self.findChild(Goal_pos_x, "goal_pos_x_val")
+        self.elements["goal_pos_y_val"] = self.findChild(Goal_pos_y, "goal_pos_y_val")
+        self.elements["usr_offset_x_val"] = self.findChild(Usr_offset_x, "usr_offset_x_val")
+        self.elements["usr_offset_y_val"] = self.findChild(Usr_offset_y, "usr_offset_y_val")
         self.elements["astro_raw_pa_val"] = self.findChild(Astro_raw_pa, "astro_raw_pa_val")
         self.elements["astro_raw_sep_val"] = self.findChild(Astro_raw_sep, "astro_raw_sep_val")
         self.elements["astro_dist_pa_val"] = self.findChild(Astro_dist_pa, "astro_dist_pa_val")
