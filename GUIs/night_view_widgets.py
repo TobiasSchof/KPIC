@@ -18,7 +18,7 @@ from dev_Exceptions import *
 
 # libraries from dev directory
 sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/dev/lib")
-from Tracking_cmds import Tracking_cmds
+from Star_Tracker_cmds import Tracking_cmds
 
 # for the following sections, we don't want to redefine variables, so we check that a variable either
 #   doesn't exist, or is None before assigning a value to it
@@ -313,9 +313,45 @@ class Track_gain(QLabel):
         # start timer again
         self.timer.start(self.refresh_rate)
 
-"""
-class Track_valid:
-"""
+class Track_valid(QLabel):
+    """A widget to get the validity of the tracking script"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track valid widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tracking.is_psf1_parameters_valid()
+            if val:
+                self.setStyleSheet(green)
+                self.setText("Valid")
+            else:
+                self.setStyleSheet(red)
+                self.setText("Invalid")
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
 
 class Track_goal(QLabel):
     """A widget to get the current goal of the tracking script"""
@@ -437,9 +473,41 @@ class Goal_pos_y(QLabel):
         # start timer again
         self.timer.start(self.refresh_rate)
 
-"""
-class Track_avg:
-"""
+class Track_avg(QLabel):
+    """A widget to get the number of images in an average for the tracking script"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track avg widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tracking.get_nb_images()
+            self.setStyleSheet(grey)
+            self.setText("{:02d}".format(val))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
 
 class Usr_offset_x(QLabel):
     """A widget to get the x scan offset of the tracking script"""
@@ -466,7 +534,7 @@ class Usr_offset_x(QLabel):
 
         # update value
         try:
-            val = tracking.get_scan_offset()[0]
+            val = tracking.get_user_offsets()[0]
             if val == 0:
                 self.setStyleSheet(green)
             else:
@@ -505,7 +573,7 @@ class Usr_offset_y(QLabel):
 
         # update value
         try:
-            val = tracking.get_scan_offset()[1]
+            val = tracking.get_user_offsets()[1]
             if val == 0:
                 self.setStyleSheet(green)
             else:
@@ -661,11 +729,80 @@ class Astro_dist_sep(QLabel):
 
 """
 class DAR:
+"""
 
 class WL_tc:
+    """A widget to get the tracking camera wavelength for the tracking script"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for WL tc widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tracking.get_ADC_wavelengths()[0]
+            self.setStyleSheet(grey)
+            self.setText("{:05f}".format(val))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
 
 class WL_ScF:
-"""
+    """A widget to get the science fiber wavelength for the tracking script"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for WL ScF widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tracking.get_ADC_wavelengths()[1]
+            self.setStyleSheet(grey)
+            self.setText("{:05f}".format(val))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
 ########## Tracking Camera ##########
 """
 class Track_cam_stat:
