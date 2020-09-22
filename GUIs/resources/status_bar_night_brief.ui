@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>515</width>
+    <width>935</width>
     <height>755</height>
    </rect>
   </property>
@@ -145,7 +145,7 @@
       </widget>
      </item>
      <item row="13" column="6" colspan="2">
-      <widget class="QLabel" name="track_gain_val">
+      <widget class="Track_gain" name="track_gain_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -471,7 +471,7 @@
       </spacer>
      </item>
      <item row="16" column="11">
-      <widget class="QLabel" name="usr_offset_y_val">
+      <widget class="Usr_offset_y" name="usr_offset_y_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -547,7 +547,7 @@
       </widget>
      </item>
      <item row="15" column="9" colspan="3">
-      <widget class="QLabel" name="goal_pos_y_val">
+      <widget class="Goal_pos_y" name="goal_pos_y_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -562,7 +562,7 @@
      <item row="15" column="5" colspan="4">
       <widget class="QLabel" name="goal_pos_y">
        <property name="text">
-        <string>Y (Actual / Goal)</string>
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Y (Goal / Δ to Goal&lt;/span&gt;)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
        </property>
        <property name="alignment">
         <set>Qt::AlignCenter</set>
@@ -570,7 +570,7 @@
       </widget>
      </item>
      <item row="14" column="9" colspan="3">
-      <widget class="QLabel" name="goal_pos_x_val">
+      <widget class="Goal_pos_x" name="goal_pos_x_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -585,7 +585,7 @@
      <item row="14" column="5" colspan="4">
       <widget class="QLabel" name="goal_pos_x">
        <property name="text">
-        <string>X (Actual / Goal)</string>
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;X (Goal / &amp;Delta; to Goal&lt;/span&gt;)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
        </property>
        <property name="alignment">
         <set>Qt::AlignCenter</set>
@@ -593,7 +593,7 @@
       </widget>
      </item>
      <item row="14" column="2" rowspan="2" colspan="3">
-      <widget class="QLabel" name="target_goal_val">
+      <widget class="Track_goal" name="target_goal_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -606,7 +606,7 @@
       </widget>
      </item>
      <item row="13" column="2" colspan="2">
-      <widget class="QLabel" name="track_stat_val">
+      <widget class="Track_stat" name="track_stat_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1028,7 +1028,7 @@
       </widget>
      </item>
      <item row="16" column="9">
-      <widget class="QLabel" name="usr_offset_x_val">
+      <widget class="Usr_offset_x" name="usr_offset_x_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1263,6 +1263,41 @@
   </customwidget>
   <customwidget>
    <class>Astro_dist_sep</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_gain</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_stat</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_goal</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Goal_pos_x</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Goal_pos_y</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Usr_offset_x</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Usr_offset_y</class>
    <extends>QLabel</extends>
    <header>night_view_widgets.h</header>
   </customwidget>
