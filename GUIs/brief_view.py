@@ -23,6 +23,11 @@ class Brief(QWidget):
         # then we load the layout from the .ui file
         uic.loadUi("{}/status_bar_night_brief.ui".format(resource_path), self)
 
+        # update fields with callbacks so not everything has to wait
+        self.toupdate = []
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_callback)
+
         # we want to keep the QComboBox that selects the type of display accessible by other classes, so we make a variable for it
         self.view_val = self.findChild(QComboBox, "view_val")
         # we want to set the current view box to brief
@@ -43,7 +48,7 @@ class Brief(QWidget):
         ###### load Tracking Script elements ######
         self.elements["track_stat_val"] = self.findChild(Track_stat, "track_stat_val")
         self.elements["track_gain_val"] = self.findChild(Track_gain, "track_gain_val")
-        self.elements["track_valid_val"] = self.findChiled(Track_valid, "track_valid_val")
+        self.elements["track_valid_val"] = self.findChild(Track_valid, "track_valid_val")
         self.elements["target_goal_val"] = self.findChild(Track_goal, "target_goal_val")
         self.elements["goal_pos_x_val"] = self.findChild(Goal_pos_x, "goal_pos_x_val")
         self.elements["goal_pos_y_val"] = self.findChild(Goal_pos_y, "goal_pos_y_val")
@@ -56,12 +61,29 @@ class Brief(QWidget):
         self.elements["astro_dist_sep_val"] = self.findChild(Astro_dist_sep, "astro_dist_sep_val")
         self.elements["wl_tc_val"] = self.findChild(WL_tc, "wl_tc_val")
         self.elements["wl_scf_val"] = self.findChild(WL_ScF, "wl_scf_val")
+        ###### load Tracking Camera elements ######
+        self.elements["track_cam_temp_val"] = self.findChild(Track_cam_temp, "track_cam_temp_val")
+        self.elements["track_cam_tint_val"] = self.findChild(Track_cam_tint, "track_cam_tint_val")
+        self.elements["track_cam_fps_val"] = self.findChild(Track_cam_fps, "track_cam_fps_val")
+        self.elements["track_cam_ndr_val"] = self.findChild(Track_cam_ndr, "track_cam_ndr_val")
+        self.elements["track_cam_crop_val"] = self.findChild(Track_cam_crop, "track_cam_crop_val")
+        self.elements["track_cam_crop_x_val"] = self.findChild(Track_cam_crop_x, "track_cam_crop_x_val")
+        self.elements["track_cam_crop_y_val"] = self.findChild(Track_cam_crop_y, "track_cam_crop_y_val")
+
+    def update_callback(self):
+        # if there are no more widgets to update, do nothing
+        if len(self.toupdate) == 0: return
+
+        # otherwise, pop a widget
+        elem = self.toupdate.pop()
+        # update it
+        elem.update()
+        # start a timer to call the next update
+        self.timer.start(10)
 
     def update_vals(self):
         """A method that updates all the values in the GUI"""
 
-        for elem in self.elements:
-            if issubclass(type(elem), QWidget):
-                self.elements[elem].update()
+        self.toupdate = list(self.elements.values())
 
-        self.update()
+        self.timer.start(10)

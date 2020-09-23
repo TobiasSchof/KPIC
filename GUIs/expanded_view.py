@@ -26,6 +26,11 @@ class Expanded(QWidget):
         # then we load the layout from the .ui file
         uic.loadUi("{}/status_bar_night_expanded.ui".format(resource_path), self)
 
+        # update fields with callbacks so not everything has to wait
+        self.toupdate = []
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_callback)
+
         # we want QComboBox fields accessible from elsewhere so we make separate variables for them
         self.view_val = self.findChild(QComboBox, "view_val")
         self.mode_val = self.findChild(QComboBox, "mode_val")
@@ -44,19 +49,30 @@ class Expanded(QWidget):
         Brief._load_elements(self)
         ###### load AO elements ######
         self.elements["rot_mode_val"] = self.findChild(Rot_mode, "rot_mode_val")
-        self.elements["rot_pos_val"] = self.findChild(Rot_pos_val), "rot_pos_val"
+        self.elements["rot_pos_val"] = self.findChild(Rot_pos_val, "rot_pos_val")
         ###### load FIU setup elements ######
         self.elements["nirspec_po_val"] = self.findChild(NIRSPEC_po, "nirspec_po_val")
         self.elements["sfp_val"] = self.findChild(SFP, "sfp_val")
         self.elements["fiu_ttm_val"] = self.findChild(FIU_TTM_stat, "fiu_ttm_val")
         self.elements["fiu_ttm_x_val"] = self.findChild(FIU_TTM_x, "fiu_ttm_x_val")
         self.elements["fiu_ttm_y_val"] = self.findChild(FIU_TTM_y, "fiu_ttm_y_val")
+        self.elements["calib_in_val"] = self.findChild(Calib_in, "calib_in_val")
+        self.elements["calib_out_val"] = self.findChild(Calib_out, "calib_out_val")
+
+    def update_callback(self):
+        # if there are no more widgets to update, do nothing
+        if len(self.toupdate) == 0: return
+
+        # otherwise, pop a widget
+        elem = self.toupdate.pop()
+        # update it
+        elem.update()
+        # start a timer to call the next update
+        self.timer.start(10)
 
     def update_vals(self):
         """A method that updates all the values in the GUI"""
 
-        for elem in self.elements:
-            if issubclass(type(elem), QWidget):
-                self.elements[elem].update()
+        self.toupdate = list(self.elements.values())
 
-        self.update()
+        self.timer.start(10)

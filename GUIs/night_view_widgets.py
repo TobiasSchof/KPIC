@@ -11,6 +11,7 @@ from ktl import Service
 from epics import PV
 # module python libraries
 from FIU_TTM_cmds import FIU_TTM_cmds
+from NPS_cmds import NPS_cmds
 # library to get sep/pa
 from get_distort import get_dis_sep, get_raw_sep, get_dis_pa, get_raw_pa
 # has various exceptions thrown by python libraries
@@ -19,6 +20,8 @@ from dev_Exceptions import *
 # libraries from dev directory
 sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/dev/lib")
 from Star_Tracker_cmds import Tracking_cmds
+from TLS import TLS_Device
+from cred2New.Cred2_Cmds import cred2
 
 # for the following sections, we don't want to redefine variables, so we check that a variable either
 #   doesn't exist, or is None before assigning a value to it
@@ -96,6 +99,26 @@ except NameError:
 except AssertionError:
     Exception("tracking is already defined but is not an instance of Tracking_cmds. Please free this variable.")
 
+try:
+    assert tc is cred2
+except NameError:
+    tc = cred2("/tmp/ircam0.im.shm")
+except AssertionError:
+    Exception("tc is already defined but is not an instance of cred2. Please free this variable.")
+
+try:
+    assert nps is NPS_cmds
+except NameError:
+    nps = NPS_cmds()
+except AssertionError:
+    Exception("nps is already defined but is not an instance of NPS_cmds. Please free this variable.")
+
+try:
+    assert laser is TLS_Device
+except NameError:
+    laser = TLS_Device("/dev/ttyUSB0")
+except AssertionError:
+    Exception("laser is already defined but is not an instance of TLS_Device. Please free this variable.")
 ########## Target Info ##########
 
 class Target_name(QLabel):
@@ -258,7 +281,7 @@ class Track_stat(QLabel):
 
         # update value
         try:
-            val = tracking.get_status()
+            val = tracking.get_status()[1]
             if val == "off":
                 self.setStyleSheet(red)
             else:
@@ -297,14 +320,14 @@ class Track_gain(QLabel):
 
         # update value
         try:
-            _, val = tracking.get_gain()
+            val = tracking.get_gain()
             if val == 0:
                 self.setStyleSheet(red)
             elif val < 1:
                 self.setStyleSheet(orange)
             else:
                 self.setStyleSheet(green)
-            self.setText(val)
+            self.setText("{:04.3f}".format(val))
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -378,7 +401,7 @@ class Track_goal(QLabel):
 
         # update value
         try:
-            val = tracking.get_()[1]
+            val = tracking.get_goal()[1]
             self.setStyleSheet(grey)
             self.setText(val)
         except:
@@ -415,14 +438,18 @@ class Goal_pos_x(QLabel):
         # update value
         try:
             x_pos = tracking.get_goal()[2]
-            x_dist = tracking.get_dist()[0]
-            if abs(x_dist) < .5:
-                self.setStyleSheet(green)
-            elif abs(x_dist) < 1:
-                self.setStyleSheet(orange)
-            else:
+            x_dist = tracking.get_dist()
+            if not x_dist:
                 self.setStyleSheet(red)
-            self.setText("{:06.2f} (\u0394: {:.2f}".format(x_pos, x_dist))
+                self.setText("{:06.2f} (\u0394: N/A)".format(x_pos))
+            else:
+                if abs(x_dist[0]) < .5:
+                    self.setStyleSheet(green)
+                elif abs(x_dist[0]) < 1:
+                    self.setStyleSheet(orange)
+                else:
+                    self.setStyleSheet(red)
+                self.setText("{:06.2f} (\u0394: {:.2f})".format(x_pos, x_dist[0]))
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -457,14 +484,18 @@ class Goal_pos_y(QLabel):
         # update value
         try:
             y_pos = tracking.get_goal()[3]
-            y_dist = tracking.get_dist()[1]
-            if abs(y_dist) < .5:
-                self.setStyleSheet(green)
-            elif abs(y_dist) < 1:
-                self.setStyleSheet(orange)
-            else:
+            y_dist = tracking.get_dist()
+            if not y_dist:
                 self.setStyleSheet(red)
-            self.setText("{:06.2f} (\u0394: {:.2f}".format(y_pos, y_dist))
+                self.setText("{:06.2f} (\u0394: N/A)".format(y_pos))
+            else:
+                if abs(y_dist[1]) < .5:
+                    self.setStyleSheet(green)
+                elif abs(y_dist[1]) < 1:
+                    self.setStyleSheet(orange)
+                else:
+                    self.setStyleSheet(red)
+                self.setText("{:06.2f} (\u0394: {:.2f}".format(y_pos, y_dist[1]))
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -614,6 +645,9 @@ class Astro_raw_pa(QLabel):
         try:
             self.setText("{:06.2f}".format(get_raw_pa()))
             self.setStyleSheet(grey)
+        except AttributeError:
+            self.setText("Off")
+            self.setStyleSheet(red)
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -649,6 +683,9 @@ class Astro_raw_sep(QLabel):
         try:
             self.setText("{:07.2f}".format(get_raw_sep()))
             self.setStyleSheet(grey)
+        except AttributeError:
+            self.setText("Off")
+            self.setStyleSheet(red)
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -684,6 +721,9 @@ class Astro_dist_pa(QLabel):
         try:
             self.setText("{:06.2f}".format(get_dis_pa()))
             self.setStyleSheet(grey)
+        except AttributeError:
+            self.setText("Off")
+            self.setStyleSheet(red)
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -719,6 +759,9 @@ class Astro_dist_sep(QLabel):
         try:
             self.setText("{:07.2f}".format(get_dis_sep()))
             self.setStyleSheet(grey)
+        except AttributeError:
+            self.setText("Off")
+            self.setStyleSheet(red)
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -731,7 +774,7 @@ class Astro_dist_sep(QLabel):
 class DAR:
 """
 
-class WL_tc:
+class WL_tc(QLabel):
     """A widget to get the tracking camera wavelength for the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -758,7 +801,7 @@ class WL_tc:
         try:
             val = tracking.get_ADC_wavelengths()[0]
             self.setStyleSheet(grey)
-            self.setText("{:05f}".format(val))
+            self.setText("{:.3f}".format(val))
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -767,7 +810,7 @@ class WL_tc:
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class WL_ScF:
+class WL_ScF(QLabel):
     """A widget to get the science fiber wavelength for the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -794,7 +837,7 @@ class WL_ScF:
         try:
             val = tracking.get_ADC_wavelengths()[1]
             self.setStyleSheet(grey)
-            self.setText("{:05f}".format(val))
+            self.setText("{:.3f}".format(val))
         except:
             self.setText("?")
             self.setStyleSheet(red)
@@ -808,27 +851,292 @@ class WL_ScF:
 class Track_cam_stat:
 
 class Track_cam_f_l:
+"""
+class Track_cam_temp(QLabel):
+    """A widget to get the temp for the tracking camera"""
 
-class Track_cam_temp:
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam temp widget
 
-class Track_cam_tint:
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
 
-class Track_cam_fps:
+        super().__init__(*args, **kwargs)
 
-class Track_cam_ndr:
+        # store refresh rate
+        self.refresh_rate = refresh_rate
 
-class Track_cam_crop:
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
 
-class Track_cam_crop_x:
+    def update(self):
+        """updates the size and text in the widget"""
 
-class Track_cam_crop_y:
+        # update value
+        try:
+            # get crop returns false or the crop window
+            val = tc.get_temp()
+            if abs(val - -40) <= 5:
+                self.setStyleSheet(green)
+            elif abs(val - -40) <= 30:
+                self.setStyleSheet(orange)
+            else:
+                self.setStyleSheet(red)
+            self.setText("{:03.1f}".format(val))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
 
+class Track_cam_tint(QLabel):
+    """A widget to get the exposure time for the tracking camera"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam tint widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tc.get_tint()
+            self.setStyleSheet(grey)
+            self.setText("{:08.3f}".format(val))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
+class Track_cam_fps(QLabel):
+    """A widget to get the fps for the tracking camera"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam fps widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tc.get_fps()
+            self.setStyleSheet(grey)
+            self.setText("{:04d}".format(int(val)))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
+class Track_cam_ndr(QLabel):
+    """A widget to get the ndr for the tracking camera"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam ndr widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            val = tc.get_ndr()
+            self.setStyleSheet(grey)
+            self.setText("{:02d}".format(val))
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
+class Track_cam_crop(QLabel):
+    """A widget to get the crop for the tracking camera"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam crop widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            # get crop returns false or the crop window
+            val = tc.get_crop()
+            if val:
+                # if cropping is a square, define the square
+                if val[1] - val[0] == val[3] - val[2]:
+                    val = "{0}x{0}".format(val[1] - val[0])
+                # otherwise, call it custom
+                else:
+                    val = "Custom"
+            else:
+                val = "Full Frame"
+            self.setStyleSheet(grey)
+            self.setText(val)
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
+class Track_cam_crop_x(QLabel):
+    """A widget to get the x crop for the tracking camera"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam crop x widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            # get crop returns false or the crop window
+            val = tc.get_crop()
+            if val:
+                val = "[{}:{}]".format(val[0], val[1])
+            else:
+                val = "---"
+            self.setStyleSheet(grey)
+            self.setText(val)
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
+class Track_cam_crop_y(QLabel):
+    """A widget to get the y crop for the tracking camera"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for track cam crop y widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update value
+        try:
+            # get crop returns false or the crop window
+            val = tc.get_crop()
+            if val:
+                val = "[{}:{}]".format(val[2], val[3])
+            else:
+                val = "---"
+            self.setStyleSheet(grey)
+            self.setText(val)
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+"""
 class Track_cam_inst_ang:
 
 class Track_cam_ps:
 
 class Track_cam_dist_map:
-
+"""
+"""
 ########## Error Bar ##########
 
 class Errors:
@@ -844,7 +1152,7 @@ class DM_loop:
 class Extinction:
 """
 
-class Rot_mode(Qlabel):
+class Rot_mode(QLabel):
     """A widget to get the rotator mode value"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -874,7 +1182,7 @@ class Rot_mode(Qlabel):
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Rot_pos_val(Qlabel):
+class Rot_pos_val(QLabel):
     """A widget to get the rotator offset value"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -904,7 +1212,6 @@ class Rot_pos_val(Qlabel):
         except ValueError:
             self.setText("?")
             self.setStyleSheet(red)
-        self.setText(dcs2["rotmode"])
         # run QLabel's update method
         super().update()
         # start timer again
@@ -939,9 +1246,9 @@ class NIRSPEC_po(QLabel):
         # update value
         val = str(ao2["obimname"])
         if val == "out":
-            self.setText(green)
+            self.setStyleSheet(green)
         else:
-            self.setText(red)
+            self.setStyleSheet(red)
         self.setText(val)
         # run QLabel's update method
         super().update()
@@ -984,9 +1291,9 @@ class SFP(QLabel):
         # update value
         val = str(ao2["obsfname"])
         if val == "telescope":
-            self.setText(green)
+            self.setStyleSheet(green)
         else:
-            self.setText(red)
+            self.setStyleSheet(red)
         self.setText(val)
         # run QLabel's update method
         super().update()
@@ -1138,11 +1445,88 @@ class TC_mode:
 class PIAA:
 
 class Bundle:
+"""
+class Calib_in(QLabel):
+    """A widget to get the laser source"""
 
-class Calib_in:
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for calib in widget
 
-class Calib_out:
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
 
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # set text and color based on current FIU_TTM x value
+        try:
+            stat = nps.getStatusAll()[4]
+            if not stat:
+                self.setStyleSheet(green)
+                self.setText("Off")
+            else:
+                laser.open()
+                if laser.isEnabledOut():
+                    self.setStyleSheet(grey)
+                    self.setText("{:05.2f}".format(laser.reqPowerAct()))
+                else:
+                    self.setStyleSheet(green)
+                    self.setText("Disabled")
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+
+class Calib_out(QLabel):
+    """A widget to get the MIR sources"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for calib out widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # store refresh rate
+        self.refresh_rate = refresh_rate
+
+        # create a timer to call update
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # set text and color based on current FIU_TTM x value
+        try:
+            stat = nps.getStatusAll()[2]
+            self.setStyleSheet(grey)
+            self.setText("On" if stat else "Off")
+        except ScriptOff:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+        # start timer again
+        self.timer.start(self.refresh_rate)
+"""
 ########## FEU setup ##########
 
 class Zaber_x:
