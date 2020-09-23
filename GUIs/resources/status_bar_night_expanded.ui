@@ -77,7 +77,7 @@
       </widget>
      </item>
      <item row="19" column="6" colspan="2">
-      <widget class="QLabel" name="wl_tc_val">
+      <widget class="WL_tc" name="wl_tc_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -619,7 +619,7 @@
       </widget>
      </item>
      <item row="16" column="2" colspan="2">
-      <widget class="QLabel" name="track_avg_val">
+      <widget class="Track_avg" name="track_avg_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1146,7 +1146,7 @@
       </widget>
      </item>
      <item row="19" column="10" colspan="2">
-      <widget class="QLabel" name="wl_scf_val">
+      <widget class="WL_ScF" name="wl_scf_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1601,7 +1601,7 @@
       </widget>
      </item>
      <item row="11" column="10" colspan="2">
-      <widget class="QLabel" name="sfp_val">
+      <widget class="SFP" name="sfp_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1637,7 +1637,7 @@
       </widget>
      </item>
      <item row="9" column="3" colspan="3">
-      <widget class="QLabel" name="nirspec_po_val">
+      <widget class="NIRSPEC_po" name="nirspec_po_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -2486,6 +2486,31 @@
   </customwidget>
   <customwidget>
    <class>Usr_offset_y</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>NIRSPEC_po</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>SFP</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_avg</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>WL_tc</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>WL_ScF</class>
    <extends>QLabel</extends>
    <header>night_view_widgets.h</header>
   </customwidget>
