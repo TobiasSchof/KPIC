@@ -484,7 +484,7 @@
       </widget>
      </item>
      <item row="19" column="2" colspan="2">
-      <widget class="QLabel" name="dar_val">
+      <widget class="DAR" name="dar_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1159,7 +1159,7 @@
       </widget>
      </item>
      <item row="26" column="5" colspan="3">
-      <widget class="QLabel" name="track_cam_ps_val">
+      <widget class="Track_cam_ps" name="track_cam_ps_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1172,7 +1172,7 @@
       </widget>
      </item>
      <item row="26" column="2" colspan="2">
-      <widget class="QLabel" name="track_cam_inst_ang_val">
+      <widget class="Track_cam_inst_ang" name="track_cam_inst_ang_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1400,7 +1400,7 @@
       </spacer>
      </item>
      <item row="9" column="9" colspan="3">
-      <widget class="QLabel" name="kpic_po_val">
+      <widget class="KPIC_po" name="kpic_po_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -1413,7 +1413,7 @@
       </widget>
      </item>
      <item row="11" column="6" colspan="2">
-      <widget class="QLabel" name="keck_src_val">
+      <widget class="Keck_src" name="keck_src_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c7c7c7</string>
        </property>
@@ -2561,6 +2561,31 @@
   </customwidget>
   <customwidget>
    <class>Calib_out</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>DAR</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_cam_inst_ang</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_cam_ps</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>KPIC_po</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Keck_src</class>
    <extends>QLabel</extends>
    <header>night_view_widgets.h</header>
   </customwidget>

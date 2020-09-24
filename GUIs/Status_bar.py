@@ -10,8 +10,7 @@ from PyQt5.QtWidgets import QApplication, QStackedWidget, QSizePolicy
 from PyQt5.QtCore import QTimer
 
 # import different views for status bar
-from expanded_view import Expanded
-from brief_view import Brief
+from night_views import Expanded, Brief
 # night_view_widgets holds all the widgets for the night views
 from night_view_widgets import *
 
@@ -24,16 +23,11 @@ class Stack(QStackedWidget):
             view.view_val.currentIndexChanged.connect(self.set_view)
             self.addWidget(view)
 
-        # create a timer to update fields to prevent freeze on view switch 
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.currentWidget().update_vals)
-
         self.show()
 
         self.setWindowTitle("KPIC Status Bar")
 
-        # start a timer to update fields
-        self.timer.start(10)
+        self.set_view()
 
     def set_view(self):
         # ignore size policy of the view we are no longer using
@@ -48,9 +42,6 @@ class Stack(QStackedWidget):
 
         # set size to sizehint of current view
         self.resize(self.currentWidget().sizeHint())
-
-        # start a timer to update fields
-        self.timer.start(10)
 
     def sizeHint(self):
         return self.currentWidget().sizeHint()
