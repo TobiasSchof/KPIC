@@ -13,7 +13,6 @@ from night_view_widgets import *
 import resources.KPIC_logo_rc
 
 # a widget to handle the expanded view
-#   we extend the brief view so that any changes made there are reflected here
 class Expanded(QWidget):
 
     # constructor
@@ -43,8 +42,10 @@ class Brief(QWidget):
         self.findChild(QFrame, "vline_mid").setParent(None)
         # remove right half from expanded view
         layout = self.findChild(QGridLayout, "right_col_layout")
+        # to remove a layout, we have to set parent of each element in the layout to None
         for i in reversed(range(layout.count())): 
             widg = layout.itemAt(i).widget()
+            # there are some empty cells in the layout so skip those
             if not widg is None:
                 widg.setParent(None)
 
