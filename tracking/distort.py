@@ -1,8 +1,4 @@
-#/usr/bin/env kpython3
-
-"""
-This script distorts astrophysical sep/pa for the CRED2 tracking camera
-"""
+#!/usr/bin/env kpython3
 
 # inherent python libraries
 from time import sleep
@@ -15,21 +11,29 @@ import scipy.interpolate as sinterp
 
 # nfiuserver libraries
 import ktl
+from KPIC_shmlib import Shm
 sys.path.insert(1, "/kroot/src/kss/nirspec/nsfiu/dev/lib")
-from sce_shmlib import shm
+from Star_Tracker_cmds import Tracking_cmds
 
+"""
+This script distorts astrophysical sep/pa for the CRED2 tracking camera
+"""
+
+if not os.path.isdir("/tmp/Tracking"):
+    os.mkdir("/tmp/Tracking")
 # open the sep and pa shms
-sep = shm("/tmp/Tracking/SEP.shm", np.array([0,0], np.float))
-pa  = shm("/tmp/Tracking/PA.shm", np.array([0,0], np.float))
+sep = Shm("/tmp/Tracking/SEP.shm", np.array([0,0], np.float))
+pa  = Shm("/tmp/Tracking/PA.shm", np.array([0,0], np.float))
 
 # TODO:
 # subscribe to ktl service in charge of rotator
 # monitor the rotator keyword so we always have the most recent value
 
 # open shm for science fiber location
-sf = shm("/tmp/Tracking_goal.im.shm")
+sf = Tracking_cmds()
 serv = ktl.Service("dcs2", populate=True)
 serv["rotposn"].monitor()
+serv["instangl"].monitor()
 
 # Read the distortion solution
 #   NOTE: This script does not allow for changing distortion solution. If a 
@@ -53,12 +57,13 @@ old = [-5000, -5000, -5000, -5000, -5000]
 while True:
     # The location of the science fiber, which we are assuming is where we want
     #    the companion to be
-    _, comp_x, comp_y = sf.get_data()
+    # NOTE: for now, x and y goal are inverted.
+    comp_y, comp_x = sf.get_goal()[2:4]
 
     #### Astrometry of the companion
     # location of the rotator
     try:
-        rot_posang = float(serv["rotposn"])
+        rot_posang = float(serv["rotposn"]) - float(serv["instangl"])
     # If there's not keyword available, wait and restart loop
     except ValueError:
         sleep(20)
