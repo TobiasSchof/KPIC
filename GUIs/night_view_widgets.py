@@ -2,7 +2,7 @@
 import sys
 
 # installed libraries
-from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QLabel, QComboBox
 from PyQt5.QtCore import QTimer
 
 # keywords class
@@ -70,7 +70,7 @@ except AssertionError:
 
 if not ao2["obimname"]._getMonitored(): ao2["obimname"].subscribe()
 if not ao2["obsfname"]._getMonitored(): ao2["obsfname"].subscribe()
-if not ao2["obdbname"]._getMonitored(): ao2["obdbname"].subscribe()
+if not ao2["obdb"]._getMonitored(): ao2["obdb"].subscribe()
 if not ao2["obswsta"]._getMonitored(): ao2["obswsta"].subscribe()
 
 ########## Connect to necessary epics channels ##########
@@ -178,8 +178,14 @@ class Elevation(QLabel):
 
         # update elevation
         try:
-            self.setText("{:05.2f}".format(float(dcs2["el"])))
-            self.setStyleSheet(grey)
+            val = float(dcs2["el"])
+            self.setText("{:05.2f}".format(val))
+            if val > 40:
+                self.setStyleSheet(green)
+            elif val >= 36.8:
+                self.setStyleSheet(orange)
+            else:
+                self.setStyleSheet(red)
         except ValueError:
             self.setText("?")
             self.setStyleSheet(red)
@@ -246,8 +252,20 @@ class RT(QLabel):
     def update(self):
         """updates the size and text in the widget"""
 
-        # update RT
-        self.setText(tl.get())
+        try:
+            # update RT
+            val = tl.get()
+            self.setText(val)
+            time_ = val.split(":")
+            self.setStyleSheet(green)
+            if int(time_[0]) == 0:
+                if int(time_[1]) < 10:
+                    self.setStyleSheet(red)
+                elif int(time_[1]) < 30:
+                    self.setStyleSheet(orange)
+        except:
+            self.setText("?")
+            self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
         # start timer again
@@ -378,7 +396,7 @@ class Track_valid(QLabel):
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Track_goal(QLabel):
+class Track_goal(QComboBox):
     """A widget to get the current goal of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -393,10 +411,27 @@ class Track_goal(QLabel):
         # store refresh rate
         self.refresh_rate = refresh_rate
 
+        # create a dictionary to translate from index to what goal should be sent
+        self.sel_goal = {0:"scf1", 1:"scf2", 2:"scf3", 3:"scf4", 4:"scf5", 5:"center",
+            6:"ul", 7:"bl", 8:"ur", 9:"br", 10:"zern"}
+        # create a dictionary to translate from the current goal to which index should be set
+        self.sel_idx = {"scf_1":0, "scf_2":1, "scf_3":2, "scf_4":3, "scf_5":4,
+            "center":5, "upper left":6, "bottom left":7, "upper right":8,
+            "bottom right":9, "zernike mask":10, "custom":-1}
+
+        # to add an unselectable "custom" option, we set widget to editable
+        #    and underlying linEdit to readonly
+        self.setEditable(True)
+        self.lineEdit().setReadOnly(True)
+        self.lineEdit().setPlaceholderText("Custom")
+
         # create a timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(10)
+
+        # connect option selection to goal selection
+        self.activated.connect(self.change_goal)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -404,20 +439,33 @@ class Track_goal(QLabel):
         # update value
         try:
             val = tracking.get_goal()[1]
-            self.setStyleSheet(grey)
-            self.setText(val)
+            idx = self.sel_idx[val]
+
+            if idx != self.currentIndex():
+                self.setCurrentIndex(idx)
         except:
-            self.setText("?")
-            self.setStyleSheet(red)
+            pass
         # run QLabel's update method
         super().update()
         # start timer again
         self.timer.start(self.refresh_rate)
 
+    def change_goal(self):
+        """Changes the current goal of the tracking script"""
+
+        # get selection and pass through self.sel before handing value to
+        #    tracking commands script
+        try:
+            val = tracking.get_goal()[1]
+            if self.currentIndex() != self.sel_idx[val]:
+                tracking.set_goal(self.sel_goal(self.currentIndex()))
+        except:
+            self.update()
+
 class Goal_pos_x(QLabel):
     """A widget to get the current x position of the goal of the tracking script"""
 
-    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+    def __init__(self, *args, refresh_rate:int = 1000, **kwargs):
         """Constructor for goal pos x widget
 
         Args:
@@ -439,7 +487,7 @@ class Goal_pos_x(QLabel):
 
         # update value
         try:
-            x_pos = tracking.get_goal()[2]
+            x_pos = tracking.get_goal()[3]
             x_dist = tracking.get_dist()
             if not x_dist:
                 self.setStyleSheet(red)
@@ -463,7 +511,7 @@ class Goal_pos_x(QLabel):
 class Goal_pos_y(QLabel):
     """A widget to get the current y position of the goal of the tracking script"""
 
-    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+    def __init__(self, *args, refresh_rate:int = 1000, **kwargs):
         """Constructor for goal pos y widget
 
         Args:
@@ -485,7 +533,7 @@ class Goal_pos_y(QLabel):
 
         # update value
         try:
-            y_pos = tracking.get_goal()[3]
+            y_pos = tracking.get_goal()[2]
             y_dist = tracking.get_dist()
             if not y_dist:
                 self.setStyleSheet(red)
@@ -797,7 +845,7 @@ class DAR(QLabel):
 
         # update value
         try:
-            self.setText("{:06.2f}".format(tracking.get_ADC_Shift()))
+            self.setText("{:06.2f}".format(tracking.get_ADC_shift()))
             self.setStyleSheet(grey)
         except AttributeError:
             self.setText("Off")
@@ -955,7 +1003,7 @@ class Track_cam_tint(QLabel):
 
         # update value
         try:
-            val = tc.get_tint()/1000
+            val = round(tc.get_tint()*1000, 2)
             self.setStyleSheet(grey)
             self.setText("{:08.3f}".format(val))
         except:
@@ -1359,7 +1407,7 @@ class NIRSPEC_po(QLabel):
 
         # update value
         val = str(ao2["obimname"])
-        if val == "out":
+        if val == "home":
             self.setStyleSheet(green)
         else:
             self.setStyleSheet(red)
@@ -1370,6 +1418,7 @@ class NIRSPEC_po(QLabel):
         self.timer.start(self.refresh_rate)
 
 class KPIC_po(QLabel):
+
     """A widget to get the kpic pickoff position"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -1393,13 +1442,18 @@ class KPIC_po(QLabel):
         """updates the size and text in the widget"""
 
         # update value
-        val = str(ao2["obdbname"])
-        if val == "noName":
-            val = "Moving"
-        
-        if val == "mirror":
+        val = float(ao2["obdb"])
+        if val < 3:
+            val = "Out"
+            self.setStyleSheet(red)
+        elif val >= 110 and val <= 115:
+            val = "Mirror"
             self.setStyleSheet(green)
+        elif val > 215:
+            val = "Dichroic"
+            self.setStyleSheet(red)
         else:
+            val = "Unkown"
             self.setStyleSheet(red)
         self.setText(val)
         # run QLabel's update method

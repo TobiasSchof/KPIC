@@ -592,19 +592,6 @@
        </property>
       </widget>
      </item>
-     <item row="14" column="2" rowspan="2" colspan="3">
-      <widget class="Track_goal" name="target_goal_val">
-       <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
-       </property>
-       <property name="text">
-        <string>----</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
      <item row="13" column="2" colspan="2">
       <widget class="Track_stat" name="track_stat_val">
        <property name="styleSheet">
@@ -667,7 +654,7 @@
      <item row="25" column="3" colspan="3">
       <widget class="Track_cam_crop" name="track_cam_crop_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -680,7 +667,7 @@
      <item row="8" column="10" colspan="2">
       <widget class="QLabel" name="hamg_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -723,7 +710,7 @@
      <item row="28" column="4" colspan="8">
       <widget class="QLabel" name="error_warning_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -776,7 +763,7 @@
      <item row="23" column="6" colspan="2">
       <widget class="QLabel" name="track_cam_f_l_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -997,7 +984,7 @@
      <item row="25" column="10" colspan="2">
       <widget class="Track_cam_crop_y" name="track_cam_crop_y_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -1092,7 +1079,7 @@
      <item row="23" column="2" colspan="2">
       <widget class="QLabel" name="track_cam_stat_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -1115,7 +1102,7 @@
      <item row="26" column="10" colspan="2">
       <widget class="QLabel" name="track_cam_dist_map_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -1187,7 +1174,7 @@
      <item row="25" column="7" colspan="2">
       <widget class="Track_cam_crop_x" name="track_cam_crop_x_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -1217,6 +1204,65 @@
        <item>
         <property name="text">
          <string>VFN</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="14" column="2" rowspan="2" colspan="3">
+      <widget class="Track_goal" name="track_goal_val">
+       <item>
+        <property name="text">
+         <string>SF 1</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>SF 2</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>SF 3</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>SF 4</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>SF 5</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Center</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Up Left</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Bot Left</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Up Right</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Bot Right</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Zernike</string>
         </property>
        </item>
       </widget>
@@ -1288,7 +1334,7 @@
      <item row="15" column="2" colspan="2">
       <widget class="QLabel" name="tc_filter_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1321,7 +1367,7 @@
      <item row="10" column="3" colspan="3">
       <widget class="QLabel" name="pywfs_po_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1334,7 +1380,7 @@
      <item row="10" column="9" colspan="3">
       <widget class="QLabel" name="tc_po_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1347,7 +1393,7 @@
      <item row="13" column="6" colspan="2">
       <widget class="QLabel" name="prism_1_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1360,7 +1406,7 @@
      <item row="12" column="6" colspan="2">
       <widget class="QLabel" name="humid_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1373,7 +1419,7 @@
      <item row="12" column="10" colspan="2">
       <widget class="QLabel" name="pup_mask_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1468,7 +1514,7 @@
      <item row="22" column="2" colspan="2">
       <widget class="QLabel" name="feu_po_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase 1.5</string>
@@ -1481,7 +1527,7 @@
      <item row="22" column="6" colspan="2">
       <widget class="QLabel" name="feu_pd_stat_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase 1.5</string>
@@ -1514,7 +1560,7 @@
      <item row="22" column="10" colspan="2">
       <widget class="QLabel" name="feu_pd_flux_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase 1.5</string>
@@ -1626,7 +1672,7 @@
      <item row="12" column="2" colspan="2">
       <widget class="QLabel" name="kilo_dm_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1691,7 +1737,7 @@
         <number>-1</number>
        </property>
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1730,7 +1776,7 @@
      <item row="16" column="2" colspan="2">
       <widget class="QLabel" name="bundle_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1776,7 +1822,7 @@
      <item row="15" column="10" colspan="2">
       <widget class="QLabel" name="piaa_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1822,7 +1868,7 @@
      <item row="13" column="10" colspan="2">
       <widget class="QLabel" name="prism_2_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1845,7 +1891,7 @@
      <item row="13" column="2" colspan="2">
       <widget class="QLabel" name="adc_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>Phase II</string>
@@ -1901,7 +1947,7 @@
      <item row="15" column="6" colspan="2">
       <widget class="QLabel" name="tc_mode_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -1963,7 +2009,7 @@
      <item row="3" column="3" colspan="3">
       <widget class="QLabel" name="wfs_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="frameShadow">
         <enum>QFrame::Plain</enum>
@@ -1979,7 +2025,7 @@
      <item row="4" column="3" colspan="3">
       <widget class="QLabel" name="dm_loop_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2096,7 +2142,7 @@
      <item row="20" column="10" colspan="2">
       <widget class="QLabel" name="zaber_f_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2119,7 +2165,7 @@
      <item row="20" column="6" colspan="2">
       <widget class="QLabel" name="zaber_y_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2132,7 +2178,7 @@
      <item row="21" column="10" colspan="2">
       <widget class="QLabel" name="feu_ttm_y_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2145,7 +2191,7 @@
      <item row="21" column="6" colspan="2">
       <widget class="QLabel" name="feu_ttm_x_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2158,7 +2204,7 @@
      <item row="20" column="2" colspan="2">
       <widget class="QLabel" name="zaber_x_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2243,7 +2289,7 @@
      <item row="21" column="2" colspan="2">
       <widget class="QLabel" name="feu_ttm_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2328,7 +2374,7 @@
      <item row="3" column="9" colspan="3">
       <widget class="QLabel" name="ttm_loop_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2341,7 +2387,7 @@
      <item row="4" column="9" colspan="3">
       <widget class="QLabel" name="extinction_val">
        <property name="styleSheet">
-        <string notr="true">background-color: #c7c7c7</string>
+        <string notr="true">background-color: #c1ffba</string>
        </property>
        <property name="text">
         <string>----</string>
@@ -2465,11 +2511,6 @@
    <header>night_view_widgets.h</header>
   </customwidget>
   <customwidget>
-   <class>Track_goal</class>
-   <extends>QLabel</extends>
-   <header>night_view_widgets.h</header>
-  </customwidget>
-  <customwidget>
    <class>Goal_pos_x</class>
    <extends>QLabel</extends>
    <header>night_view_widgets.h</header>
@@ -2587,6 +2628,11 @@
   <customwidget>
    <class>Keck_src</class>
    <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Track_goal</class>
+   <extends>QComboBox</extends>
    <header>night_view_widgets.h</header>
   </customwidget>
  </customwidgets>
