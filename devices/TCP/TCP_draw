@@ -2,6 +2,7 @@
 
 # inherent python libraries
 from configparser import ConfigParser
+from argparse import ArgumentParser
 from time import sleep, gmtime, time
 from subprocess import Popen
 from atexit import register, unregister
@@ -45,6 +46,14 @@ if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 config = ConfigParser()
 config.read(RELDIR+"/data/TCP.ini")
 
+# check to see if -draw tag was passed
+parser = ArgumentParser()
+parser.add_argument("-draw", action="store_true", 
+    help="draws a display as well as tracking changes")
+args = parser.parse_args()
+
+do_draw = args.draw
+
 # Create a semaphore to combine all shm sems
 shm_update = Semaphore(None, flags = O_CREX)
 # make a list of sem listen processes to kill at program termination
@@ -55,21 +64,22 @@ Stat_D = config.get("Shm Info", "Stat_D").split(",")
 Stat_D = Shm(Stat_D[0], sem = True, mmap = (Stat_D[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
 
-Stat_P = config.get("Shm Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], sem = True, mmap = (Stat_P[2] == "1"))
-Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
-
 Pos_D = config.get("Shm Info", "Pos_D").split(",")
 Pos_D = Shm(Pos_D[0], sem = True, mmap = (Pos_D[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
 
-Pos_P = config.get("Shm Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], sem = True, mmap = (Pos_P[2] == "1"))
-Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
-
 Error = config.get("Shm Info", "Error").split(",")
 Error = Shm(Error[0], sem = True, mmap = (Error[2] == "1"))
 Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
+
+if do_draw:
+    Stat_P = config.get("Shm Info", "Stat_P").split(",")
+    Stat_P = Shm(Stat_P[0], sem = True, mmap = (Stat_P[2] == "1"))
+    Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
+
+    Pos_P = config.get("Shm Info", "Pos_P").split(",")
+    Pos_P = Shm(Pos_P[0], sem = True, mmap = (Pos_P[2] == "1"))
+    Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
 
 def close():
     """Cleanup method to release semaphores and kill processes"""
@@ -121,7 +131,7 @@ def loop():
     if Error.get_counter() != Error_cnt:  updates.append(3)
 
     update(updates)
-    draw()
+    if do_draw: draw()
 
     sleep(5)
 
@@ -231,7 +241,7 @@ def update(updates:list):
             log.write(msg.format(date = date, time = log_t, name = name, val = val))
 
 # draw initial values
-draw()
+if do_draw: draw()
 
 # continuously run the process loop
 while alive: loop()
