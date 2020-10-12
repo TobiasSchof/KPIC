@@ -222,23 +222,6 @@ class Light_Src_cmds:
                 preset = True
             except KeyError: msg = target; raise MissingPreset(msg)
 
-        # in lab we noticed that changing the direction we moved into the mirrors
-        #   changed where the beam pointed. To fix this, we always move to the far
-        #   limit before moving to a preset position
-        if preset:
-            # mirrors 1 and 2 still act incorrect when moving to 0 first
-            pre = 0 if target > 170 else 340
-            # send command and wait for device to reach position
-            # get current counter for Pos_D so we know when it updates
-            d_cnt = self.Pos_D.get_counter()
-            # take Pos_P so that we don't need to remake the numpy array
-            pos = self.Pos_P.get_data()
-            pos[0] = pre
-            self.Pos_P.set_data(pos)
-
-            # if we are blocking, wait until Pos_D is updated
-            while d_cnt == self.Pos_D.get_counter(): sleep(2)
-
         # get current counter for Pos_D so we know when it updates
         d_cnt = self.Pos_D.get_counter()
 
@@ -276,15 +259,30 @@ class Light_Src_cmds:
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
 
-        # add append to the end of the start command
+        # add append to end of start command
         if not append is None:
+            append = " " + append.strip()
             # the command to start the control script will be the last set of quotes
-            idx = command.rfind("")
+            idx = command[-1].rfind("\"")
             if idx == -1: raise Exception("Cannot find where to append")
-            command = command[:idx] + append + command[idx:]
+            command[-1] = command[-1][:idx] + append + command[-1][idx:]
 
         #the tmux command should be split up by spaces
-        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
+        for cmd in command: 
+            to_send = []
+            # parse anything inside quotes as one element
+            tmp = cmd.split("\"")
+            # odd indexes will be elements between quotes
+            for idx, word in enumerate(tmp):
+                if idx % 2 == 0:
+                    to_send += word.split(" ")
+                else:
+                    to_send.append(word)
+
+            Popen(to_send)
+            # we add a slight sleep so that if there are no tmux sessions,
+            #    the server has time to initialize
+            sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file

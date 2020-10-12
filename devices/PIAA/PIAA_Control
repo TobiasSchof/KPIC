@@ -300,6 +300,7 @@ parser = ArgumentParser()
 # flags to set debug modes
 parser.add_argument("-d", default = -1, nargs = "?")
 parser.add_argument("-d!", "--dd", default = -1, nargs = "?")
+parser.add_argument("-draw", action="store_true")
 
 args = parser.parse_args()
 
@@ -404,7 +405,9 @@ limits = {}
 
 info("Starting display drawer")
 # we use Popen to start drawer script in a non-blocking way
-draw_proc = Popen("PIAA_draw")
+cmd = ["PIAA_draw"]
+if args.draw: cmd.append("-draw")
+draw_proc = Popen(cmd)
 
 info("Beginning loop.")
 main()

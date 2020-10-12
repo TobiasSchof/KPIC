@@ -71,6 +71,9 @@ enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?",
 enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
     default = -1, help = "starts control script in debug mode. \
     'PATH' can be specified to change log location")
+# add -draw flag
+enable.add_argument("-draw", action = "store_true",
+    help = "script will draw values in tmux session")
 
 # create subparser to handle connect command
 connect = sub.add_parser("connect")
@@ -114,6 +117,8 @@ if args.command == "enable":
         append += " -d"
         if args.log is not None:
             append += " {}".format(args.log)
+    if args.draw:
+        append += " -draw"
 
     # if we have no flags, make append None
     if len(append) == 0: append = None

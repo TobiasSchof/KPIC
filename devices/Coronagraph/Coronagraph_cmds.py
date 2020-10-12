@@ -280,16 +280,30 @@ class Coronagraph_cmds:
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
 
-        # add append to the end of the start command
+        # add append to end of start command
         if not append is None:
+            append = " " + append.strip()
             # the command to start the control script will be the last set of quotes
-            idx = command.rfind("")
+            idx = command[-1].rfind("\"")
             if idx == -1: raise Exception("Cannot find where to append")
-            command = command[:idx] + append + command[idx:]
+            command[-1] = command[-1][:idx] + append + command[-1][idx:]
 
-        # the tmux command should be split up by spaces
-        # a short sleep is required for the system to register that a tmux has been created if it's the first one.
-        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
+        #the tmux command should be split up by spaces
+        for cmd in command: 
+            to_send = []
+            # parse anything inside quotes as one element
+            tmp = cmd.split("\"")
+            # odd indexes will be elements between quotes
+            for idx, word in enumerate(tmp):
+                if idx % 2 == 0:
+                    to_send += word.split(" ")
+                else:
+                    to_send.append(word)
+
+            Popen(to_send)
+            # we add a slight sleep so that if there are no tmux sessions,
+            #    the server has time to initialize
+            sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file

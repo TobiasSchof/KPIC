@@ -279,6 +279,7 @@ parser = ArgumentParser()
 # flags to start in debug mode
 parser.add_argument("-d", default = -1, nargs = "?")
 parser.add_argument("-d!", "--dd", default = -1, nargs = "?")
+parser.add_argument("-draw", action="store_true")
 
 args = parser.parse_args()
 
@@ -392,9 +393,10 @@ dev = Conex_Device()
 axes = [1]
 
 info("Starting display drawer")
-# we use Popen to start the drawing script separately to prevent blocking
-display_cmd = "PyWFS_draw"
-draw_proc = Popen(display_cmd.split(" "))
+# we use Popen to start drawer script in a non-blocking way
+cmd = ["PyWFS_draw"]
+if args.draw: cmd.append("-draw")
+draw_proc = Popen(cmd)
 
 error = 0
 

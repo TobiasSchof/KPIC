@@ -276,7 +276,10 @@ class TCP_cmds:
                 else:
                     to_send.append(word)
 
-            Popen(to_send); sleep(.1)
+            Popen(to_send)
+            # we add a slight sleep so that if there are no tmux sessions,
+            #    the server has time to initialize
+            sleep(.1)
 
     def load_presets(self):
         """Loads the preset positions from the config file

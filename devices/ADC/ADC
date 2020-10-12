@@ -46,9 +46,6 @@ sub = parser.add_subparsers(dest = "command")
 
 # create subparser to handle enable command
 enable = sub.add_parser("enable")
-# add -m flag
-enable.add_argument("-m", dest = "move", action = "store_true",
-    help = "USE WITH CAUTION - device can move on startup")
 # add -d flag
 enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
     default = -1, help = "starts control script in logging mode. \
@@ -57,6 +54,9 @@ enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?",
 enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
     default = -1, help = "starts control script in debug mode. \
     'PATH' can be specified to change log location")
+# add -draw flag
+enable.add_argument("-draw", action = "store_true",
+    help = "script will draw values in tmux session")
 
 # create subparsers to handle connect/disconnect
 connect = sub.add_parser("connect")
@@ -123,8 +123,6 @@ if args.command == "enable":
         sys.exit()
     # create append flags if any optional arguments were provided
     append = ""
-    if args.move:
-        append += " -m"
     if args.debug != -1:
         append += " -d!"
         if args.debug is not None:
@@ -133,6 +131,8 @@ if args.command == "enable":
         append += " -d"
         if args.log is not None:
             append += " {}".format(args.log)
+    if args.draw:
+        append += " -draw"
 
     # if we have no flags, make append None
     if len(append) == 0: append = None
