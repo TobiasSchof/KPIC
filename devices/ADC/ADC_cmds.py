@@ -69,7 +69,7 @@ class ADC_cmds:
         if type(self.Stat_D) is str: self._handleShms()
 
         # check if first Stat_D bit is 1
-        try: return (self.Stat_D.get_data()[0] & 1)
+        try: return bool(self.Stat_D.get_data()[0] & 1)
         # if Stat_D is a still a string, it means there is not shm file
         except AttributeError: return False
 
@@ -84,7 +84,7 @@ class ADC_cmds:
 
         self._checkAlive()
 
-        return self.Stat_D.get_data()[0] & 2
+        return bool(self.Stat_D.get_data()[0] & 2)
 
     def is_Homed(self) -> bool:
         """Returns true if device is homed
@@ -95,7 +95,7 @@ class ADC_cmds:
 
         self._checkOnAndAlive()
 
-        return self.Stat_D.get_data()[0] & 16
+        return bool(self.Stat_D.get_data()[0] & 16)
 
     def get_error(self) -> str:
         """Returns the error stored in shared memory
@@ -148,7 +148,7 @@ class ADC_cmds:
         # getting target position doesn't make sense unless device is on
         self._checkOnAndAlive()
 
-        return self.Pos_P.get_data()[0]
+        return list(self.Pos_P.get_data())
 
     def is_loop_closed(self) -> bool:
         """Returns whether this stage is closed loop
