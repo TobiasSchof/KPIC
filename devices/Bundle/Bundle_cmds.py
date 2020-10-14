@@ -170,7 +170,7 @@ class Bundle_cmds:
         # getting target position doesn't make sense unless device is on
         self._checkConnectedAndAlive()
 
-        return self.Pos_P.get_data()
+        return list(self.Pos_P.get_data())
 
     def connect(self, block:bool=False):
         """Connects to device
