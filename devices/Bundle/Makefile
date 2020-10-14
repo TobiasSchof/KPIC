@@ -7,7 +7,7 @@ override VERNUM = 1.0
 override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
-RELLIB = Bundle.py
+RELLIB = Bundle_cmds.py
 RELBIN = Bundle Bundle_Control Bundle_draw
 RELDAT = Bundle.ini
 LIBSUB = python

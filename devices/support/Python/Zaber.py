@@ -9,6 +9,7 @@ from zaber.serial import BinaryCommand, BinaryReply, BinaryDevice, BinarySerial
 # set up logger like zaber serial
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+debug = logging.debug
 
 """
 This is an extension of the Zaber library to add telnet communication to the binary protocol,
@@ -184,6 +185,8 @@ class Zaber_Device():
         if mstep2mm is not None: self.MSTEP2MM = mstep2mm
         else: self.MSTEP2MM =0.047625/1000 
 
+        self.con_type = None
+
     ##### Connection methods ##### 
 
     def open_serial(self, devnm:str, baud:int):
@@ -208,7 +211,14 @@ class Zaber_Device():
         # instantiate devices (one per axis)
         axes = [BinaryDevice(self.port, con) for con in [1, 2, 3]]
 
-        return self.__setup(axes)
+        self.con_type = "serial"
+
+        ret = self.__setup(axes)
+
+        if ret == 0:
+            self.con_type = "serial"
+
+        return ret
 
     def open_telnet(self, host:str, port:int):
         """Opens connection with a serial Zaber device
@@ -232,7 +242,13 @@ class Zaber_Device():
         # instantiate devices (one per axis)
         axes = [BinaryDevice(self.port, con) for con in [1, 2, 3]]
 
-        return self.__setup(axes)
+
+        ret = self.__setup(axes)
+
+        if ret == 0:
+            self.con_type = "telnet"
+
+        return ret
 
     def __setup(self, axes):
         """An internal method to finish the connection process, agnostic of
@@ -260,6 +276,7 @@ class Zaber_Device():
 
         # check that all axes were found
         if not len(self.axes) == len(self.AXIS_DEF):
+            self.close()
             msg = "Not all axes could be found. Looking "+\
                 "for axes {} and found axes {}.".format(self.AXIS_DEF, self.axes)
             raise AttributeError(msg)
@@ -273,6 +290,8 @@ class Zaber_Device():
 
         # close connections
         self.port.close()
+
+        self.con_type = None
 
     ##### Query methods #####
 
@@ -424,8 +443,6 @@ class Zaber_Device():
             if type(devmd) is int: return devmd
             else: devmd = devmd[axis]
 
-            # bit 14 is power LED
-            # bit 15 is serial LED
             ret[axis] = bool(devmd & 1 << 1)
         
         return ret
@@ -454,8 +471,6 @@ class Zaber_Device():
             if type(devmd) is int: return devmd
             else: devmd = devmd[axis]
 
-            # bit 14 is power LED
-            # bit 15 is serial LED
             ret[axis] = bool(devmd & 1 << 2)
 
         return ret
@@ -509,7 +524,7 @@ class Zaber_Device():
             if axes.lower() == "all": axes = list(self.axes.keys())
             else: axes = [axes]
 
-        re = {}
+        ret = {}
         for axis in self.axes:
             # request information on max move
             reply = self.axes[axis].send(53, 44)
@@ -567,14 +582,14 @@ class Zaber_Device():
         Does not check limits before sending command.
 
         Args:
-            targets = keys are axes, values are target (in mm)
+            target = keys are axes, values are target (in mm)
         Returns:
             int = error codde if an error occured, 0 otherwise
         """
 
-        for axis in targers:
+        for axis in target:
             # convert mm to steps
-            pos = round(target[axis] / MSTEP2MM)
+            pos = int(round(target[axis] / self.MSTEP2MM))
             reply = self.axes[axis].move_abs(pos)
 
             # check for error
@@ -595,19 +610,20 @@ class Zaber_Device():
 
         for axis in vals:
             # get the current device mode to avoid changing any other bits
-            stat = self.getDevMode(axis)[axis]
+            stat = self.getDevMode(axis)
 
             # check for error
             if type(stat) is int:
-                debug("Error {} occurred with axis {}.".format(stat.data, axis))
-                return stat.data
+                debug("Error {} occurred with axis {}.".format(stat, axis))
+                return stat
+
+            stat = stat[axis]
 
             # set anti-backlash bit
-            #   NOTE: the bit is a disable bit, so 0 = on, 1 = off
             if vals[axis]:
-                stat = stat & ~(1 << 1)
-            else:
                 stat = stat | (1 << 1)
+            else:
+                stat = stat & ~(1 << 1)
 
             # send new device mode
             reply = self.axes[axis].send(40, stat)
@@ -630,19 +646,20 @@ class Zaber_Device():
 
         for axis in vals:
             # get the current device mode to avoid changing any other bits
-            stat = self.getDevMode(axis)[axis]
+            stat = self.getDevMode(axis)
 
             # check for error
             if type(stat) is int:
-                debug("Error {} occurred with axis {}.".format(stat.data, axis))
-                return stat.data
+                debug("Error {} occurred with axis {}.".format(stat, axis))
+                return stat
+
+            stat = stat[axis]
 
             # set anti-sticktion bit
-            #   NOTE: the bit is a disable bit, so 0 = on, 1 = off
             if vals[axis]:
-                stat = stat & ~(1 << 2)
-            else:
                 stat = stat | (1 << 2)
+            else:
+                stat = stat & ~(1 << 2)
 
             # send new device mode
             reply = self.axes[axis].send(40, stat)
@@ -667,12 +684,14 @@ class Zaber_Device():
 
         for axis in vals:
             # get the current device mode to avoid changing any other bits
-            stat = self.getDevMode(axis)[axis]
+            stat = self.getDevMode(axis)
 
             # check for error
             if type(stat) is int:
-                debug("Error {} occurred with axis {}.".format(stat.data, axis))
-                return stat.data
+                debug("Error {} occurred with axis {}.".format(stat, axis))
+                return stat
+
+            stat = stat[axis]
 
             # set led bits
             if vals[axis]:

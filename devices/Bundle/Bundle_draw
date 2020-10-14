@@ -2,6 +2,7 @@
 
 #inherent python libraries
 from configparser import ConfigParser
+from argparse import ArgumentParser
 from time import sleep, gmtime, time
 from subprocess import Popen
 from atexit import register
@@ -25,6 +26,10 @@ if __name__ != "__main__":
     print("Bundle_draw.py is not meant to be used as an import")
     sys.exit()
 
+# a flag to tell the whole script to stop if a signal is passed
+alive = True
+
+# the path to the directory where data is stored
 DATA = os.environ.get("DATA") #the path to the data directory
 try:
     if DATA[-1] == "/": DATA=DATA[:-1]
@@ -32,16 +37,21 @@ except TypeError:
     DATA = "/nfiudata"
     print("No DATA environment variable, using '/nfiudata'")
 
-# folder in nfiudata to put logs
-LOGS = DATA + "/LOGS"
-LOG_FILE = "Bundle.log" #the name of the log file (appended to DATA/LOGS/YYMMDD/)
-
+# the name of the log file (appended to DATA/LOGS/YYMMDD/)
+LOG_FILE = "Bundle.log"
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
-
 config=ConfigParser()
 config.read(RELDIR+"/data/Bundle.ini")
+
+# check to see if -draw tag was passed
+parser = ArgumentParser()
+parser.add_argument("-draw", action="store_true",
+    help="draws a display as well as tracking changes")
+args = parser.parse_args()
+
+do_draw = args.draw
 
 #create a semaphore to combine all shm sems
 shm_update = posix_ipc.Semaphore(None, flags=posix_ipc.O_CREX)
@@ -61,13 +71,14 @@ Error = config.get("Shm_Info", "Error").split(",")
 Error = Shm(Error[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
 
-Stat_P = config.get("Shm_Info", "Stat_P").split(",")
-Stat_P = Shm(Stat_P[0], sem=True)
-Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
+if do_draw:
+    Stat_P = config.get("Shm_Info", "Stat_P").split(",")
+    Stat_P = Shm(Stat_P[0], sem=True)        
+    Sem_Listeners.append(Popen(["linksem", Stat_P.sem.name, shm_update.name]))
 
-Pos_P = config.get("Shm_Info", "Pos_P").split(",")
-Pos_P = Shm(Pos_P[0], sem=True)
-Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
+    Pos_P = config.get("Shm_Info", "Pos_P").split(",")
+    Pos_P = Shm(Pos_P[0], sem=True)
+    Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
 
 def close():
     """Cleanup method to release semaphores and kill processes."""
@@ -83,9 +94,15 @@ def close():
         shm_update.close()
     except Exception as ouch: print("Exception on close: {}".format(ouch))
 
+def signal_handler(signum, stakc):
+    global alive
+    alive = False
+    try: shm_update.release()
+    except: pass
+
 register(close)
-signal(SIGHUP, close)
-signal(SIGTERM, close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
 
 def loop():
     """A method that performs one iteration of the loop.
@@ -102,13 +119,16 @@ def loop():
     #wait for one of the shms to be updated
     shm_update.acquire()
 
+    # put an exit point here for if we want the script to stop
+    if not alive: return
+
     updates = []
     if Stat_D.get_counter() != Dstat_cnt: updates.append(1)
     if Pos_D.get_counter() != Dpos_cnt: updates.append(2)
     if Error.get_counter() != Error_cnt: updates.append(3)
 
     update(updates)
-    draw()
+    if do_draw: draw()
 
     sleep(5)
 
@@ -121,26 +141,39 @@ def draw():
     #convert numpy array to list for proper printing
     ppos = [list(Pos_P.get_data()), Pos_P.get_time()]
         
-    dstatus = format(Stat_D.get_data()[0], "08b")
-    #translate the state status for user
-    dstatus = "Script: {} | device: {} | AB: {} | AS: {}".format(dstatus[-1],\
-              dstatus[-2], dstatus[-3], dstatus[-4]).replace("1",\
-              "on").replace("0", "off") + " homed: {}".format(dstatus[-5]=="1")
+    dstatus = Stat_D.get_data()[0]
+    dstatus = ""
+    if dstatus & 1:
+        if dstatus & 1 << 1:
+            dstatus += "AB: on | " if dstatus & 1 << 2 else "AB: off | "
+            dstatus += "AS: on | " if dstatus & 1 << 3 else "AS: off | "
+            dstatus += "Homed: yes" if dstatus & 1 << 2 else "Homed: no"
+        else:
+            dstatus += "Device: disconnected"
+    else:
+        dstatus += "Script off"
     dstatus=[dstatus, Stat_D.get_time()]
 
-    pstatus = format(Stat_P.get_data()[0], "08b")
-    #translate the state status for user
-    pstatus = "Script: {} | device: {} | AB: {} | AS: {}".format(pstatus[-1],\
-              pstatus[-2], pstatus[-3], pstatus[-4]).replace("1",\
-              "on").replace("0", "off") + " homed: {}".format(pstatus[-5]=="1")
-    pstatus=[pstatus, Stat_P.get_time()]
+    pstatus = Stat_D.get_data()[0]
+    pstatus = ""
+    if pstatus & 1:
+        if pstatus & 1 << 1:
+            pstatus += "AB: on | " if pstatus & 1 << 2 else "AB: off | "
+            pstatus += "AS: on | " if pstatus & 1 << 3 else "AS: off | "
+            pstatus += "Homed: yes" if pstatus & 1 << 2 else "Homed: no"
+        else:
+            pstatus += "Device: disconnected"
+    else:
+        pstatus += "Script off"
+    pstatus=[pstatus, Stat_D.get_time()]
 
     #translate common errors for user
-    derror={0:"No error", 1:"Cannot move - Check device",\
-        2:"Device number invalid", 3:"Device not homed",\
+    derror={0:"No error",2**15:"Device not connected",
+        1:"Cannot move - Check device",
+        2:"Device number invalid", 3:"Device not homed",
         20:"Position invalid (out of range)", 41:"Mode invalid"}
     try: derror=[derror[Error.get_data()[0]], Error.get_time()]
-    except KeyError: derror = "Uncommon error: {}".format(Error.get_data()[0]
+    except KeyError: derror = "Uncommon error: {}".format(Error.get_data())[0]
 
     def t(time:float):
         """Returns a printable string for a UNIX epoch time, formatted in GMT"""
@@ -184,12 +217,16 @@ def update(updates:list):
     year = str(gmt.tm_year)[-2:]
     date="{}/{:02d}/{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
 
+    # get the path to today's folder
     cur_path = "{}/{}".format(DATA, date.replace("/", ""))
     #check whether the date of the last state shared memory update has a folder
     try:
         if not os.path.isdir(cur_path): os.mkdir(cur_path)
-    except FileNotFoundError:
-        print("DATA variable set incorrectly.")
+    except FileNotFoundError: print("DATA variable set incorrectly.")
+
+    # check for existence of LOG folder within today's dated folder
+    cur_path += "/LOG"
+    if not os.path.isdir(cur_path): os.mkdir(cur_path)
 
     #translate the update list to names and values
     names = {1:"status", 2:"position", 3:"error"}
@@ -211,7 +248,7 @@ def update(updates:list):
         with open("{}/{}".format(cur_path, LOG_FILE), "a") as log:
             log.write(msg.format(date=date, time=log_t, name=name, val=val))
 
-draw()
+if do_draw: draw()
 
 #continuously run the process loop
-while True: loop()
+while alive: loop()

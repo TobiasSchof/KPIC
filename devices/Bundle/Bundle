@@ -1,417 +1,254 @@
 #!/usr/bin/env kpython3
 
-#inherent python libraries
-from subprocess import Popen
-from argparse import ArgumentParser, SUPPRESS
-from configparser import ConfigParser
-from time import sleep, ctime
-import sys, io, os
+# python standard library
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from time import sleep, localtime
+import sys
 
-#installed libraries
-import numpy as np
+# nfiuserver libraries
+from Bundle_cmds import Bundle_cmds
+from dev_Exceptions import *
 
-#nfiuserver libraries
-from KPIC_shmlib import Shm
+# instantiate Bundle cmds to get presets
+dev = Bundle_cmds()
 
-if __name__ != "__main__": sys.exit()
-
-"""
-
-executable to control the Zabers quickly from the command line
-
-"""
-
-RELDIR = os.environ.get("RELDIR")
-if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
-
-config=ConfigParser()
-config.read(RELDIR+"/data/Bundle.ini")
-
-_debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
-_logDefault=config.get("Communication", "debug_log")
-
-parser=ArgumentParser(conflict_handler="resolve")
-
-#for help message, see bottom
-
-#add subparser to handle device commands.
-dev=parser.add_subparsers()
-	
-#Return the current position of the Zabers.
-pos=dev.add_parser("status")
-pos.add_argument("-status")
-pos.add_argument("-push", action="store_true")
-
-#Enables the Zabers control script.
-enable=dev.add_parser("enable")
-enable.add_argument("-enable")
-enable.add_argument("-m", action="store_true")
-enable.add_argument("-d", "--debug", default=-1, nargs="?")
-enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?")
-
-#Disables the Zabers control script.
-disable=dev.add_parser("disable")
-disable.add_argument("-disable")
-
-#Moves Zabers to the given position.
-moveAbs=dev.add_parser("goto")
-moveAbs.add_argument("-goto")
-moveAbs.add_argument("ax1", nargs="?", default=None)
-moveAbs.add_argument("val1", nargs="?", default=None)
-moveAbs.add_argument("ax2", nargs="?", default=None)
-moveAbs.add_argument("val2", nargs="?", default=None)
-moveAbs.add_argument("ax3", nargs="?", default=None)
-moveAbs.add_argument("val3", nargs="?", default=None)
-moveAbs.add_argument("-move")
-
-#Moves Zabers to the center of its range.
-center=dev.add_parser("center")
-center.add_argument("-center")
-center.add_argument("-move")
-
-#Displays whether axes are in open loop
-qol=dev.add_parser("homed?")
-qol.add_argument("-qhome")
-
-#Opens the loop (turns servo off)
-open_=dev.add_parser("home")
-open_.add_argument("-home")
-
-#Displays whether anti-sticktion is on
-qantis=dev.add_parser("AS?")
-qantis.add_argument("-qAS")
-
-#Turns anti-sticktion on or off
-antis=dev.add_parser("AS")
-antis.add_argument("-val", default="on", nargs="?")
-
-#Displays whether anti-backlash is on
-qantib=dev.add_parser("AB?")
-qantib.add_argument("-qAB")
-
-#Turns anti-backlash on or off
-antib=dev.add_parser("AB")
-antib.add_argument("-val", default="on", nargs="?")
-
-#Turns the Zabers on
-on=dev.add_parser("on")
-on.add_argument("-on")
-
-#Turns the Zabers off
-off=dev.add_parser("off")
-off.add_argument("-off")
-
-#override -h flag to show the "usage" window
-parser.add_argument("-h", action="store_true")
-	
-args=parser.parse_args()
-
-
-#start control script if enable tag was used
-if "enable" in args:
-    #vertical pipe separates tmux command from python command
-    command=config.get("Environment", "start_command").split("|")
-    if args.m:
-        command[-1] += (" -m")
-    if args.debug != -1:
-        command[-1] += (" -d")
-        if args.debug is not None:
-            command += args.debug
-
-    Popen(command[0].split(" ") + [command[-1]])
-    sys.exit()
-
-if "disable" in args:
-    command=config.get("Environment", "end_command").split(" ")
-    Popen(command)
-    sys.exit()
-
-#for anything else we will want shared memory so enable it as needed
-try: Pos_D=Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-except:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'Bundle enable'")
-    print()
-    sys.exit()
+# format help message for no command/invalid command
+main_help = """usage:
+{b:2}Bundle [CMD] [-h]
     
-cur_pos = Pos_D.get_data()
-time = Pos_D.get_time()
+CMD:
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}home       - homes device
+{b:2}routines   - sets/gets routine settings
+{b:2}connect    - connects to device
+{b:2}disconnect - disconnects from device
+{b:2}enable     - turns on control script
+-h:
+{b:2}add "-h" after a command for more info""".format(b = "")
 
-#if position was requested without push, we don't need the device to be on
-if "status" in args and not args.push:
-    time=ctime(time)
-    print("Position: {}. Data was updated {}.".format(list(cur_pos), time))
-    sys.exit()
-
-#Now we need Stat_D to tell if the script is on
-Stat_D = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
-DStat = format(Stat_D.get_data()[0], "08b")
-
-#if control script is off, tell user to turn it on
-if DStat[-1] == "0":
-    print()
-    print("CONTROL SCRIPT OFF. PLEASE USE 'Bundle enable'")
-    print()
-    sys.exit()
-
-#at this point, we need Stat_P shm
-try: Stat_P = Shm(config.get("Shm_Info", "Stat_P").split(",")[0])
-except:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'Bundle enable' OR 'Bundle status'")
-    print()
-    sys.exit()
-
-PStat = format(Stat_P.get_data()[0], "08b")
-
-if "on" in args:
-    PStat[-2] = "1"
-    Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-    _ = -1
-    while format(Stat_D.get_data()[0], "08b")[-2] != "1": 
-        _ = (_+1)%3
-        print("Turning on device{:<4}".format("."*(_+1)), end="\r")
-        sleep(1)
-    print("Device on.{:15}".format(""))
-    sys.exit()
-
-if "off" in args:
-    PStat[-2] = "0"
-    Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-    sys.exit()
-
-#Now we need the device on
-if DStat[-2] == "0":
-    print()
-    print("DEVICE OFF. PLEASE USE 'Bundle on'")
-    print()
-    sys.exit()
-
-if "qhome" in args:
-    if DStat[-5] == "1": print("Device is homed")
-    else: print("Device is not homed")
-    sys.exit()
-
-if "home" in args:
-    PStat[-5] = "1"
-    Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-    sys.exit()
-
-#Now we need the device homed
-if DStat[-5] != -"1":
-    print()
-    print("DEVICE NOT HOMED. PLEASE USE 'Bundle home'.")
-    print()
-
-if "qAS" in args:
-    if DStat[-4] == "1": print("Anti-Sticktion is on.")
-    else: print("Anti-Sticktion is off.")
-    sys.exit()
-
-if "AS" in args:
-    if type(args.val) is not str: 
-        print("Invalid option. Use 'Bundle AS on' or 'Bundle AS off'.")
-        sys.exit()
-    args.val = args.val.lower().strip()
-    if args.val == "off":
-        # if anti-sticktion is alread off, just exit
-        if DStat[-4] == "0": sys.exit()
-        PStat[-4] = "0"
-        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-        sys.exit()
-    elif args.val == "on":
-        # if anti-sticktion is alread on, just exit
-        if DStat[-4] == "1": sys.exit()
-        PStat[-4] = "1"
-        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-        sys.exit()
-    else:
-        print("Invalid option. Use 'Bundle AS on' or 'Bundle AS off'.")
-        sys.exit()
-        
-if "qAB" in args:
-    if DStat[-3] == "1": print("Anti-Backlash is on.")
-    else: print("Anti-Backlash is off.")
-    sys.exit()
-
-if "AB" in args:
-    if type(args.val) is not str: 
-        print("Invalid option. Use 'Bundle AB on' or 'Bundle AB off'.")
-        sys.exit()
-    args.val = args.val.lower().strip()
-    if args.val == "off":
-        # if anti-backlash is alread off, just exit
-        if DStat[-3] == "0": sys.exit()
-        PStat[-3] = "0"
-        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-        sys.exit()
-    elif args.val == "on":
-        # if anti-backlash is alread on, just exit
-        if DStat[-3] == "1": sys.exit()
-        PStat[-3] = "1"
-        Stat_P.set_data(np.array(int(PStat, 2), Stat_P.npdtype))
-        sys.exit()
-    else:
-        print("Invalid option. Use 'Bundle AB on' or 'Bundle AB off'.")
+# change ArgumnetParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
         sys.exit()
 
-#we checked for status without push earlier, so this one has it
-if "status" in args:
-    #Get the counter for the position before requesting an update
-    cnt = Pos_D.get_counter()
+# create argument parser
+parser = HelpArgumentParser(add_help = False)
 
-    #make control script act by touching Stat_P
-    Stat_P.set_data(PStat)
+# add subparser so we can add tags to our commands
+#   NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparsers(dest = "command")
 
-    #wait for shared memory to be updated
-    while Pos_D.get_counter() == cnt: sleep(.01)
+# create subparser to handle enable command
+enable = sub.add_parser("enable")
+# add -d flag
+enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in logging mode. \
+    'PATH' can be specified to change log location")
+# add -d! flag
+enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in debug mode. \
+    'PATH' can be specified to change log location")
+# add -draw flag
+enable.add_argument("-draw", action = "store_true",
+    help = "script will draw values in tmux session")
 
-    cur_pos = Pos_D.get_data()
-    time = Pos_D.get_time()
-    time=ctime(time)
+# create subparsers to handle connect/disconnect
+connect = sub.add_parser("connect")
+disconnect = sub.add_parser("disconnect")
 
-    print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
+# create subparser to handle routine command
+addend = """
+(for more, see Zaber T-NA series manual)
+
+examples:
+{b:2}Bundle -AB on
+{b:2}Bundle -AS off
+{b:2}Bundle -AB off -AS on"""
+
+loop = sub.add_parser("routines", epilog = addend,
+    formatter_class = RawDescriptionHelpFormatter)
+loop.add_argument("-AB", nargs="?", help="Anti-backlash setting",
+    choices = ["on", "off"])
+loop.add_argument("-AS", nargs="?", help="Anti-stiction setting",
+    choices = ["on", "off"])
+
+# create subparser to handle home command
+home = sub.add_parser("home")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
+
+# create subparser to handle goto command
+# format presets and examples for goto help message
+addend = ""
+if len(dev.presets) > 0:
+    addend += "presets:"
+    for preset in dev.presets:
+        addend += "\n{b:2}{name:<10}{val}".format(b = "", 
+            name = preset + ":", val = dev.presets[preset])
+    addend += "\n"
+
+addend += """
+examples:
+{b:2}Bundle goto 0 0 0
+""".format(b = "")
+
+if len(dev.presets) > 0:
+    addend += "{b:2}Bundle goto {pre}".format(b = "",
+        pre=list(dev.presets.keys())[0]) 
+
+goto = sub.add_parser("goto", epilog = addend,
+    formatter_class = RawDescriptionHelpFormatter)
+goto.add_argument("target", nargs="*", 
+    help = "position to move to (in mm or a preset)")
+
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
+args = parser.parse_args()
+
+# if no arguments were specified (or if -h is used, since we disabled help), print help
+if args.command is None:
+    print(main_help); sys.exit()
+
+# first check for enable command
+if args.command == "enable":
+    if dev.is_Active(): 
+        print("Control script is alread active.")
+        sys.exit()
+    # create append flags if any optional arguments were provided
+    append = ""
+    if args.debug != -1:
+        append += " -d!"
+        if args.debug is not None:
+            append += " {}".format(args.debug)
+    elif args.log != -1:
+        append += " -d"
+        if args.log is not None:
+            append += " {}".format(args.log)
+    if args.draw:
+        append += " -draw"
+
+    # if we have no flags, make append None
+    if len(append) == 0: append = None
+    
+    # start control script
+    dev.activate_Control_Script(append = append)
     sys.exit()
 
-#at this point, we need Pos_P and Error
-Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
+# then check connect
+if args.command == "connect":
+    try: dev.connect()
+    except ScriptOff as e:
+        print("Control script off. Please use 'Bundle enable'")
+    sys.exit()
 
-if "goto" in args and not args.ax1 is None:
-    pos = Pos_P.get_data()
+# then check disconnect
+if args.command == "disconnect":
+    try: dev.disconnect()
+    except ScriptOff as e:
+        print("Control script off. Please use 'Bundle enable'")
+    sys.exit()
+
+# next check routines
+if args.command == "routines":
+    # if no option was given, return settings
+    if args.AB is None and args.AS is None:
+        AB = "on" if dev.is_AB_on() else "off"
+        AS = "on" if dev.is_AS_on() else "off"
+        print("Anti-backlash: {} | Anti-stiction: {}".format(AB, AS))
+        sys.exit()
     try:
-        #validate first parameter
-        assert args.ax1 in ["x", "y", "f"]
-        assert args.val1 is not None
-        #convert val1 to a float
-        try: args.val1 = float(args.val1)
-        except: assert 1==0
-
-        ax = {"x":0, "y":1, "f":2}
-        
-        pos[ax[args.ax1]] = args.val1
-
-        if args.ax2 is not None:
-            #validate second parameter
-            assert args.ax2 in ["x", "y", "f"]
-            assert args.val2 is not None
-            #convert val2 to a float
-            try: args.val2 = float(args.val2)
-            except: assert 1==0
-            #validate that the same axis was not passed twice
-            assert args.ax1 != args.ax2
-            
-            pos[ax[args.ax2]] = args.val2
-
-        if args.ax3 is not None:
-            #validate second parameter
-            assert args.ax3 in ["x", "y", "f"]
-            assert args.val3 is not None
-            #convert val3 to a float
-            try: args.val3 = float(args.val3)
-            except: assert 1==0
-            #validate that the same axis was not passed twice
-            assert args.ax1 != args.ax3
-            
-            pos[ax[args.ax3]] = args.val3
-
-        Pos_P.set_data(pos)
-
-        #give device time to throw an error
-        sleep(1)
-
-        error = Error.get_data()[0] 
-        if error == 20:
-            print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
-        else: sys.exit()
-
-    except AssertionError:
-        print("INVALID PARAMETERS. SEE EXAMPLES BELOW.")
+        if args.AB is not None:
+            dev.set_AB(args.AB == "on")
+        if args.AS is not None:
+            dev.set_AS(args.AS == "on")
+    except StageOff as e:
+        print("Device not connected. Please use 'Bundle connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Bundle enable'")
+    
+# next check home
+if args.command == "home":
+    # if device is already homed, do nothing
+    if dev.is_Homed():
+        print("Device already homed.")
+        sys.exit()
+    # home device
+    try:
+        dev.home()
+        # wait for device to report that it's homed
+        cnt = 0
         print()
+        while not dev.is_Homed():
+            print("\033[F\033[KWaiting for device to home{}".format("."*((cnt%3)+1)))
+            sleep(.5)
+        # report success
+        print("\033[F\033[KDevice homed.")
+    # catch exceptions
+    except StageOff as e:
+        print("Device not connected. Please use 'Bundle connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Bundle enable'")
 
-#before finding limits, we display usage (note the only tag left to parse is
-#  'center' which comes with 'move', so it's ok to display this first.
-if not "move" in args:
-    cmds=["goto", "center", "status"]
-    print("""
---------------------------------------------
-Movement:
-      - - - - - - - - - - - - - - - -      
-Bundle <CMD> <-x/-y/-f <ARG>>
---------------------------------------------
-CMD:
-{b:3}{:<8}move to an absoluate position
-{b:3}{:<8}move to center of range
+# next check status
+if args.command == "status":
+    # get position
+    try:
+        pos, u_time = dev.get_pos(update = args.push, time = True)
+        # convert UNIX epoch time to local time
+        t = localtime(u_time)
+        print("Position: {} last updated {}/{}/{} {}:{}:{} {}".format(pos, t.tm_year,
+            t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
+    # catch exceptions
+    except StageOff as e:
+        print("Device not connected. Please use 'Bundle connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Bundle enable'")
 
-Type Bundle <CMD> for examples and limits
---------------------------------------------
-Query:
-      - - - - - - - - - - - - - - - -      
-Bundle <CMD> [-push]
---------------------------------------------
-CMD:
-{b:3}{:<8}get position and time from
-{b:11}shared memory
-[-push]:
-{b:3}optional tag for query commands that 
-{b:11}updates shared memory before
-{b:11}returning.
-EXAMPLES:
-{b:3}Bundle status
-{b:3}Bundle status -push
---------------------------------------------
+# last check goto
+if args.command == "goto":
+    # if three positions were provided, convert them to floats
+    if len(args.target) == 3:
+        try: args.target = [float(val) for val in args.target]
+        except: 
+            print("invalid parameters, see below")
+            goto.print_help()
+            sys.exit()
+    # validate/format preset 
+    elif len(args.target) == 1:
+        args.target = args.target[0]
+        if args.target not in dev.presets:
+            print("Invalid preset, see below.")
+            goto.print_help()
+            sys.exit()
+    # otherwise, it is invalid
+    else:
+        if len(args.target) != 0:
+            print("Valid options are a preset or an x y. See below.")
+        goto.print_help()
+        sys.exit()
 
-Type man Bundle for comprehensive command list
-
-""".format(*cmds, b=""))
-    sys.exit()
-            
-min1=config.getfloat("Limits", "min_1")
-max1=config.getfloat("Limits", "max_1")
-min2=config.getfloat("Limits", "min_2")
-max2=config.getfloat("Limits", "max_2")
-min2=config.getfloat("Limits", "min_3")
-max2=config.getfloat("Limits", "max_3")
-
-if "center" in args:
-    pos = Pos_P.get_data()
-    pos[0] = (min1+max1)/2
-    pos[1] = (min2+max2)/2
-    pos[2] = (min3+max3)/2
-
-    #update Pos_P
-    Pos_P.set_data(pos)
-
-    sys.exit()
-
-lim_msgx="(x: must be between {} and {})".format(min1, max1)
-lim_msgy="(y: must be between {} and {})".format(min2, max2)
-lim_msgf="(f: must be between {} and {})".format(min3, max3)
-thirdx=(max1-min1)/3
-thirdy=(max2-min2)/3
-thirdf=(max3-min3)/3
-use1="x {:.2f} y {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
-use2="x {:.0f} f {:.2f}".format(min1+2*thirdx, min3+thirdf)
-use3="x {:.3f} y {:.3f} f {:.3f}".format(min1, min2+.5*thirdy, max3) 
-
-print("""
---------------------------------------------
-Usage: Bundle goto <-x/-y/-f <ARG>>
---------------------------------------------
-x/y:
-{b:3}the axis to move (can use 1, 2, or 3)
-ARG:
-{b:3}the absolute position to move to
-{b:5}{lim_msgx}
-{b:5}{lim_msgy}
-{b:5}{lim_msgf}
-
-EXAMPLES:
-{b:3}Bundle goto {use1}
-{b:3}Bundle goto {use2}
-{b:3}Bundle goto {use3}
---------------------------------------------
-
-ERROR: invalid ARG. Please see above.
-""".format(use1=use1, use2=use2, use3=use3, lim_msgx=lim_msgx,\
-    lim_msgy=lim_msgy, lim_msgf=lim_msgf, b=""))
+    try: dev.set_pos(args.target, block = True)
+    except StageOff as e:
+        print("Device not connected. Please us 'Bundle connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Bundle enable'")
+    except MovementTimeout as e:
+        print("Device taking too long to move. Check for blockages")
+    except ShmError as e:
+        if e.args[0] == "Error 3.":
+            print("Device unreferenced. Please use 'Bundle home'")
+        elif e.args[0] == "Error 20.":
+            print("Movement outside allowable range.")
+        else:
+            print(e.message)
+    except UnreferencedAxis as e:
+        print("Device not homed. Please use 'Bundle home'.")
