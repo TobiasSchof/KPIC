@@ -152,7 +152,7 @@ class Conex_Device:
         if append != None:
             MSG = MSG + str(append)
             
-        MSG = MSG + '\r\n'
+        MSG = MSG + '\n\n'
         msg = MSG.encode()
             
         #Send message using telnet
