@@ -16,6 +16,20 @@ import posix_ipc
 from KPIC_shmlib import Shm
 from Zaber import Zaber_Device
 
+"""
+
+THIS IS A CONTROL SCRIPT FOR THE FIBER EXTRACTION UNIT's BUNDLE TRANSLATION
+STAGE AND NOT FOR USE BY USER
+
+See Bundle_cmds.py or type Bundle in terminal to control device.
+
+"""
+
+# This script is not an import
+if __name__ != "__main__":
+    print("Mode_Change_Control is not meant to be used as an import.")
+    sys.exit()
+
 # Connection information for the Zabers
 HOST = "nspecterm"
 PORT = 10008
