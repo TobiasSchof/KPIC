@@ -211,7 +211,7 @@ class FEU_TTM_cmds:
         elif error == 2: raise LoopOpen("Open loop movement not supported.") 
         elif error == 3: raise StageOff("Turn on device and try again.")
         
-    def activate_Control_Script(self):
+    def activate_Control_Script(self, append = None):
         """Activates the control script if it's not already active."""
 
         if self.is_Active(): 
@@ -224,8 +224,32 @@ class FEU_TTM_cmds:
         #in config file, tmux creation command is separated from kpython3
         #   command via a '|' character so first split by that
         command = config.get("Environment", "start_command").split("|")
+
+        # add append to end of start command
+        if not append is None:
+            append = " " + append.strip()
+            # the command to start the control script will be the last set of quotes
+            idx = command[-1].rfind("\"")
+            if idx == -1: raise Exception("Cannot find where to append")
+            command[-1] = command[-1][:idx] + append + command[-1][idx:]
+
         #the tmux command should be split up by spaces
-        Popen(command[0].split(" ")+[command[-1]])
+        for cmd in command: 
+            to_send = []
+            # parse anything inside quotes as one element
+            tmp = cmd.split("\"")
+            # odd indexes will be elements between quotes
+            for idx, word in enumerate(tmp):
+                if idx % 2 == 0:
+                    to_send += word.split(" ")
+                else:
+                    to_send.append(word)
+
+            Popen(to_send)
+            # we add a slight sleep so that if there are no tmux sessions,
+            #    the server has time to initialize
+            sleep(.1)
+
 
     def load_presets(self):
         """Loads the preset positions from the config file

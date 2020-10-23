@@ -1,6 +1,7 @@
 #!/usr/bin/env kpython3
 
 #inherent python libraries
+from argparse import ArgumentParser
 from configparser import ConfigParser
 from atexit import register, unregister
 from time import sleep
@@ -327,6 +328,8 @@ parser = ArgumentParser()
 #flags to put into debug move
 parser.add_argument("-d", default=-1, nargs="?")
 parser.add_argument("-d!", "--dd", default=-1, nargs="?")
+# flag to start unicode display in tmux session
+parser.add_argument("-draw", action = "store_true")
 
 args = parser.parse_args()
 
@@ -441,8 +444,9 @@ dev_lock = threading.Lock()
 
 info("Starting display drawer")        
 #we use popen to start the drawing script separately to prevent blocking
-display_cmd = "FEU_TTM_draw"
-draw_proc=Popen(display_cmd.split(" "))
+display_cmd = ["FEU_TTM_draw"]
+if args.draw: display_cmd.append("-draw")
+draw_proc=Popen(display_cmd)
 
 error = 0
 

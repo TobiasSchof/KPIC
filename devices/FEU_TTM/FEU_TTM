@@ -1,330 +1,187 @@
 #!/usr/bin/env kpython3
 
-#inherent python libraries
-from subprocess import Popen
-from argparse import ArgumentParser, SUPPRESS
-from configparser import ConfigParser
-from time import sleep, ctime
-import sys, io, os
+# python standard library
+from argparse import ArgumentParer, RawDescriptionHelpFormatter
+from time import sleep, localtime
+import sys
 
-#installed libraries
-import numpy as np
+# nfiuserver libraries
+from FEU_TTM_cmds import FEU_TTM_cmds
+from dev_Exceptions import *
 
-#nfiuserver libraries
-from KPIC_shmlib import Shm
+# instantiatee FEU TTM cmds to get presets
+dev = FEU_TTM_cmds()
 
-if __name__ != "__main__": sys.exit()
-
-"""
-
-executable to control the TTM quickly from the command line
-
-"""
-
-RELDIR = os.environ.get("RELDIR")
-if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
-
-config=ConfigParser()
-config.read(RELDIR+"/data/FEU_TTM.ini")
-
-_debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
-_logDefault=config.get("Communication", "debug_log")
-
-parser=ArgumentParser(conflict_handler="resolve")
-
-#for help message, see bottom
-
-#add subparser to handle device commands.
-dev=parser.add_subparsers()
-	
-#Return the current position of the TTM.
-pos=dev.add_parser("status")
-pos.add_argument("-status")
-pos.add_argument("-push", action="store_true")
-
-#Enables the TTM control script.
-enable=dev.add_parser("enable")
-enable.add_argument("-enable")
-enable.add_argument("-m", action="store_true")
-enable.add_argument("-d", "--debug", default=-1, nargs="?")
-enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?")
-
-#Disables the TTM control script.
-disable=dev.add_parser("disable")
-disable.add_argument("-disable")
-
-#Moves TTM to the given position.
-moveAbs=dev.add_parser("goto")
-moveAbs.add_argument("-goto")
-moveAbs.add_argument("ax1", nargs="?", default=None)
-moveAbs.add_argument("val1", nargs="?", default=None)
-moveAbs.add_argument("ax2", nargs="?", default=None)
-moveAbs.add_argument("val2", nargs="?", default=None)
-moveAbs.add_argument("-move")
-
-#Moves TTM to the center of its range.
-center=dev.add_parser("center")
-center.add_argument("-center")
-center.add_argument("-move")
-
-#Turns the TTM on
-on=dev.add_parser("on")
-on.add_argument("-on")
-
-#Turns the TTM off
-off=dev.add_parser("off")
-off.add_argument("-off")
-
-#override -h flag to show the "usage" window
-parser.add_argument("-h", action="store_true")
-	
-args=parser.parse_args()
-
-
-#start control script if enable tag was used
-if "enable" in args:
-    #vertical pipe separates tmux command from python command
-    command=config.get("Environment", "start_command").split("|")
-    if args.m:
-        command[-1] += (" -m")
-    if args.debug != -1:
-        command[-1] += (" -d")
-        if args.debug is not None:
-            command += args.debug
-
-    Popen(command[0].split(" ") + [command[-1]])
-    sys.exit()
-
-if "disable" in args:
-    command=config.get("Environment", "end_command").split(" ")
-    Popen(command)
-    sys.exit()
-
-#for anything else we will want shared memory so enable it as needed
-try: Pos_D=Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-except:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'FEU_TTM enable'")
-    print()
-    sys.exit()
+# format help message for no command/invalid command
+main_help = """usage:
+{b:2}FEU_TTM [CMD] [-h]
     
-cur_pos = Pos_D.get_data()
-time = Pos_D.get_time()
+CMD:
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}connect    - connects to device
+{b:2}disconnect - disconnects from device
+{b:2}enable     - turns on control script
+-h:
+{b:2}add "-h" after a command for more info""".format(b = "")
 
-#if position was requested without push, we don't need the device to be on
-if "status" in args and not args.push:
-    time=ctime(time)
-    print("Position: {}. Data was updated {}.".format(list(cur_pos), time))
-    sys.exit()
-
-#Now we need Stat_D to tell if the script is on
-Stat_D = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
-DStat = Stat_D.get_data()[0]
-
-#if control script is off, tell user to turn it on
-if DStat in [-1, -2]:
-    print()
-    print("CONTROL SCRIPT OFF. PLEASE USE 'FEU_TTM enable'")
-    print()
-    sys.exit()
-
-#at this point, we need Stat_P shm
-try: Stat_P = Shm(config.get("Shm_Info", "Stat_P").split(",")[0])
-except:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'FEU_TTM enable' OR 'FEU_TTM status'")
-    print()
-    sys.exit()
-
-PStat = Stat_P.get_data()
-
-if "on" in args:
-    PStat[0] = 1
-    Stat_P.set_data(PStat)
-    _ = -1
-    while Stat_D.get_data()[0] not in [2, 1]: 
-        _ = (_+1)%3
-        print("Turning on device{:<4}".format("."*(_+1)), end="\r")
-        sleep(1)
-    print("Device on.{:15}".format(""))
-    sys.exit()
-
-if "off" in args:
-    PStat[0] = 0
-    Stat_P.set_data(PStat)
-    sys.exit()
-
-#Now we need the device on
-if DStat == 0:
-    print()
-    print("DEVICE OFF. PLEASE USE 'FEU_TTM on'")
-    print()
-    sys.exit()
-
-# at this point, we need Error
-Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-
-#we checked for status without push earlier, so this one has it
-if "status" in args:
-    #Get the counter for the position before requesting an update
-    cnt = Pos_D.get_counter()
-
-    #make control script act by touching Stat_P
-    Stat_P.set_data(PStat)
-
-    #wait for shared memory to be updated
-    while Pos_D.get_counter() == cnt: sleep(.01)
-
-    cur_pos = Pos_D.get_data()
-    time = Pos_D.get_time()
-    cur_stat = Stat_D.get_data()
-    time=ctime(time)
-    #warn the user if the stage is moving
-    if cur_stat[0] == 2:
-        print("WARNING, STAGE IS CURRENTLY IN MOTION.")
-        print()
-
-    error = Error.get_data()[0]
-    if error < 0:
-        print("CONEX error {}. See user manual.".format(chr(-1*error+64)))
+# change ArgumentParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
         sys.exit()
 
-    print("Position: {}. Data was updated at {}.".format(list(cur_pos), time))
+# create argument ArgumentParser
+parser = HelpArgumentParser(add_help = False)
+
+# add subparser so we can add tags to our commandds
+#    NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparser(dest = "command")
+
+# create subparser to handle enable command
+enable = sub.add_parser("enable")
+enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in logging mode. \
+    'PATH' can be specified to change log location")
+# add -d! flag
+enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in debug mode. \
+    'PATH' can be specified to change log location")
+# add -draw flag
+enable.add_argument("-draw", action = "store_true",
+    help = "script will draw values in tmux session")
+
+# create subparsers to handle connect/disconnect
+connect = sub.add_parser("connect")
+disconnect = sub.add_parser("disconnect")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
+
+# create subparser to handle goto command
+# format presets and examples for goto help message
+addend = ""
+if len(dev.presets) > 0:
+    addend += "presets:"
+    for preset in dev.presets:
+        addend += "\n{b:2}{name:<10}{val}".format(b = "", 
+            name = preset + ":", val = dev.presets[preset])
+    addend += "\n"
+
+addend += """
+examples:
+{b:2}FEU_TTM goto 0 0
+""".format(b = "")
+
+if len(dev.presets) > 0:
+    addend += "{b:2}FEU_TTM goto {pre}".format(b = "",
+        pre=list(dev.presets.keys())[0]) 
+
+goto = sub.add_parser("goto", epilog = addend,
+    formatter_class = RawDescriptionHelpFormatter)
+goto.add_argument("target", nargs="*", 
+    help = "position to move to (in mm or a preset)")
+
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
+args = parser.parse_args()
+
+# if no arguments were specified (or if -h is used, since we disabled help), print help
+if args.command is None:
+    print(main_help); sys.exit()
+
+# first check for enable command
+if args.command == "enable":
+    if dev.is_Active(): 
+        print("Control script is alread active.")
+        sys.exit()
+    # create append flags if any optional arguments were provided
+    append = ""
+    if args.debug != -1:
+        append += " -d!"
+        if args.debug is not None:
+            append += " {}".format(args.debug)
+    elif args.log != -1:
+        append += " -d"
+        if args.log is not None:
+            append += " {}".format(args.log)
+    if args.draw:
+        append += " -draw"
+
+    # if we have no flags, make append None
+    if len(append) == 0: append = None
+    
+    # start control script
+    dev.activate_Control_Script(append = append)
     sys.exit()
 
-#at this point, we need Pos_P
-Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+# then check connect
+if args.command == "connect":
+    try: dev.connect()
+    except ScriptOff as e:
+        print("Control script off. Please use 'FEU_TTM enable'")
+    sys.exit()
 
-if "goto" in args and not args.ax1 is None:
-    pos = Pos_P.get_data()
+# then check disconnect
+if args.command == "disconnect":
+    try: dev.disconnect()
+    except ScriptOff as e:
+        print("Control script off. Please use 'FEU_TTM enable'")
+    sys.exit()
+
+# next check status
+if args.command == "status":
+    # get position
     try:
-        #validate first parameter
-        assert args.ax1 in ["x", "y"]
-        assert args.val1 is not None
-        #convert val1 to a float
-        try: args.val1 = float(args.val1)
-        except: assert 1==0
+        pos, u_time = dev.get_pos(update = args.push, time = True)
+        # convert UNIX epoch time to local time
+        t = localtime(u_time)
+        print("Position: {} last updated {}/{}/{} {}:{}:{} {}".format(pos, t.tm_year,
+            t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
+    # catch exceptions
+    except StageOff as e:
+        print("Device not connected. Please use 'FEU_TTM connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'FEU_TTM enable'")
 
-        ax = {"x":0, "y":1}
-        
-        pos[ax[args.ax1]] = args.val1
-
-        if args.ax2 is not None:
-            #validate second parameter
-            assert args.ax2 in ["x", "y"]
-            assert args.val2 is not None
-            #convert val2 to a float
-            try: args.val2 = float(args.val2)
-            except: assert 1==0
-            #validate that the same axis was not passed twice
-            assert args.ax1 != args.ax2
-            
-            pos[ax[args.ax2]] = args.val2
-
-        Pos_P.set_data(pos)
-
-        #give device time to throw an error
-        sleep(1)
-
-        error = Error.get_data()[0] 
-        if error == 1:
-            print("REQUESTED MOVE OUTSIDE OF LIMITS. SEE BELOW.")
-        elif error < 0:
-            print("CONEX error {}. See user manual.".format(chr(-1*error+64)))
+# last check goto
+if args.command == "goto":
+    # if three positions were provided, convert them to floats
+    if len(args.target) == 2:
+        try: args.target = [float(val) for val in args.target]
+        except: 
+            print("invalid parameters, see below")
+            goto.print_help()
             sys.exit()
-        elif error != 0:
-            print("ERROR: {}. See config file for translation.".format(error))
+    # validate/format preset 
+    elif len(args.target) == 1:
+        args.target = args.target[0]
+        if args.target not in dev.presets:
+            print("Invalid preset, see below.")
+            goto.print_help()
             sys.exit()
-        else: sys.exit()
+    # otherwise, it is invalid
+    else:
+        if len(args.target) != 0:
+            print("Valid options are a preset or an x y. See below.")
+        goto.print_help()
+        sys.exit()
 
-    except AssertionError:
-        print("INVALID PARAMETERS. SEE EXAMPLES BELOW.")
-        print()
-
-#before finding limits, we display usage (note the only tag left to parse is
-#  'center' which comes with 'move', so it's ok to display this first.
-if not "move" in args:
-    cmds=["goto", "center", "status"]
-    print("""
---------------------------------------------
-Movement:
-      - - - - - - - - - - - - - - - -      
-FEU_TTM <CMD> <-x/-y <ARG>>
---------------------------------------------
-CMD:
-{b:3}{:<8}move to an absoluate position
-{b:3}{:<8}move to center of range
-
-Type FEU_TTM <CMD> for examples and limits
---------------------------------------------
-Query:
-      - - - - - - - - - - - - - - - -      
-FEU_TTM <CMD> [-push]
---------------------------------------------
-CMD:
-{b:3}{:<8}get position and time from
-{b:11}shared memory
-[-push]:
-{b:3}optional tag for query commands that 
-{b:11}updates shared memory before
-{b:11}returning.
-EXAMPLES:
-{b:3}FEU_TTM status
-{b:3}FEU_TTM status -push
---------------------------------------------
-
-Type man FEU_TTM for comprehensive command list
-
-""".format(*cmds, b=""))
-    sys.exit()
-            
-min1=config.getfloat("Limits", "min_1")
-max1=config.getfloat("Limits", "max_1")
-min2=config.getfloat("Limits", "min_2")
-max2=config.getfloat("Limits", "max_2")
-
-if "center" in args:
-    pos = Pos_P.get_data()
-    pos[0] = (min1+max1)/2
-    pos[1] = (min2+max2)/2
-
-    #save counter so we know when shm has been updated
-    cnt = Pos_D.get_counter()
-
-    #update Pos_P
-    Pos_P.set_data(pos)
-
-    #wait for shared memory to be updated
-    sleep(1)
-
-    sys.exit()
-
-
-lim_msgx="(x: must be between {} and {})".format(min1, max1)
-lim_msgy="(y: must be between {} and {})".format(min2, max2)
-thirdx=(max1-min1)/3
-thirdy=(max2-min2)/3
-use1="x {:.2f} y {:.1f}".format(min1+thirdx, min2+2.5*thirdy)
-use2="x {:.0f}".format(min1+2*thirdx)
-use3="y {:.3f}".format(min2+.5*thirdy) 
-
-print("""
---------------------------------------------
-Usage: FEU_TTM goto <-x/-y <ARG>>
---------------------------------------------
-x/y:
-{b:3}the axis to move (can use one or both)
-ARG:
-{b:3}the absolute position to move to
-{b:5}{lim_msgx}
-{b:5}{lim_msgy}
-
-EXAMPLES:
-{b:3}FEU_TTM goto {use1}
-{b:3}FEU_TTM goto {use2}
-{b:3}FEU_TTM goto {use3}
---------------------------------------------
-
-ERROR: invalid ARG. Please see above.
-""".format(use1=use1, use2=use2, use3=use3, lim_msgx=lim_msgx,\
-    lim_msgy=lim_msgy, b=""))
+    try: dev.set_pos(args.target, block = True)
+    except StageOff as e:
+        print("Device not connected. Please us 'FEU_TTM connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'FEU_TTM enable'")
+    except MovementTimeout as e:
+        print("Device taking too long to move. Check for blockages")
+    except ShmError as e:
+        elif e.args[0] == "Error 20.":
+            print("Movement outside allowable range.")
+        else:
+            print(e.message)
