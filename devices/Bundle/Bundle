@@ -27,7 +27,7 @@ CMD:
 -h:
 {b:2}add "-h" after a command for more info""".format(b = "")
 
-# change ArgumnetParser so it prints help menu if no valid
+# change ArgumentParser so it prints help menu if no valid
 #   option is used
 class HelpArgumentParser(ArgumentParser):
     def error(self, message):
@@ -232,7 +232,7 @@ if args.command == "goto":
     # otherwise, it is invalid
     else:
         if len(args.target) != 0:
-            print("Valid options are a preset or an x y. See below.")
+            print("Valid options are a preset or an x y z. See below.")
         goto.print_help()
         sys.exit()
 
