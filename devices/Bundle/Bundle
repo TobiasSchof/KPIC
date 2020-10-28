@@ -244,11 +244,6 @@ if args.command == "goto":
     except MovementTimeout as e:
         print("Device taking too long to move. Check for blockages")
     except ShmError as e:
-        if e.args[0] == "Error 3.":
-            print("Device unreferenced. Please use 'Bundle home'")
-        elif e.args[0] == "Error 20.":
-            print("Movement outside allowable range.")
-        else:
             print(e.message)
     except UnreferencedAxis as e:
         print("Device not homed. Please use 'Bundle home'.")
