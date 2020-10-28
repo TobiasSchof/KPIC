@@ -159,7 +159,7 @@ Shm::Shm(std::string filepath)
 }
 
 Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-        void *seed, bool do_mmap)
+        void *seed, bool do_mmap, bool croppable)
 {
     fname = filepath;
 
@@ -215,6 +215,8 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
 
     // set mmap in metadata
     mtdata.mmap = (uint8_t) do_mmap;
+    // set croppable in metadata
+    mtdata.croppable = (uint8_t) croppable;
     
     // open file
     FILE* backing = fopen(fname.c_str(), "wb+");

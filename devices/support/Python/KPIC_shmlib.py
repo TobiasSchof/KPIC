@@ -44,14 +44,14 @@ asize = { 1 : 1, 2 : 1, 3 : 2, 4 : 2, 5 : 4, 6 : 4, 7 : 8, 8 : 8, 9 : 8,
 # list of metadata keys for the shm structure (global)
 # ------------------------------------------------------
 mtkeys = ['imname', 'crtime_sec', 'crtime_nsec', 'atime_sec', 'atime_nsec', 
-          'cnt0', 'nel', 'size', 'naxis', 'atype', 'mmap']
+          'cnt0', 'nel', 'size', 'naxis', 'atype', 'mmap', 'croppable']
 
 # ------------------------------------------------------
 #    string used to decode the binary shm structure
 # ------------------------------------------------------
 # See the following link for format character translation:
 #    https://docs.python.org/2/library/struct.html#format-characters
-hdr_fmt = '80s Q Q Q Q Q I 3H B B B3x'
+hdr_fmt = '80s Q Q Q Q Q I 3H B B B B 2x'
 
 class Shm:
 
@@ -61,7 +61,7 @@ class Shm:
     class SemaphoreError(Exception):
         pass
 
-    def __init__(self, fname:str, data:np.ndarray=None, mmap:bool=False,
+    def __init__(self, fname:str, data:np.ndarray=None, mmap:bool=False, croppable:bool=False,
                  sem:bool=False):
         ''' --------------------------------------------------------------
         Constructor for a SHM (shared memory) object.
@@ -73,6 +73,7 @@ class Shm:
             pointed to by fname, data will be ignored
         - mmap: whether this shm should be mmapped. Mmapping speeds up read
             and write but takes up memory.
+        - croppable: whether this data is croppable or a constant size
         - sem: whether this instance of the shm should create a semaphore
 
         If data is provided, but a file with the given name already exists,
@@ -95,13 +96,14 @@ class Shm:
                        'size'  : (0,0,0),
                        'naxis' : 0,
                        'atype': 0,
-                       'mmap'  : 0,}
+                       'mmap'  : 0,
+                       'croppable' : 0}
 
-        # if the file doesn't already exist, make it
+        # if file doesn't exist, see if we need to make it
         if not os.path.isfile(fname):
             if data is not None:
                 info("{} will be created".format(fname))
-                self.create(fname, data, mmap)
+                self.create(fname, data, mmap, croppable)
             # if there's no file, no data, and no semaphore, this class is
             #   probably a mistake
             elif not sem:
@@ -166,7 +168,7 @@ class Shm:
             msg = "No free Semaphore available. Please clean processes."
             raise Shm.SemaphoreError(msg)
 
-    def create(self, fname:str, data:np.ndarray, mmap:bool):
+    def create(self, fname:str, data:np.ndarray, mmap:bool, croppable:bool):
         ''' --------------------------------------------------------------
         Creates a file backing for a shared memory structure
 
@@ -175,6 +177,7 @@ class Shm:
         - fname: name of the shared memory file structure
         - data: some array (1, 2 or 3D of data)
         - mmap: whether this shm should be marked as one to mmap
+        - croppable: whether this data can be cropped
         
         Called by the constructor if the provided file-name does not
         exist: a new structure needs to be created, and will be populated
@@ -200,6 +203,7 @@ class Shm:
         self.mtdata['crtime_nsec']  = int((cur_t%1) * 1000000000)
         self.mtdata['cnt0']         = 0
         self.mtdata['mmap']         = mmap
+        self.mtdata['croppable']    = croppable
         
         # ---------------------------------------------------------
         #          reconstruct a SHM metadata buffer
@@ -213,8 +217,10 @@ class Shm:
                 dim = int(fmt[0])
                 tpl = self.mtdata[mtkeys[i]]
                 minibuf += struct.pack(fmt, *tpl)
-            except (ValueError, AssertionError):
-                if isinstance(self.mtdata[mtkeys[i]], str):
+            except (ValueError, AssertionError, IndexError):
+                if fmt.endswith("x"):
+                    pass
+                elif isinstance(self.mtdata[mtkeys[i]], str):
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]].encode())
                 else:
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]])
@@ -235,8 +241,12 @@ class Shm:
         with open(self.fname, "rb") as backing:
             buf = backing.read()
             for i, fmt in enumerate(fmts):
+                # ignore padding bytes
+                if fmt.endswith("x"): continue
+
                 if mtkeys[i] == "cnt0": self.c0_offset = offset
                 elif mtkeys[i] == "atime_sec": self.atime_offset = offset
+                elif mtkeys[i] == "size": self.sz_offset = offset
 
                 hlen = struct.calcsize(fmt)
                 # we have to handle name differently because unpacking doesn't
@@ -259,6 +269,7 @@ class Shm:
         self.im_offset = offset
 
         self.mmap = bool(self.mtdata["mmap"])
+        self.croppable = bool(self.mtdata["croppable"])
         self.npdtype = atod[self.mtdata["atype"]]
 
     def close(self):
@@ -385,6 +396,28 @@ class Shm:
         self.mtdata['cnt0'] = cntr
         return(cntr)
 
+    def get_size(self):
+        ''' --------------------------------------------------------------
+        Read the image size from SHM
+        -------------------------------------------------------------- '''
+
+        offset = self.sz_offset
+        if self.mmap: 
+            with self.lock:
+                # get most recent size
+                sz = struct.unpack('3H', self.buf[offset:offset+6])[:]
+                # get most recent naxis
+                nax = struct.unpack("B", self.buf[offset+6:offset+7])[0]
+        else:
+            with self.lock, open(self.fname, "rb") as file_:
+                buf = file_.read()
+                sz = struct.unpack('3H', buf[offset:offset+6])[:]
+                nax = struct.unpack("B", buf[offset+6:offset+7])[0]
+
+        self.mtdata["size"] = sz
+        self.mtdata["naxis"] = nax
+        return(sz)
+
     def get_data(self, check=False, reform=False):
         ''' --------------------------------------------------------------
         Returns the data part of the shared memory 
@@ -430,6 +463,8 @@ class Shm:
 
         # if requested, reshape data
         if reform:
+            if self.croppable:
+                self.get_size()
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
             data = np.reshape(data, rsz)
 

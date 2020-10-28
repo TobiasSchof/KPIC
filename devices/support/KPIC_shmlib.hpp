@@ -82,8 +82,11 @@ typedef struct
      */
     uint8_t dtype = 0;
 
-    //  keeps track of the last updated slice in the buffer
+    // keeps track of the last updated slice in the buffer
     uint8_t mmap = 1;
+
+    // keeps track of whether this data is croppable
+    uint8_t croppable = 0;
 
 } im_metadata;
 
@@ -118,7 +121,7 @@ class Shm{
          *             just to be read/written as a normal file 
          */
         Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-            void *data, bool mmap);
+            void *seed, bool do_mmap, bool croppable);
 
         // Loads all metadata
         void getMetaData();
