@@ -4,7 +4,7 @@ override SYSNAM = kss/nirspec/nsfiu/devices/Track_Cam
 override VERNUM = 1.0
 
 SOURCE = Track_Cam_Control.cpp KPIC_Cam_Observer.cpp
-RELINCLUDE = KPIC_Cam_Observer.hpp
+RELINC = KPIC_Cam_Observer.hpp
 RELBIN = Track_Cam_Control
 RELDAT = Track_Cam.ini 
 
@@ -39,4 +39,4 @@ include $(RELDIR)/etc/rules.mk
 
 # requires libpng12.x86_64
 Track_Cam_Control: Track_Cam_Control.cpp KPIC_Cam_Observer.cpp
-	$(CC) -o Track_Cam_Control Track_Cam_Control.cpp KPIC_Cam_Observer.cpp -lpthread -L$(FLISDK_DIR)/lib/release -lFliSdk -I$(FLISDK_DIR)/include -lKPIC_shmlib -std=c++11
+	$(CC) -o Track_Cam_Control Track_Cam_Control.cpp KPIC_Cam_Observer.cpp -lpthread -L$(FLISDK_DIR)/lib/release -lFliSdk -I$(FLISDK_DIR)/include -I$(RELDIR)/include -L$(RELDIR)/lib -lKPIC_shmlib -std=c++11 -lstdc++

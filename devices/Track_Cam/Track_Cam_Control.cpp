@@ -313,14 +313,14 @@ int Shm_connect(){
 
         data[0] = (uint8_t)script + (uint8_t)cam << 1 + (uint8_t)fan << 2 +
                (uint8_t)led << 3;
-        Stat_D = new Shm(dstat_cf, size, 3, 1, &data, false);
+        Stat_D = new Shm(dstat_cf, size, 3, 1, &data, false, false);
     } 
 
     try { Error = new Shm(err_cf); }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
-        Error = new Shm(err_cf, size, 3, 1, &data, false); 
+        Error = new Shm(err_cf, size, 3, 1, &data, false, false); 
     }
 
     try { Temp_D = new Shm(dtemp_cf); }
@@ -329,49 +329,49 @@ int Shm_connect(){
         uint16_t size[3] = {6, 0, 0};
         if (cam) { fli->credTwo()->getAllTemp(data[0], data[1], data[2], data[3], 
                                    data[4], data[5]); }
-        Temp_D = new Shm(dtemp_cf, size, 3, 10, &data, false);
+        Temp_D = new Shm(dtemp_cf, size, 3, 10, &data, false, false);
     }
 
     try { Stat_P = new Shm(pstat_cf); }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        Stat_P = new Shm(pstat_cf, size, 3, 1, &data, false);
+        Stat_P = new Shm(pstat_cf, size, 3, 1, &data, false, false);
     }
 
     try { Crop = new Shm(crop_cf); }
     catch (MissingSharedMemory& ex) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        Crop = new Shm(crop_cf, size, 3, 3, &data, false);
+        Crop = new Shm(crop_cf, size, 3, 3, &data, false, false);
     }
 
     try { NDR_P = new Shm(pndr_cf); }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false);
+        NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false, false);
     }
 
     try { FPS_P = new Shm(pfps_cf); }
     catch (MissingSharedMemory& ex) {
         double data[1];
         uint16_t size[3] = {1, 0, 0};
-        FPS_P = new Shm(pfps_cf, size, 3, 10, &data, false);
+        FPS_P = new Shm(pfps_cf, size, 3, 10, &data, false, false);
     }
 
     try { Temp_P = new Shm(ptemp_cf); }
     catch (MissingSharedMemory& ex) {
         double data[2] = {0, 5};
         uint16_t size[3] = {2, 0, 0};
-        Temp_P = new Shm(ptemp_cf, size, 3, 10, &data, false);
+        Temp_P = new Shm(ptemp_cf, size, 3, 10, &data, false, false);
     }
 
     try { Exp_P = new Shm(pexp_cf); }
     catch (MissingSharedMemory& ex) {
         double data[1];
         uint16_t size[3] = {1, 0, 0};
-        Exp_P = new Shm(pexp_cf, size, 3, 10, &data, false);
+        Exp_P = new Shm(pexp_cf, size, 3, 10, &data, false, false);
     }
 
     return 0;

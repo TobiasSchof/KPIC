@@ -4,7 +4,7 @@ override SYSNAM = kss/nirspec/nsfiu/devices/support
 override VERNUM = 1.0
 
 SOURCE = linksem.c KPIC_shmlib.cpp
-RELINCLUDE = KPIC_shmlib.hpp
+RELINC = KPIC_shmlib.hpp
 RELLIB = libKPIC_shmlib.so
 RELBIN = linksem
 

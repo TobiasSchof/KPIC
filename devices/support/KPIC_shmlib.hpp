@@ -108,17 +108,18 @@ class Shm{
          * Constructor to create a shared memory
          *
          * Inputs:
-         *   filepath = path where the shared memory backing should be stored
-         *             Should be of the form '/tmp/dir/shmName.im.shm'
-         *   size []  = dimensions of the data to be stored
-         *             Should be one, two, or three dimensions
-         *   dims     = the number of dimensions of the data.
-         *             Should match the length of the size array
-         *   dtype    = the type of data to be stored
-         *             Should be an encoding defined by im_metadata
-         *   data     = a pointer to the data meant to be used to create shm
-         *   mmap     = whether this shm should be marked as one to mmap or 
-         *             just to be read/written as a normal file 
+         *   filepath  = path where the shared memory backing should be stored
+         *              Should be of the form '/tmp/dir/shmName.im.shm'
+         *   size []   = dimensions of the data to be stored
+         *              Should be one, two, or three dimensions
+         *   dims      = the number of dimensions of the data.
+         *              Should match the length of the size array
+         *   dtype     = the type of data to be stored
+         *              Should be an encoding defined by im_metadata
+         *   data      = a pointer to the data meant to be used to create shm
+         *   mmap      = whether this shm should be marked as one to mmap or 
+         *              just to be read/written as a normal file 
+         *   croppable = whether this data is croppable
          */
         Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
             void *seed, bool do_mmap, bool croppable);
