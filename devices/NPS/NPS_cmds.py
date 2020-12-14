@@ -186,7 +186,7 @@ class NPS_cmds:
         self._checkAlive()
 
         # do nothing if no outlets are provided
-        if len(outlets) == 0: return
+        if type(outlets) is list and len(outlets) == 0: return
 
         # if a single int was given, put it in a list
         if type(outlets) is int: outlets = [outlets]

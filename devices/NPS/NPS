@@ -1,7 +1,6 @@
 #!/usr/bin/env kpython3
 
 # inherent python libraries
-from configparser import ConfigParser
 from time import sleep
 import sys, os
 
