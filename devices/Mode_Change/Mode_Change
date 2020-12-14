@@ -11,7 +11,7 @@ import sys, io, os
 import numpy as np
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+import Mode_Change_cmds
 
 if __name__ != "__main__": sys.exit()
 
@@ -21,179 +21,82 @@ executable to control the viewing mode controller quickly from the command line
 
 """
 
-RELDIR = os.environ.get("RELDIR")
-if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+# format help message for no command/invalid command
+main_help = """usage:
+{b:2}Mode_Change [CMD] [-h]
 
-config=ConfigParser()
-config.read(RELDIR+"/data/Mode_Change.ini")
-
-_debugFormat="%(filename)s.%(funcName)s@%(asctime)s - %(levelname)s: %(message)s"
-_logDefault=config.get("Communication", "debug_log")
-
-parser=ArgumentParser(conflict_handler="resolve")
-
-#for help message, see bottom
-
-#add subparser to handle device commands.
-dev=parser.add_subparsers()
-	
-#Return the current position of the MC.
-pos=dev.add_parser("status")
-pos.add_argument("-status")
-
-#Enables the MC control script.
-enable=dev.add_parser("enable")
-enable.add_argument("-enable")
-enable.add_argument("-m", action="store_true")
-enable.add_argument("-d", "--debug", default=-1, nargs="?")
-enable.add_argument("-d!", "--deepDebug", default=-1, nargs="?")
-
-#Disables the MC control script.
-disable=dev.add_parser("disable")
-disable.add_argument("-disable")
-
-#Moves MC to the given position.
-moveAbs=dev.add_parser("goto")
-moveAbs.add_argument("-goto")
-moveAbs.add_argument("pos", nargs="?", default=None)
-moveAbs.add_argument("-move")
-
-#Moves MC to pupil viewing mode
-center=dev.add_parser("pupil")
-center.add_argument("-pupil")
-center.add_argument("-move")
-
-#Moves MC to focal viewing mode
-center=dev.add_parser("focal")
-center.add_argument("-focal")
-center.add_argument("-move")
-
-#Moves MC to Zernike viewing mode
-center=dev.add_parser("zern")
-center.add_argument("-zern")
-center.add_argument("-move")
-
-#override -h flag to show the "usage" window
-parser.add_argument("-h", action="store_true")
-	
-args=parser.parse_args()
-
-
-#start control script if enable tag was used
-if "enable" in args:
-    #vertical pipe separates tmux command from python command
-    command=config.get("Environment", "start_command").split("|")
-    if args.m:
-        command[-1] += (" -m")
-    if args.debug != -1:
-        command[-1] += (" -d")
-        if args.debug is not None:
-            command += args.debug
-
-    Popen(command[0].split(" ") + [command[-1]])
-    sys.exit()
-
-if "disable" in args:
-    command=config.get("Environment", "end_command").split(" ")
-    Popen(command)
-    sys.exit()
-
-#for anything else we will want shared memory so enable it as needed
-Pos_D=shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-
-try: 
-    cur_pos = Pos_D.get_data()
-    time = Pos_D.get_time()
-except AttributeError:
-    print()
-    print("NO SHARED MEMORY. PLEASE USE 'Mode_Change enable'")
-    print()
-    sys.exit()
-
-# check status
-if "status" in args:
-    time=ctime(time)
-    print("Position: {}. Data was updated {}.".format(list(cur_pos), time))
-    sys.exit()
-
-#Now we need Stat_D to tell if the script is on
-Stat_D = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
-DStat = Stat_D.get_data()[0]
-
-#if control script is off, tell user to turn it on
-if DStat in [-1, -2]:
-    print()
-    print("CONTROL SCRIPT OFF. PLEASE USE 'Mode_Change enable'")
-    print()
-    sys.exit()
-
-if not "move" in args:
-    cmds = ["goto", "pupil", "focal", "zern", "status"]
-    print("""
---------------------------------------------
-Movement:
-      - - - - - - - - - - - - - - - -      
-Mode_Change <CMD> <ARG>
---------------------------------------------
 CMD:
-{b:3}{:<8}move to pupil viewing mode
-{b:3}{:<8}move to focal viewing mode
-{b:3}{:<8}move to Zernike viewing mode
-{b:3}{:<8}move to an absoluate position
-EXAMPLES:
-{b:3}Mode_Change zern
-{b:3}Mode_Change pupil
-{b:3}Mode_Change goto 15
---------------------------------------------
-Query:
-      - - - - - - - - - - - - - - - -      
-Mode_Change <CMD>
---------------------------------------------
-CMD:
-{b:3}{:<8}get position and time from
-{b:11}shared memory
-EXAMPLES:
-{b:3}Mode_Change status
---------------------------------------------
+{b:2}pupil  - change to pupil plane viewing mode
+{b:2}zern   - change to zernike viewing mode
+{b:2}focal  - change to focal plane viewing mode
+{b:2}status - check current position
+{b:2}goto   - Move to a custom position
+-h:
+{b:2}add "-h" after a command for more info""".format(b="")
 
-Type man Mode_Change for comprehensive command list
+# change ArgumentParser so it prints help menu if no valid
+#    option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
+        sys.exit()
 
-""".format(*cmds, b=""))
-    sys.exit()
+# create argument parser
+parser = HelpArgumentParser(add_help = False)
 
-#at this point, we need Pos_P and Error
-Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+# add subparser so we can add tags to our commands
+#   NOTE: dest allows us to check which subparser was called
+sub = parser.add_subparsers(dest = "command")
 
-if any(["goto", "pupil", "focal", "zern"]) in args:
-    if "goto" in args:
-        try: pos = float(args.pos)
-        except (ValueError, TypeError):
-            print()
-            print("INVALID PARAMETERS. EXAMPLE: Mode_Change goto 10.")
-            print()
+# create subparser to handle pupil command
+pupil = sub.add_parser("pupil")
+
+# create subparser to handle zern command
+zern = sub.add_parser("zern")
+
+# create subparser to handle focal command
+focal = sub.add_parser("focal")
+
+# create subparser to handle status command
+status = sub.add_parser("status")
+
+# create subparser to handle goto command
+goto = sub.add_parser("goto")
+goto.add_argument("target", nargs = "*",
+    help = "position to move to (in mm)")
+
+args = parser.parse_args()
+
+if args.command is None:
+    print(main_help); sys.exit()
+
+# first check pupil command
+if args.command == "pupil":
+    Mode_Change_cmds.pupil()
+
+# next check zern command
+elif args.command == "zern":
+    Mode_Change_cmds.zern()
+
+# then check focal
+elif args.command == "focal":
+    Mode_Change_cmds.focal()
+
+# then status
+elif args.command == "status":
+    pos = Mode_Change_cmds.get_pos()
+    print("Current position: {}".format(pos))
+
+# last goto
+elif args.command == "goto":
+    if len(args.target) != 1:
+        print("goto takes one float (position) as an argument")
+    else:
+        try: args.target = float(args.target)
+        except: 
+            print("position must be a float")
             sys.exit()
-    elif "pupil" in args: pos = -1
-    elif "focal" in args: pos = -2
-    elif "zern" in args:  pos = -3
-
-    cnt = Error.get_counter()
-
-    Pos_P.set_data(pos)
-
-    #wait for error to be updated, indicating that move is done
-    while cnt == Error.get_counter(): sleep(.5)
-
-    error = Error.get_data()[0] 
-    if error == 1:
-        print()
-        print("REQUESTED MOVE OUTSIDE OF LIMITS: "+\
-            "[{}, {}]".format(config.get("Limits", "min"),\
-            config.get("Limits", "max")))
-        print()
-    elif error == 4:
-        print()
-        print("CONTROLLER ERROR. START CONTROL SCRIPT WITH -d! TAG TO LOG.")
-        print()
-    
-    sys.exit()
+        Mode_Change_cmds.set_pos(args.target)

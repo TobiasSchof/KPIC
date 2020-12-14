@@ -1,6 +1,7 @@
 #!/usr/bin/env kpython3
 
 #inherent python libraries
+from argparse import ArgumentParser
 from configparser import ConfigParser
 from time import sleep, gmtime, time
 from subprocess import Popen
@@ -12,7 +13,7 @@ import sys, io, os
 import posix_ipc
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+from KPIC_shmlib import Shm
 
 """
 A script to continuously maintain a display of shm values in the TTM tmux 
@@ -25,6 +26,9 @@ if __name__ != "__main__":
     print("Mode_Change_draw is not meant to be used as an import")
     sys.exit()
 
+# a flag to tell the whole script to stop if a signal is passed
+alive = True
+
 DATA = os.environ.get("DATA") #the path to the data directory
 try:
     if DATA[-1] == "/": DATA=DATA[:-1]
@@ -32,15 +36,19 @@ except TypeError:
     DATA = "/nfiudata"
     print("No DATA environment variable, using '/nfiudata'")
 
-LOG = DATA + "/LOG"
-LOG_FILE = "Mode_Change.log" #the name of the log file (appended to DATA/LOGS/YYMMDD/)
-
+#the name of the log file (appended to DATA/LOGS/YYMMDD/)
+LOG_FILE = "Mode_Change.log"
 
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 config=ConfigParser()
 config.read(RELDIR+"/data/Mode_Change.ini")
+
+# check to see if -draw tag was passed
+parser = ArgumentParser()
+parse.add_argument("-draw", action = "store_true",
+    help = "draws a display as well as tracking changes")
 
 #create a semaphore to combine all shm sems
 shm_update = posix_ipc.Semaphore(None, flags=posix_ipc.O_CREX)
@@ -49,19 +57,19 @@ Sem_Listeners=[]
 
 #all the info we need to connect to a shm is in Shm_Info
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
-Stat_D = shm(Stat_D[0], sem=True)
+Stat_D = Shm(Stat_D[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Stat_D.sem.name, shm_update.name]))
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-Pos_D = shm(Pos_D[0], sem=True)
+Pos_D = Shm(Pos_D[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_D.sem.name, shm_update.name]))
 
 Error = config.get("Shm_Info", "Error").split(",")
-Error = shm(Error[0], sem=True)
+Error = Shm(Error[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Error.sem.name, shm_update.name]))
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], sem=True)
+Pos_P = Shm(Pos_P[0], sem=True)
 Sem_Listeners.append(Popen(["linksem", Pos_P.sem.name, shm_update.name]))
 
 def close():

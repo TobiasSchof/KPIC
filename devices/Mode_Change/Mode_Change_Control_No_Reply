@@ -14,8 +14,8 @@ import numpy as np
 import posix_ipc
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
-from Conex import Conex_Device
+from KPIC_shmlib import Shm
+from Conex_No_Reply import Conex_Device
 from NPS_cmds import NPS_cmds
 
 """
@@ -69,22 +69,6 @@ class devManager:
         # wait for the device to turn on
         while not q_pow(): sleep(.1)
 
-        # check if the device has been connected to in the past
-        if len(dev.lims) > 0: dev.open_telnet(HOST, PORT)
-        # if this is the first time we open the device, we want to make sure
-        #    config limits are compliant with software limits
-        else: 
-            dev.open_Telnet(HOST, PORT)
-            dev.reqLim()   
-            global MN
-            global MX
-            if MN < dev.lims["1"][0]:
-                MN = dev.lims["1"][0]
-                info("Changing min limit to {}.".format(dev.lims["1"][0]))
-            if MX > dev.lims["1"][1]:
-                MX = dev.lims["1"][1]
-                info("Changing max limit to {}.".format(dev.lims["1"][1]))
-
         # home device - block execution
         dev.home(isBlocking=True)
 
@@ -102,25 +86,6 @@ class devManager:
         # wait for the device to turn off
         while q_pow(): sleep(.1)
 
-def update(error:int=0):
-    """Updates all the shared memories."""
-
-    pos = dev.getPos("all")
-    # in this case, the communication isn't open
-    if pos == -1:
-        if not q_pow(): Stat_D.set_data(np.array([0], np.int8))
-
-    # in this case, there was an error so split error from positions
-    elif type(pos) is tuple:
-        err = pos[0]["1"]
-        Error.set_data(np.array([-1*(ord(err)-64)], np.int8))
-        Stat_D.set_data(np.array([1], np.int8))    
-    else:
-        # set shms
-        Error.set_data(np.array([error], np.int8))
-        Pos_D.set_data(np.array([pos["1"]], np.float16))
-        Stat_D.set_data(np.array([1], np.int8))    
-
 def loop():
     """Continuously checks for requested moves and updates"""
 
@@ -137,12 +102,13 @@ def loop():
         # connects to device and homes on start of with, closes connection on exit
         with devManager() as wrap:
             # if requested position is within limits, send command
-            if MN <= req_pos <= MX: dev.moveAbs({"1":req_pos}, isBlocking=True)
-            else: error = 1
+            if MN <= req_pos <= MX: 
+                dev.moveAbs({"1":req_pos}, isBlocking=True)
+                Pos_D.set_data(np.array([req_pos], Pos_D.npdtype))
+                Error.set_data(np.array([0], Error.npdtype))
+            else:
+                Error.set_data(np.array([1], Error.npdtype))
        
-            # update shared memory
-            update(error) 
-
 def close():
     """Performs a clean close of this control script"""
 
@@ -220,7 +186,7 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
 # for now we just want to connect to shm to see if there's already a script
 Stat_D = config.get("Shm_Info", "Stat_D").split(",")
 if os.path.isfile(Stat_D[0]):
-    Stat_D = shm(Stat_D[0])
+    Stat_D = Shm(Stat_D[0])
     status = Stat_D.get_data()
 
     if status[0] & 1:
@@ -232,21 +198,21 @@ if os.path.isfile(Stat_D[0]):
         Stat_D.set_data(status)
 else:
     info("No state shared memory file. Creating file.")
-    Stat_D = shm(Stat_D[0], data=np.array([1], dtype=type_[Stat_D[1]]),
+    Stat_D = Shm(Stat_D[0], data=np.array([1], dtype=type_[Stat_D[1]]),
         mmap = (Stat_D[2] == "1"))
 
 Pos_D = config.get("Shm_Info", "Pos_D").split(",")
-if os.path.isfile(Pos_D[0]): Pos_D = shm(Pos_D[0])
+if os.path.isfile(Pos_D[0]): Pos_D = Shm(Pos_D[0])
 else:
     info("No state shared memory file, creating backing.")
-    Pos_D = shm(Pos_D[0], data=np.array([0], dtype=type_[Pos_D[1]]),
+    Pos_D = Shm(Pos_D[0], data=np.array([0], dtype=type_[Pos_D[1]]),
         mmap = (Pos_D[2] == "1"))
 
 Error = config.get("Shm_Info", "Error").split(",")
-if os.path.isfile(Error[0]): Error = shm(Error[0])
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else:
     info("No state shared memory file, creating backing.")
-    Error = shm(Error[0], data=np.array([0], dtype=type_[Error[1]]),
+    Error = Shm(Error[0], data=np.array([0], dtype=type_[Error[1]]),
         mmap = (Error[2] == "1"))
 
 info("No duplicate control script, continuing with initialization.")
@@ -264,7 +230,7 @@ signal(SIGTERM, signal_handler)
 info("Initializing command shared memory from config file.")
 
 Pos_P = config.get("Shm_Info", "Pos_P").split(",")
-Pos_P = shm(Pos_P[0], data = Pos_D.get_data(), sem = True,
+Pos_P = Shm(Pos_P[0], data = Pos_D.get_data(), sem = True,
     mmap = (Pos_P[2] == "1"))
 
 def unlink():
@@ -283,12 +249,9 @@ info("Command shared memories successfully created.")
 info("Initializing NPS")
 NPS = NPS_cmds()
 info("Finding NPS port")
-NPS.MC_port = None
-for port in NPS.devices:
-    if NPS.devices[port] == "TC mode stage":
-        NPS.MC_port = port
-        break
-if NPS.MC_port is None:
+try:
+    NPS.MC_port = NPS.devices["TC mode stage"]
+except KeyError:
     info("Cannot find NPS port")
     raise NPSError("Cannot find NPS port")
 
@@ -308,9 +271,5 @@ info("Starting display drawer")
 display_cmd = ["Mode_Change_draw"]
 if args.draw: display_cmd.append("-draw")
 draw_proc = Popen(display_cmd)
-
-info("Updating shared memory")
-with devManager() as wrap:
-    update()
 
 loop()

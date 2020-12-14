@@ -8,7 +8,7 @@ import os
 import numpy as np
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+from KPIC_shmlib import Shm
 from dev_Exceptions import *
 
 RELDIR = os.environ.get("RELDIR")
@@ -18,9 +18,9 @@ config = ConfigParser()
 config.read(RELDIR+"/data/Mode_Change.ini")
 
 
-Pos_D = shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-Error = shm(config.get("Shm_Info", "Error").split(",")[0])
-Stat  = shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+Pos_D = Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
+Stat  = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
 
 def activate_Control_Script():
     """Activates the control script"""
@@ -37,16 +37,16 @@ def zern(isBlocking:bool=False):
             complete
     """
     
-    try: Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
     except: raise ScriptOff("Please start control script")
 
     Error = None
     cnt = None
     if isBlocking:
-        Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
         cnt = Error.get_counter()
 
-    Pos_P.set_data(np.array([-3], np.float16)
+    Pos_P.set_data(np.array([-3], Pos_P.npdtype))
 
     if isBlocking:
         while cnt == Error.get_counter(): sleep(.5)
@@ -59,16 +59,16 @@ def focal(isBlocking:bool=False):
             complete
     """
     
-    try: Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
     except: raise ScriptOff("Please start control script")
 
     Error = None
     cnt = None
     if isBlocking:
-        Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
         cnt = Error.get_counter()
 
-    Pos_P.set_data(np.array([-2], np.float16)
+    Pos_P.set_data(np.array([-2], Pos_P.npdtype))
 
     if isBlocking:
         while cnt == Error.get_counter(): sleep(.5)
@@ -81,16 +81,16 @@ def pupil(isBlocking:bool=False):
             complete
     """
     
-    try: Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
     except: raise ScriptOff("Please start control script")
 
     Error = None
     cnt = None
     if isBlocking:
-        Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
         cnt = Error.get_counter()
 
-    Pos_P.set_data(np.array([-1], np.float16)
+    Pos_P.set_data(np.array([-1], Pos_P.npdtype))
 
     if isBlocking:
         while cnt == Error.get_counter(): sleep(.5)
@@ -108,13 +108,13 @@ def set_pos(pos:float, isBlocking:bool=False):
     try: assert type(pos) is float
     except AssertionError: raise ValueError("Position must be a float.")
 
-    try: Pos_P = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
     except: raise ScriptOff("Please start control script")
 
     Error = None
     cnt = None
     if isBlocking:
-        Error = shm(config.get("Shm_Info", "Error").split(",")[0])
+        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
         cnt = Error.get_counter()
 
     Pos_P.set_data(np.array([pos], np.float16))
@@ -126,12 +126,12 @@ def get_pos(time:bool=False):
     """Returns the current position of the Conex stage in the shm
 
     Inputs:
-        time = wehther or not to include the time in the output
+        time = whether or not to include the time in the output
     Outputs:
         float, float = the position and the time (if time is True)
     """
 
-    try: Pos_D = shm(config.get("Shm_Info", "Pos_P").split(",")[0])
+    try: Pos_D = Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
     except: raise ShmError("No Pos_D shm. Please restart control script.")
 
     if time: return Pos_D.get_data(), Pos_D.get_time()

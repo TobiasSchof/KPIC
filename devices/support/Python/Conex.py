@@ -311,7 +311,7 @@ class Conex_Device:
                   '  solution: call open()')
             return -1
         
-        self.write('1MM1')  #enter disable state
+        self.write('1MM1')  #enter enable state
         
         #Check for errors
         erFlg, erCd = self.isError()
