@@ -1,0 +1,161 @@
+#!/usr/bin/env kpython3
+
+# standard python libraries
+import sys
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+
+# vfn libraries
+from NPS_cmds import NPS_cmds
+
+# exit if this script is not being used as command line
+if __name__ != "__main__": 
+    print("NPS not meant to be used as an import")
+    sys.exit()
+
+nps_config_file = "/home/vfndev/Documents/MATLAB/VFN-Lab/VFN_Config/.NPS_config.ini"
+
+main_help = """------------------------------------------------------------------
+Usage: NPS [CMD] [-h]
+------------------------------------------------------------------
+CMD:
+{b:2}status  - displays status of given ports (or control script)
+{b:2}on      - turns on selected ports (or control script)
+{b:2}off     - turns off selected ports
+{b:2}devices - lists which ports devices are connected to
+-h:
+{b:2}add "-h" after a command for more info
+------------------------------------------------------------------""".format(b="")
+
+# format examples for on
+on_addend = """
+examples:
+{b:2}NPS on 1
+{b:2}NPS on 3 2
+{b:2}NPS on all
+{b:2}NPS on script
+""".format(b="")
+
+# format examples for off
+off_addend = """
+examples:
+{b:2}NPS off 1
+{b:2}NPS off 3 7
+{b:2}NPS off all
+""".format(b="")
+
+# format examples for status
+stat_addend = """
+examples:
+{b:2}NPS status all
+{b:2}NPS status 3 8 1
+{b:2}NPS status
+{b:2}NPS status script
+""".format(b="")
+
+# change ArgumentParser so it prints help menu if no valid
+#   option is used
+class HelpArgumentParser(ArgumentParser):
+    def error(self, message):
+        if message.startswith("the following arguments are required:"):
+            self.print_help()
+        else:
+            print(main_help)
+        sys.exit()
+
+# create argument ArgumentParser
+parser = HelpArgumentParser(add_help = False)
+
+# add subparser so we can add input to our commands
+#   NOTE: dest allows us to check which subparser was invoked
+sub = parser.add_subparsers(dest = "command")
+
+# create subparser to handle status command
+stat = sub.add_parser("status", epilog = stat_addend,
+    formatter_class = RawDescriptionHelpFormatter)
+stat.add_argument("ports", nargs="*", 
+    help="any collection of valid port numbers ('all' or nothing for every port) or 'script' for control script")
+
+# create subparser to handle on command
+on = sub.add_parser("on", epilog = on_addend,
+    formatter_class = RawDescriptionHelpFormatter)
+on.add_argument("ports", nargs = "*",
+    help="any collection of valid port numbers (or 'all') or 'script' for control script")
+
+# create subparser to handle off command
+off = sub.add_parser("off", epilog = off_addend,
+    formatter_class = RawDescriptionHelpFormatter)
+off.add_argument("ports", nargs = "*",
+    help="any collection of valid port numbers (or 'all')")
+
+# create subparser to handle devices command
+dev = sub.add_parser("devices")
+
+args = parser.parse_args()
+
+nps = NPS_cmds()
+
+# handle status command
+if args.command == "status":
+
+    # check for 'script'
+    if "script" in args.ports:
+        print("NPS control script: {}".format("On" if nps.is_active() else "Off"))
+        sys.exit()
+    # set up parameters for all
+    elif len(args.ports) == 0 or "all" in args.ports:
+        args.ports = "all"
+
+    # get status
+    try:
+        resp = nps.get_status(ports = args.ports)
+    except ValueError:
+        print("Input not understood. Valid input is 'script', 'all', or any collection of {}".format(nps.ports.keys()))
+    
+    # print header
+    print("NPS status:")
+    print("------------")
+
+    for port in resp:
+        print("{:<5} | {:<3} | {}".format(str(port)+":", "On" if resp[port] else "Off",
+            nps.ports[port]))
+
+    # exit
+    sys.exit()
+
+# handle on command
+elif args.command == "on":
+
+    # check for 'script'
+    if "script" in args.ports:
+        nps.activate_control_script()
+        sys.exit()
+    
+    try:
+        nps.turn_on(args.ports)
+    except ValueError:
+        print("Input not understood. Valid input is 'script', 'all', or any collection of {}".format(nps.ports.keys()))
+
+# handle off command
+elif args.command == "off":
+    try:
+        nps.turn_off(args.ports)
+    except ValueError:
+        print("Input not understood. Valid input is 'all', or any collection of {}".format(nps.ports.keys()))
+
+# handle devices command
+elif args.command == "devices":
+
+    # device info is in the config file
+    cp = ConfigParser()
+    cp.read(nps_config_file)
+
+    # print header
+    print("NPS devices:")
+    print("------------")
+    # print out info for each port listed in the Port Info file
+    for port in cp.options("Port Info"):
+        print("Port {:<5} | {}".format(port+":", cp.get("Port Info", port)))
+
+# handle no command
+else:
+    print(main_help)

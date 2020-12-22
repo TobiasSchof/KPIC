@@ -1,0 +1,340 @@
+#!/usr/bin/env kpython3
+
+# standard library
+from telnetlib import Telnet
+from configparser import ConfigParser
+from atexit import register, unregister
+from signal import signal, SIGHUP, SIGTERM
+from time import gmtime
+import sys, os
+
+# installs
+import numpy as np
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+
+"""
+
+THIS IS A CONTROL SCRIPT FOR THE FIBER INJECTION UNIT's NETWORK POWER SWITCH
+AND NOT FOR USE BY USER
+
+See NPS_cmds or type NPS in terminal to control the NPS
+
+"""
+
+# This script is not an import
+if __name__ != "__main__":
+    print("NPS_Control is not meant to be used as an import.")
+    sys.exit()
+
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[-1]
+config = RELDIR + "/data/NPS.ini"
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice."""
+    pass
+
+########## CLASS FOR NPS CONTROL ########## 
+
+class NPS:
+    """A class and context manager for telnet control of a Pulizzi"""
+
+    def __init__(self, address, port, timeout = 3):
+        """Constructor, takes the IP and the port of the Pulizzi
+
+        Args:
+            address   = the ip address of the Pulizzi
+            port      = the telnet port of th Pulizzi
+        """
+
+        # define a timeout interval in seconds
+        self.tmt = timeout
+
+        # store connection info
+        self.address = address
+        self.port = port
+
+    def q_port(self, port):
+        """Queries the on status of ports
+
+        Also logs the results of the queries to the log file store at 
+            [DATA]/[YYMMDD]/LOGS/[LOG_FILE]
+
+        Args:
+            port = can be an int representing a port, a list of ports, or 'all' for all ports
+        Returns:
+            dict = a dictionary with keys as port numbers, values as True/False for on/off
+        """
+
+        # if there's only one element in the list, convert it to an int
+        if type(port) is list and len(port) == 1:
+            try: port = int(port[0])
+            except ValueError: raise ValueError("List elements should be a number 1 through 8.")
+
+        # if port is an int, there's only port to check, so check it
+        if type(port) is int:
+            if port not in range(1, 9):
+                raise ValueError("NPS port must be between 1 and 8")
+
+            # send On/Off query request for given outlet (port)
+            self.telnet.write("get PDU.OutletSystem.Outlet[{}].PresentStatus.SwitchOnOff\r\n".format(port).encode())
+
+            # the two valid responses are 1 for on, 0 for off
+            res = self.telnet.expect([bytes("1\r\r\npdu#0>", "utf-8"), bytes("0\r\r\npdu#0>", "utf-8")], self.tmt)
+            if res[0] == 0: return {port:True}
+            elif res[0] == 1: return {port:False}
+            else: raise ConnectionError("Response to On/Off query not understood.")
+
+        # in the 'all ports' case, make a list of the valid ports
+        elif type(port) is str and port.lower() == "all":
+            port = [1, 2, 3, 4, 5, 6, 7, 8]
+
+        # if what remains isn't a list, throw an error
+        elif type(port) is not list:
+            raise ValueError("Please pass an int, a list of ints, or the string 'all'.")
+
+        # a dictionary to hold the results
+        res = {}
+
+        # make header for log message
+        gmt = gmtime()
+        date = "{:04d}/{:02d}/{:02d}".format(gmt.tm_year, gmt.tm_mon, gmt.tm_mday)
+        log_t = "{:02d}:{:02d}:{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        log = "{date:<11}{time:<10}GMT:\n".format(date=date, time=log_t)
+
+        # make an outline for log messages
+        msg = "{b:<15} Port {port}: {val}\n"
+        
+        # go through the ports, querying one by one and building log file
+        for p in port:
+            try: p = int(p)
+            except ValueError: raise ValueError("Ports must be integers.")
+            res[p] = self.q_port(p)[p]
+            log += msg.format(b="", port=p, val="On" if res[p] else "Off")
+
+        # get the path to today's folder
+        year = "{}".format(gmt.tm_year)[-2:]
+        date = "{}{:02d}{:02d}".format(year, gmt.tm_mon, gmt.tm_mday)
+        cur_path = "{}/{}".format(DATA, date)
+        # check whether the date of the last state shared memory update has a folder
+        try: 
+            if not os.path.isdir(cur_path): os.mkdir(cur_path)
+        except FileNotFoundError: print("DATA variable set incorrectly")
+
+        # check for existence of LOG folder within today's dated folder
+        cur_path += "/LOG"
+        if not os.path.isdir(cur_path): os.mkdir(cur_path)
+        
+        # write log message to file
+        with open("{}/{}".format(cur_path, LOG_FILE), "a") as log_f:
+            log_f.write(log)
+        
+        # return result 
+        return res
+
+    def s_port(self, requests):
+        """Sets the given ports to on or off
+
+        Args:
+            requests = a dictionary where keys correspond to ports (or all), and values are True/False for On/Off
+        Returns:
+            None
+        """
+
+        # if all off or all on was sent, reformat requests
+        if "all" in requests.keys():
+            requests = {port : requests["all"] for port in [1, 2, 3, 4, 5, 6, 7, 8]}
+
+        for port in requests:
+            # check that port number is valid
+            try:
+                if int(port) not in range(1, 9):
+                    raise ValueError("Ports must be between 1 and 8 (or 'all')")
+            except ValueError: raise ValueError("Ports must be integers.")
+
+            # check if request is on or off
+            if requests[port]:
+                self.telnet.write("set PDU.OutletSystem.Outlet[{}].DelayBeforeStartup 0\r\n".format(port).encode())
+            else:
+                self.telnet.write("set PDU.OutletSystem.Outlet[{}].DelayBeforeShutdown 0\r\n".format(port).encode())
+
+            # we should get the pdu line start again
+            res = self.telnet.expect([bytes("pdu#0>", "utf-8")], self.tmt)
+            if res[0] == -1:
+                msg = "Issue turning on port {}.".format(port)
+                raise ConnectionError(msg)
+
+    def __enter__(self):
+        """Opens connection"""
+
+        cp = ConfigParser()
+        cp.read("/home/nfiudev/.NPS_login.ini")
+
+        # Start telnet connection
+        try: self.telnet = Telnet(self.address, self.port, self.tmt)
+        except: 
+            raise ConnectionError("Connection failed.")
+
+        # send login
+        res = self.telnet.expect([bytes("Enter Login: ", 'utf-8')], self.tmt)
+        if(res[0] == -1):
+            raise ConnectionError("Connection timeout on startup. (No login prompt)")
+
+        self.telnet.write("{}\r\n".format(cp.get("Connection Info", "login")).encode())
+
+        # send password
+        res = self.telnet.expect([bytes("Enter Password: ", 'utf-8')], self.tmt)
+        if(res[0] == -1):
+            raise ConnectionError("Connection timeout on startup. (No password prompt)")
+
+        self.telnet.write("{}\r\n".format(cp.get("Connection Info", "pass")).encode())
+
+        # confirm that we get pdu line start, indicating that connection was successful
+        res = self.telnet.expect([bytes("pdu#0>", "utf-8")], self.tmt)
+        if(res[0] == -1):
+            raise ConnectionError("No PDU prompt")
+
+        return self
+
+    def __exit__(self, type, value, tb):
+        """Closes connection"""
+
+        self.telnet.close()
+
+########## CONTROL SCRIPT ########## 
+
+def main():
+    """The main loop that waits for a shm to be updated and acts"""
+
+    while alive:
+
+        # get latest P_shm
+        req = Shm_P.get_data(check = True)
+
+        # have an exit if we're supposed to end the script
+        if not alive: break
+
+        # get last D_shm (this should be the previous P shm as well) 
+        old = Shm_D.get_data()
+
+        # find which ports are being requested to on
+        on = req[0] & ~old[0]
+        # find which ports are being requested to off
+        off = ~req[0] & old[0]
+
+        # format on/off for nps context manager
+        req = {port:True for port in range(1, 9) if on & 1 << (port - 1)}
+        req.update({port:False for port in range(1, 9) if off & 1 << (port - 1)})
+
+        # open connection to NPS
+        global ADDR, PORT, TMT
+        with NPS(ADDR, PORT, timeout=TMT) as nps:
+            # send requests
+            nps.s_port(req)
+
+            # get status of all nps ports
+            stat = nps.q_port("all")
+
+        # convert status to an int
+        stat_fmt = 0
+        for port in range(1, 9):
+            stat_fmt += int(stat[port]) * (1 << (port - 1))
+
+        old[0] = stat_fmt
+        Shm_D.set_data(old)
+
+def close():
+    """A cleanup method"""
+
+    # delete P Shm and its lock
+    try: Shm_P.lock.unlink(); Shm_P.lock.close()
+    except: pass
+    try: os.remove(Shm_P.fname)
+    except: pass
+
+    # unregister this method now that it's completed to avoid running it twice
+    unregister(close)
+    os.system(config.get("Environment", "end_command"))
+
+def signal_handler(signum, stack):
+    """A signal handler to close gracefully when recieving a signal"""
+
+    global alive
+    alive = False
+    try: Shm_P.sem.release()
+    except: pass
+
+# the root directory for where config files are stored
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[-1]
+
+# The path to the directory where data is stored (for logging)
+DATA = os.environ.get("DATA")
+try:
+    if DATA[-1] == "/": DATA=DATA[:-1]
+except TypeError:
+    DATA = "/nfiudata"
+    print("No DATA environment variable, using '/nfiudata/'")
+
+# the name of the log file (appended to DATA/YYMMDD/LOGS)
+LOG_FILE = "NPS.log"
+
+# when alive is set to false, the script will end
+alive = True
+
+# read config file
+config = ConfigParser()
+config.read(RELDIR+"/data/NPS.ini")
+
+# load communication info
+ADDR = config.get("Communication", "address")
+PORT = config.getint("Communication", "port")
+TMT = config.getint("Communication", "timeout")
+
+# make shm directory if it doesn't already exist
+if not os.path.isdir("/tmp/NPS"): os.mkdir("/tmp/NPS")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# get the P shm path to see if it exists
+check = config.get("Shm Info", "P_Shm")
+check = check.split(",")[0]
+# if the shm file exists, it means that another NPS control script is alive
+if os.path.isfile(check): raise AlreadyAlive("NPS control script already alive.")
+else: check = None
+
+# connect to Shm D
+Shm_D = config.get("Shm Info", "D_Shm").split(",")
+Shm_D = Shm(Shm_D[0], np.array([0], type_[Shm_D[1]]), mmap = Shm_D[2] == "1")
+
+# update Shm_D
+with NPS(ADDR, PORT, timeout=TMT) as nps:
+    stat = nps.q_port("all")
+
+# convert status to an int
+stat_fmt = 0
+for port in range(1, 9):
+    stat_fmt += int(stat[port]) * (1 << (port - 1))
+
+_ = Shm_D.get_data()
+_[0] = stat_fmt
+Shm_D.set_data(_)
+
+# create Shm P and have it reflect Shm D_Shm
+Shm_P = config.get("Shm Info", "P_Shm").split(",")
+Shm_P = Shm(Shm_P[0], Shm_D.get_data(), mmap = Shm_P[2] == "1", sem = True)
+
+# register close after creating Shm P so that we can delete the lock
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+print("Control script running.")
+main()
