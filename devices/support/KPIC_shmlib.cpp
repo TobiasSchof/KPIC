@@ -7,14 +7,14 @@
 #include <thread>       // adds threading
 #include <sys/mman.h>   // adds mmap
 #include <sys/stat.h>   // adds mmap tags
+#include <sys/types.h>   // with stat, adds directory checking
 #include <time.h>       // adds timespec and enables getting the time
 #include <string>       // adds string
 #include <cstring>      // adds strcpy
 #include <fstream>      // adds file reading/writing
 #include <stdint.h>     // adds uxxx_t types
 #include <dirent.h>     // adds directory inspection
-
-#include <iostream>
+#include <string>       // adds string parsing
 
 #include "KPIC_shmlib.hpp"
 
@@ -179,7 +179,7 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     }
     // add '/' to beginning
     sempref = "/" + sempref;
-    // remove '.im.shm'
+    // remove extension
     sempref.erase(sempref.find("."), sempref.length());
 
     lock = sem_open((sempref + "_lock").c_str(), O_CREAT, 0644, 1);
@@ -218,6 +218,24 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     // set croppable in metadata
     mtdata.croppable = (uint8_t) croppable;
     
+    // make any directories required
+    int old = 0;
+    int next = fname.find("/", old);
+    struct stat info;
+    std::string dir = "";
+    while (next != std::string::npos){
+        dir.append(fname.substr(old, next-old+1));
+        if (stat(dir.c_str(), &info) != 0){ 
+            mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH); 
+        }
+        else if(!(info.st_mode & S_IFDIR)) { 
+            perror("Cannot make directory tree. Would overwrite a file."); 
+            exit(EXIT_FAILURE);
+        }
+        old = next+1;
+        next = fname.find("/", old);
+    }
+
     // open file
     FILE* backing = fopen(fname.c_str(), "wb+");
     // write in metadata
