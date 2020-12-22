@@ -313,14 +313,14 @@ int Shm_connect(){
 
         data[0] = (uint8_t)script + (uint8_t)cam << 1 + (uint8_t)fan << 2 +
                (uint8_t)led << 3;
-        Stat_D = new Shm(dstat_cf, size, 3, 1, &data, false, false);
+        Stat_D = new Shm(dstat_cf, size, 3, 1, &data, false, false, false);
     } 
 
     try { Error = new Shm(err_cf); }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
-        Error = new Shm(err_cf, size, 3, 1, &data, false, false); 
+        Error = new Shm(err_cf, size, 3, 1, &data, false, false, false); 
     }
 
     try { Temp_D = new Shm(dtemp_cf); }
@@ -329,49 +329,49 @@ int Shm_connect(){
         uint16_t size[3] = {6, 0, 0};
         if (cam) { fli->credTwo()->getAllTemp(data[0], data[1], data[2], data[3], 
                                    data[4], data[5]); }
-        Temp_D = new Shm(dtemp_cf, size, 3, 10, &data, false, false);
+        Temp_D = new Shm(dtemp_cf, size, 3, 10, &data, false, false, false);
     }
 
-    try { Stat_P = new Shm(pstat_cf); }
+    try { Stat_P = new Shm(pstat_cf, true); }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        Stat_P = new Shm(pstat_cf, size, 3, 1, &data, false, false);
+        Stat_P = new Shm(pstat_cf, size, 3, 1, &data, false, true, false);
     }
 
-    try { Crop = new Shm(crop_cf); }
+    try { Crop = new Shm(crop_cf, true); }
     catch (MissingSharedMemory& ex) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        Crop = new Shm(crop_cf, size, 3, 3, &data, false, false);
+        Crop = new Shm(crop_cf, size, 3, 3, &data, false, true, false);
     }
 
-    try { NDR_P = new Shm(pndr_cf); }
+    try { NDR_P = new Shm(pndr_cf, true); }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false, false);
+        NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false, true, false);
     }
 
-    try { FPS_P = new Shm(pfps_cf); }
+    try { FPS_P = new Shm(pfps_cf, true); }
     catch (MissingSharedMemory& ex) {
         double data[1];
         uint16_t size[3] = {1, 0, 0};
-        FPS_P = new Shm(pfps_cf, size, 3, 10, &data, false, false);
+        FPS_P = new Shm(pfps_cf, size, 3, 10, &data, false, true, false);
     }
 
-    try { Temp_P = new Shm(ptemp_cf); }
+    try { Temp_P = new Shm(ptemp_cf, true); }
     catch (MissingSharedMemory& ex) {
         double data[2] = {0, 5};
         uint16_t size[3] = {2, 0, 0};
-        Temp_P = new Shm(ptemp_cf, size, 3, 10, &data, false, false);
+        Temp_P = new Shm(ptemp_cf, size, 3, 10, &data, false, true, false);
     }
 
-    try { Exp_P = new Shm(pexp_cf); }
+    try { Exp_P = new Shm(pexp_cf, true); }
     catch (MissingSharedMemory& ex) {
         double data[1];
         uint16_t size[3] = {1, 0, 0};
-        Exp_P = new Shm(pexp_cf, size, 3, 10, &data, false, false);
+        Exp_P = new Shm(pexp_cf, size, 3, 10, &data, false, true, false);
     }
 
     return 0;
@@ -399,10 +399,15 @@ int NPS_connect(){
     std::string fnamep;
     std::string prev;
     uint8_t port = 0;
+
+    // open the nps config file and check for error
+    conf.open(path.c_str(), std::ifstream::in);
+    if (!conf) { perror("Error loading config file."); exit(EXIT_FAILURE); }
+
     while (conf >> word){
         if (strncmp("D_Shm:", word.c_str(), 6) == 0){ conf >> fnamed; }
         else if (strncmp("P_Shm:", word.c_str(), 6) == 0){ conf >> fnamep; }
-        else if (word.find("Tracking Camera") != std::string::npos){ 
+        else if (word.find("CRED2") != std::string::npos){ 
             port = atoi(prev.c_str()); }
         prev = word;
     }
@@ -750,7 +755,7 @@ int main(){
     if (CONFIG == "") {
         perror("No $RELDIR environment variable found.");
         exit(EXIT_FAILURE);
-    } else if (CONFIG.compare(CONFIG.length() - 1, 1, "/")){
+    } else if (CONFIG.compare(CONFIG.length() - 1, 1, "/") == 0){
         CONFIG.erase(CONFIG.length() - 1, 1);
     }
 

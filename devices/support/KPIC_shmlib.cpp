@@ -104,7 +104,7 @@ class CorruptSharedMemory: public std::exception{
     }
 } CorruptShm;
 
-Shm::Shm(std::string filepath)
+Shm::Shm(std::string filepath, bool has_sem)
 {
     fname = filepath;
 
@@ -156,10 +156,12 @@ Shm::Shm(std::string filepath)
         // close file
         fclose(backing);
     } else { buf = NULL; }
+
+    if (has_sem) { get_sem(); }
 }
 
 Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-        void *seed, bool do_mmap, bool croppable)
+        void *seed, bool do_mmap, bool has_sem, bool croppable)
 {
     fname = filepath;
 
@@ -254,6 +256,9 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     // close file
     fclose(backing);
 
+    // connect to a semaphore if one was requested
+    if (has_sem){ get_sem(); }
+
     // start a thread to post semaphores
     std::thread post(postSems, sem_fnm);
     
@@ -330,32 +335,9 @@ void Shm::set_data(const void *new_data){
 
 void Shm::get_data(void *loc, bool wait){
     if (wait){
-        // connect to an unused semaphore if we don't already have one
-        if (!has_sem){
-            // iterate through valid names until we find one not taken
-            std::string sem_pref = sem_fnm;
-            sem_pref.erase(0, 4);
-            sem_pref = "/"+sem_pref;
-            for (int i=0; i < 100; i++){
-                if (i < 10){
-                    sem = sem_open((sem_pref + "0" + std::to_string(i)).c_str(), 
-                                    O_CREAT | O_EXCL, 0644, 0);
-                } else {
-                    sem = sem_open((sem_pref + std::to_string(i)).c_str(), 
-                                    O_CREAT | O_EXCL, 0644, 0);
-                }
-                // the semaphore was free
-                if (sem != SEM_FAILED){ 
-                    has_sem = true; 
-                    sem_nm = sem_pref;
-                    if (i < 10) { sem_nm += "0"; }
-                    sem_nm += std::to_string(i);
-                    break; 
-                }
-            } 
-        }
-        // this means there were no available semaphores
-        if (!has_sem) { perror("No available semaphore."); exit(EXIT_FAILURE); }
+        
+        // get a semaphore if we need one
+        if (!has_sem) { get_sem(); }
 
         // otherwise wait on our semaphore
         sem_wait(sem); 
@@ -410,6 +392,36 @@ void Shm::resize(uint16_t dim1, uint16_t dim2, uint16_t dim3){
         // close the file
         fclose(backing);
     }
+}
+
+void Shm::get_sem(){
+    // connect to an unused semaphore if we don't already have one
+    if (!has_sem){
+        // iterate through valid names until we find one not taken
+        std::string sem_pref = sem_fnm;
+        sem_pref.erase(0, 4);
+        sem_pref = "/"+sem_pref;
+        for (int i=0; i < 100; i++){
+            if (i < 10){
+                sem = sem_open((sem_pref + "0" + std::to_string(i)).c_str(), 
+                                O_CREAT | O_EXCL, 0644, 0);
+            } else {
+                sem = sem_open((sem_pref + std::to_string(i)).c_str(), 
+                                O_CREAT | O_EXCL, 0644, 0);
+            }
+            // the semaphore was free
+            if (sem != SEM_FAILED){ 
+                has_sem = true; 
+                sem_nm = sem_pref;
+                if (i < 10) { sem_nm += "0"; }
+                sem_nm += std::to_string(i);
+                break; 
+            }
+        } 
+    }
+    // this means there were no available semaphores
+    if (!has_sem) { perror("No available semaphore."); exit(EXIT_FAILURE); }
+
 }
 
 Shm::~Shm(){

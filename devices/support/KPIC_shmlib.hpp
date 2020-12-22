@@ -101,8 +101,10 @@ class Shm{
          * Inputs:
          *   filepath = path to the shared memory file backing 
          *             Should be of the form '/tmp/dir/shmName.im.shm'
+         *   has_sem   = whether this shm should take a semaphore for listening
+         *              purposes (note, this can be decided later with get_data)
          */
-        Shm(std::string filepath);
+        Shm(std::string filepath, bool has_sem=false);
 
         /*
          * Constructor to create a shared memory
@@ -116,13 +118,15 @@ class Shm{
          *              Should match the length of the size array
          *   dtype     = the type of data to be stored
          *              Should be an encoding defined by im_metadata
-         *   data      = a pointer to the data meant to be used to create shm
-         *   mmap      = whether this shm should be marked as one to mmap or 
+         *   seed      = a pointer to the data meant to be used to create shm
+         *   do_mmap   = whether this shm should be marked as one to mmap or 
          *              just to be read/written as a normal file 
+         *   has_sem   = whether this shm should take a semaphore for listening
+         *              purposes (note, this can be decided later with get_data)
          *   croppable = whether this data is croppable
          */
         Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype, 
-            void *seed, bool do_mmap, bool croppable);
+            void *seed, bool do_mmap, bool has_sem, bool croppable);
 
         // Loads all metadata
         void getMetaData();
@@ -184,6 +188,7 @@ class Shm{
 
     private:
         // private methods
+        void get_sem();
 
         // private parameters
 

@@ -93,35 +93,35 @@ FliObserver::FliObserver(){
     catch (MissingSharedMemory& ex) {
         uint16_t data[640*512];
         uint16_t size[3] = {640, 512, 0};
-        img = new Shm(img_cf, size, 3, 3, &data, true, true); 
+        img = new Shm(img_cf, size, 3, 3, &data, true, false, true); 
     }
  
     try { fps = new Shm(fps_cf); }
     catch (MissingSharedMemory& ex) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        fps = new Shm(fps_cf, size, 3, 10, &data, false, false); 
+        fps = new Shm(fps_cf, size, 3, 10, &data, false, false, false); 
     }
     
     try { exp = new Shm(exp_cf); }
     catch (MissingSharedMemory& ex) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        exp = new Shm(exp_cf, size, 3, 10, &data, false, false); 
+        exp = new Shm(exp_cf, size, 3, 10, &data, false, false, false); 
     }
     
     try { ndr = new Shm(ndr_cf); }
     catch (MissingSharedMemory& ex) {
         uint16_t data[1];
         uint16_t size[3] = {1, 0, 0};
-        ndr = new Shm(ndr_cf, size, 3, 1, &data, false, false); 
+        ndr = new Shm(ndr_cf, size, 3, 1, &data, false, false, false); 
     }
  
     try { crop = new Shm(crop_cf); }
     catch (MissingSharedMemory& ex) {
         uint16_t data[4];
         uint16_t size[3] = {4, 0, 0};
-        crop = new Shm(crop_cf, size, 3, 3, &data, false, false); 
+        crop = new Shm(crop_cf, size, 3, 3, &data, false, false, false); 
     }
 
 }
