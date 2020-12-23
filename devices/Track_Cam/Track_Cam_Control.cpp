@@ -6,6 +6,7 @@
 #include <string>
 #include <fstream>
 #include <stdlib.h>
+#include <stdio.h>
 #include <cstring>
 #include <vector>
 #include <unistd.h>
@@ -73,6 +74,8 @@ bool q_cam_pow(){
  * A function to turn on the camera and connect it through the FliSdk
  */
 void cam_on(){
+
+    if (camOn){ return; }
 
     // prepare camera bit
     uint8_t cam = (1 << (TC_PORT - 1));
@@ -198,6 +201,8 @@ void cam_on(){
  */
 void cam_off(){
 
+    if (!camOn){ return; }
+
     mtx.lock();
     // turn off the sdk
     fli->camera()->shutDown();
@@ -311,8 +316,8 @@ int Shm_connect(){
             fli->camera()->getLedState(led);
         } else { fan = false; led = false; }
 
-        data[0] = (uint8_t)script + (uint8_t)cam << 1 + (uint8_t)fan << 2 +
-               (uint8_t)led << 3;
+        data[0] = (uint8_t)script + ((uint8_t)cam << 1) + ((uint8_t)fan << 2) +
+               ((uint8_t)led << 3);
         Stat_D = new Shm(dstat_cf, size, 3, 1, &data, false, false, false);
     } 
 
@@ -784,11 +789,10 @@ int main(){
     signal(SIGTERM, TCC_close);                                                     
     signal(SIGINT, TCC_close);                                                      
     signal(SIGABRT, TCC_close); 
+    signal(SIGHUP, TCC_close);
 
     // wait for cleanup method to post semaphore
     sem_wait(&wait);
-    // cleanup semaphore
-    sem_destroy(&wait);
 
     // post semaphores for all shms so that threads wake up
     sem_post(Stat_P->sem);
@@ -809,6 +813,23 @@ int main(){
     // turn off camera
     cam_off();
 
+    // cleanup semaphore
+    sem_destroy(&wait);
+
+    // get P shm file names to delete them later
+    std::string pstat_fname;
+    pstat_fname.assign(Stat_P->fname);
+    std::string pfps_fname;
+    pfps_fname.assign(FPS_P->fname);
+    std::string pndr_fname;
+    pndr_fname.assign(NDR_P->fname);
+    std::string ptemp_fname;
+    ptemp_fname.assign(Temp_P->fname);
+    std::string pexp_fname;
+    pexp_fname.assign(Exp_P->fname);
+    std::string pcrop_fname;
+    pcrop_fname.assign(Crop->fname);
+
     // delete classes so destructors are called
     delete fli;
     delete Stat_D;
@@ -822,4 +843,12 @@ int main(){
     delete Exp_P;
     delete NPSD;
     delete NPSP;
+
+    // delete P_Shms
+    remove(pstat_fname.c_str());
+    remove(pfps_fname.c_str());
+    remove(pndr_fname.c_str());
+    remove(ptemp_fname.c_str());
+    remove(pexp_fname.c_str());
+    remove(pcrop_fname.c_str());
 }
