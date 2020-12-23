@@ -28,17 +28,24 @@
  *   down things too much. But, this function is still best used in a thread.
  *
  * Inputs:
- *    sem_fnm = the file name for a semaphore
+ *    sem_fnm = the file name for a semaphore of the shm that was updated
+ *    skip    = the name of a semaphore to skip
  * Returns:
  *    int = -1 if SEM_DIR isn't found, else 0
  */
-int postSems(std::string sem_fnm){
+int postSems(std::string sem_fnm, std::string skip){
+    // format skip to be file name of the semaphore based on its name
+    if (skip.length() != 0) {
+        skip.insert(1, "sem.");
+        skip = skip.substr(1, skip.length());
+    }
     DIR *dir;
     struct dirent *ent;
     if ((dir = opendir(SEM_DIR)) != NULL) {
         /* print all the files and directories within directory */
         while ((ent = readdir(dir)) != NULL) {
-            if (strncmp(sem_fnm.c_str(), ent->d_name, sem_fnm.length()) == 0){
+            if (strncmp(sem_fnm.c_str(), ent->d_name, sem_fnm.length()) == 0 &&
+                (skip.length() == 0 || strncmp(skip.c_str(), ent->d_name, skip.length()))) {
                 // replace 'sem.' in file name with '/' to get semaphore name
                 std::string sem_nm = ent->d_name;
                 sem_nm.erase(0, 4);
@@ -260,7 +267,7 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     if (has_sem){ get_sem(); }
 
     // start a thread to post semaphores
-    std::thread post(postSems, sem_fnm);
+    std::thread post(postSems, sem_fnm, sem_nm);
     
     post.detach();
 }
@@ -328,7 +335,7 @@ void Shm::set_data(const void *new_data){
     sem_post(lock);
 
     // start a thread to post semaphores
-    std::thread post(postSems, sem_fnm);
+    std::thread post(postSems, sem_fnm, sem_nm);
     
     post.detach();
 }
