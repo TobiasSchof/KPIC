@@ -362,10 +362,10 @@ void Shm::get_data(void *loc, bool wait){
         sem_wait(lock);
         // copy the data from the mmapping
         memcpy(loc, buf+DATA_OFFSET, DATA_SIZE);
+        // get counter
+        memcpy(&mtdata.cnt0, buf + CNT0_OFFSET, sizeof(mtdata.cnt0));
         //release lock
         sem_post(lock);
-        // get latest counter
-        getCounter();
     } else {
         // grab lock
         sem_wait(lock);
