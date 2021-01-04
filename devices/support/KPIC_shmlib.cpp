@@ -287,6 +287,9 @@ void Shm::getMetaData(){
 }
 
 uint64_t Shm::getCounter(){
+    // grab the lock
+    sem_wait(lock);
+
     if (buf) {
         memcpy(&mtdata.cnt0, buf + CNT0_OFFSET, sizeof(mtdata.cnt0));
     } else {
@@ -297,6 +300,9 @@ uint64_t Shm::getCounter(){
         fread(&mtdata.cnt0, sizeof(mtdata.cnt0), 1, backing); 
         fclose(backing);
     }
+
+    // release the lock
+    sem_post(lock);
 
     return mtdata.cnt0;
 }
@@ -350,15 +356,19 @@ void Shm::get_data(void *loc, bool wait){
         sem_wait(sem); 
     }
 
-    // grab lock
-    sem_wait(lock);
 
     if (buf) {
+        // grab lock
+        sem_wait(lock);
         // copy the data from the mmapping
         memcpy(loc, buf+DATA_OFFSET, DATA_SIZE);
+        //release lock
+        sem_post(lock);
         // get latest counter
         getCounter();
     } else {
+        // grab lock
+        sem_wait(lock);
         FILE* backing = fopen(fname.c_str(), "rb");
         if (!backing){ throw MissingSharedMemory(); }
         // get CNT0 (we avoid using getCounter() to only open file once)
@@ -369,9 +379,9 @@ void Shm::get_data(void *loc, bool wait){
         fread(loc, DATA_SIZE, 1, backing);
         // close the file
         fclose(backing);
+        //release lock
+        sem_post(lock);
     }
-    //release lock
-    sem_post(lock);
 }
 
 void Shm::resize(uint16_t dim1, uint16_t dim2, uint16_t dim3){
@@ -387,6 +397,9 @@ void Shm::resize(uint16_t dim1, uint16_t dim2, uint16_t dim3){
 
     DATA_SIZE = mtdata.nel * UNIT_SIZE;
 
+    // grab lock
+    sem_wait(lock);
+
     size_t len = sizeof(mtdata.nel)+sizeof(mtdata.size);
     if (buf){
         memcpy(buf+NEL_OFFSET, &mtdata.nel, len);
@@ -399,6 +412,8 @@ void Shm::resize(uint16_t dim1, uint16_t dim2, uint16_t dim3){
         // close the file
         fclose(backing);
     }
+    //release lock
+    sem_post(lock);
 }
 
 void Shm::get_sem(){
