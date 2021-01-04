@@ -1,21 +1,23 @@
 /*
- * A header file to define the FliObserver class.
+ * A header file to define the KPIC_FliObserver class.
  *   This class handles whenever the D shms need to be updated for the tracking camera
  */
 
 #ifndef KPIC_CAM_OBSERVER_INCLUDE
 #define KPIC_CAM_OBSERVER_INCLUDE
 
+#include <semaphore.h>
+
 #include "FliSdk.h"
 #include "IFliCameraObserver.h"
 #include "KPIC_shmlib.hpp"
 
 
-class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
+class KPIC_FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
 
   public:
     // constructor
-    FliObserver();
+    KPIC_FliObserver();
 
     // inherited from IRawImageReceivedObserver
 
@@ -43,7 +45,7 @@ class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
     void onEndChangeCropping();
 
     // destructor
-    ~FliObserver();
+    ~KPIC_FliObserver();
 
   private: 
     // Shared memories
@@ -60,15 +62,15 @@ class FliObserver : public IFliCameraObserver, public IRawImageReceivedObserver{
     Shm *crop;
 
     /*
-     * boolean flags to make sure that the shared memory and camera agree
-     *   on a subwindow before an image is copied to avoid seg faults
-     *
-     * NOTE: on script startup, shared memory and camera crop windows are 
-     *   assumed to be in an undefined state. Crop window will have to be
-     *   changed before images can start being recorded.
-     */ 
-    bool cam_res;
-    bool shm_res;
+     * a semaphore that locks during a crop change to prevent image acquisition
+     *    while camera and shm are in an unresolved crop state.
+     */
+    sem_t shm_res;
+
+    /* to track whether the camera is just connecting. This will be changed
+     *     the first time that shm_res is posted
+     */
+    bool started;
 }; 
 
 #endif

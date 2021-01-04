@@ -14,19 +14,19 @@
 /*
  * Constructor for Observer class
  */
-FliObserver::FliObserver(){
+KPIC_FliObserver::KPIC_FliObserver(){
     // prepare strings to store info from config file
     std::string img_cf;
     std::string fps_cf;
     std::string exp_cf;
     std::string ndr_cf;
     std::string crop_cf;
-    bool cam_res = true;
-    bool shm_res = true;
+    sem_init(&shm_res, 0, 0);
+    started = false;
  
     // find path to config file
     std::string path = getenv("RELDIR");
-    if (path.compare(path.length() - 1, 1, "/")) { path.erase(path.length() - 1, 1); }
+    if (path.compare(path.length() - 1, 1, "/") == 0) { path.erase(path.length() - 1, 1); }
     path += "/data";
     if (path == "") { 
         perror("No CONFIG environment variable found.");
@@ -98,28 +98,28 @@ FliObserver::FliObserver(){
  
     try { fps = new Shm(fps_cf); }
     catch (MissingSharedMemory& ex) {
-        uint16_t data[1];
+        uint16_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
         fps = new Shm(fps_cf, size, 3, 10, &data, false, false, false); 
     }
     
     try { exp = new Shm(exp_cf); }
     catch (MissingSharedMemory& ex) {
-        uint16_t data[1];
+        uint16_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
         exp = new Shm(exp_cf, size, 3, 10, &data, false, false, false); 
     }
     
     try { ndr = new Shm(ndr_cf); }
     catch (MissingSharedMemory& ex) {
-        uint16_t data[1];
+        uint16_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
         ndr = new Shm(ndr_cf, size, 3, 1, &data, false, false, false); 
     }
  
     try { crop = new Shm(crop_cf); }
     catch (MissingSharedMemory& ex) {
-        uint16_t data[4];
+        uint16_t data[4] = {0, 0, 0, 0};
         uint16_t size[3] = {4, 0, 0};
         crop = new Shm(crop_cf, size, 3, 3, &data, false, false, false); 
     }
@@ -129,34 +129,37 @@ FliObserver::FliObserver(){
 /*
  * Set fps trigger to 0 to do fastest updates
  */
-uint16_t FliObserver::fpsTrigger(){ return 0; }
+uint16_t KPIC_FliObserver::fpsTrigger(){ return 20; }
 
 /*
  * This method is called any time a new image is ready.
- *   cam_res and shm_res ensure that the image size matches our shared
+ *   shm_res ensures that the image size matches our shared
  *   memory size, so copy can only be done if they are resolved.
  *
  * NOTE: The FliSdk casts the pointer to the image as uint8_t* but the image is
  *   really 16-bit
  */
-void FliObserver::imageReceived(const uint8_t* image){
-    if (cam_res && shm_res){ img->set_data(image); } 
+void KPIC_FliObserver::imageReceived(const uint8_t* image){
+    if (sem_trywait(&shm_res) != -1){
+        img->set_data(image);
+        sem_post(&shm_res);
+    } 
 }
 
 /*
  * This method is called when the fps is updated
  */
-void FliObserver::onFpsChanged(double _fps){ fps->set_data(&_fps); }
+void KPIC_FliObserver::onFpsChanged(double _fps){ fps->set_data(&_fps); }
 
 /*
  * This method is called when the exposure time is updated
  */
-void FliObserver::onTintChanged(double tint){ exp->set_data(&tint); }
+void KPIC_FliObserver::onTintChanged(double tint){ exp->set_data(&tint); }
 
 /*
  * This method is called when the NDR is updated
  */
-void FliObserver::onNbReadWoResetChanged(int nbRead){ 
+void KPIC_FliObserver::onNbReadWoResetChanged(int nbRead){ 
     // make sure that the data is 8 bit
     uint8_t _ndr = nbRead;
     ndr->set_data(&_ndr); 
@@ -166,26 +169,23 @@ void FliObserver::onNbReadWoResetChanged(int nbRead){
  * This method is called when a cropping is started (i.e., entering undefined
  *   size state.)
  */
-void FliObserver::onBeginChangeCropping(){
-    // set cam_res and shm_res to false so that image copying stops until
-    //    size is resolved.
-    cam_res = false; 
-    shm_res = false; 
+void KPIC_FliObserver::onBeginChangeCropping(){ 
+    if (started) { sem_wait(&shm_res); } 
+    else { started = true; } 
 }
 
 /*
  * This method is called when a cropping is finished (i.e., camera is at a
  *   known cropping size)
  */
-void FliObserver::onEndChangeCropping(){ cam_res = true; }
+void KPIC_FliObserver::onEndChangeCropping(){ sem_post(&shm_res); }
 
 /*
- * This method is called when cropping has changed. 
+ * This method is called when cropping has changed. (between the two preceding methods) 
  * 
- * It will update the shared memory, and then set shm_res to true to indicate
- *    that the shared memory size is resolved.
+ * It will update the shared memory with the correct size of image.
  */
-void FliObserver::onCroppingChanged(bool enabled, uint16_t col1, 
+void KPIC_FliObserver::onCroppingChanged(bool enabled, uint16_t col1, 
                                       uint16_t col2, uint16_t row1,
                                       uint16_t row2){
     if (enabled){
@@ -204,15 +204,12 @@ void FliObserver::onCroppingChanged(bool enabled, uint16_t col1,
         uint16_t data[4] = {0, 0, 0, 0};
         crop->set_data(&data);
     }
-
-    // indicate that image is correctly resized
-    shm_res = true; 
 }
 
 /*
  * Delete references to shared memories in the destructor
  */
-FliObserver::~FliObserver(){
+KPIC_FliObserver::~KPIC_FliObserver(){
     delete img;
     delete fps;
     delete exp;

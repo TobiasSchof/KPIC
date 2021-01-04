@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <csignal>
 #include <thread>
+#include <iostream>
 
 #include "KPIC_Cam_Observer.hpp"
 
@@ -29,16 +30,22 @@ Shm *Exp_P;
 Shm *NPSD;
 Shm *NPSP;
 
+// temperature to set the camera to on startp
+double STARTTEMP = 0;
+double STARTFPS  = 20;
+double STARTTINT = .01;
+int STARTNDR  = 0;
+
 // mutex to control fli sdk
 std::mutex mtx;
 
 // fliobserver class
-FliObserver *obs;
+KPIC_FliObserver *obs;
 
 // variables to store whether this script should die and whether
 //   the camera is connected
 bool alive = true;
-bool camOn = false;
+bool camConnected = false;
 
 // semaphore to wake up main thread when a signal is received
 sem_t wait;
@@ -67,75 +74,56 @@ bool q_cam_pow(){
     NPSD->get_data(&stat);
 
     // bit in NPS shm corresponds to port - 1 so use bit-wise and to see if it's on
-    return (stat & (1 << (TC_PORT - 1)) != 0);
+    return ((stat & (1 << (TC_PORT - 1))) != 0);
 }
 
 /*
- * A function to turn on the camera and connect it through the FliSdk
+ * handles connecting the camera to the sdk
  */
-void cam_on(){
+void cam_connect(){
 
-    if (camOn){ return; }
-
-    // prepare camera bit
-    uint8_t cam = (1 << (TC_PORT - 1));
-
-    // get current NPS P Shm
-    uint8_t stat;
-    NPSP->get_data(&stat);
-
-    // set new status using bit-wise or
-    stat = stat | cam;
-    NPSP->set_data(&stat);
-
-    NPSD->get_data(&stat);
-    // wait for NPSD to reflect that camera is on
-    while(~(stat & cam)){ 
-        sleep(.5); 
-        NPSD->get_data(&stat);
-    }
+    if (camConnected) { return; }
 
     // get fli lock
     mtx.lock();
 
-    // find edt card and camera in FliSdk (assume they're the only ones connected)
+    // search for grabbers for a maximum of 10 seconds
     std::vector<std::string> listOfGrabbers = fli->detectGrabbers();
-    std::vector<std::string> listOfCameras = fli->detectCameras();
-    if (listOfCameras.size() && listOfGrabbers.size()){
-        //take the first camera in the list
-        fli->setCamera(listOfCameras[0]);
-        fli->setGrabber(listOfGrabbers[0]);
-        //set full mode
-        fli->setMode(FliSdk::Mode::Full);
-        //update
-        fli->update();
-    // if no grabber or no camera was found, throw an error
-    } else {
-        if (~listOfCameras.size()){
-            perror("No cameras found by the SDK.");
-            TCC_close(0);
-        } else {
-            perror("No grabbers found by the SDK.");
-            TCC_close(0);
+    uint8_t cnt = 0;
+    while(!listOfGrabbers.size()){
+        if (cnt >= 10){
+            std::cout << "No grabber could be found.\n";
+            uint8_t err = 5;
+            Error->set_data(&err);
+            return;
         }
+        sleep(1);
+        listOfGrabbers = fli->detectGrabbers();
+        cnt += 1;
     }
 
-    // release fli lock
-    mtx.unlock();
+    // search for cameras for a maximum of 30 seconds
+    std::vector<std::string> listOfCameras = fli->detectCameras();
+    cnt = 0;
+    while(!listOfCameras.size()){
+        if (cnt >= 60){
+            std::cout << "No camera could be found.\n";
+            uint8_t err = 4;
+            Error->set_data(&err);
+            return;
+        }
+        sleep(1);
+        listOfCameras = fli->detectCameras();
+        cnt += 1;
+    }
 
-    // create a new FliObserver
-    obs = new FliObserver();
-
-    // get fli lock
-    mtx.lock();
-
-    // add observer to sdk
-    fli->addObserver(dynamic_cast<IFliSdkObserver*>(obs));
-
-    // update sdk
+    //take the first camera in the list
+    fli->setCamera(listOfCameras[0]);
+    fli->setGrabber(listOfGrabbers[0]);
+    //set full mode
+    fli->setMode(FliSdk::Mode::Full);
+    //update
     fli->update();
-    // start grabber
-    fli->start();
 
     // release fli lock
     mtx.unlock();
@@ -160,6 +148,11 @@ void cam_on(){
 
     mtx.lock();
 
+    // add observer to sdk
+    fli->camera()->addObserver(obs);
+    // add image receiver
+    fli->addRawImageReceivedObserver(obs);
+
     // set cropping to current cropping to make sure that shm and camera match
     {
         bool enabled;
@@ -170,14 +163,25 @@ void cam_on(){
         fli->credTwo()->getCropping(enabled, col1, col2, row1, row2);
         fli->credTwo()->setCropping(enabled, col1, col2, row1, row2);
     }
-
-    // add image receiver
-    fli->addRawImageReceivedObserver(dynamic_cast<IRawImageReceivedObserver*>(obs));
-    fli->update();
+    // set fps, tint, and ndrs to populate shms
+    {
+        fli->camera()->setFps(STARTFPS);
+        fli->credTwo()->setTint(STARTTINT);
+        fli->credTwo()->setNbReadWoReset(STARTNDR);
+    }
 
     mtx.unlock();
 
-    camOn = true;
+    camConnected = true;
+
+    // put starting temp in Temp_D
+    double p_data[2] = {STARTTEMP, 5};
+    // set temp to 0
+    mtx.lock();
+    fli->credTwo()->setSensorTemp(STARTTEMP);
+    mtx.unlock();
+    // set temp_p
+    Temp_P->set_data(&p_data); 
 
     // set stat_d
     {
@@ -186,14 +190,41 @@ void cam_on(){
         std::string fan_m;
         mtx.lock();
         fli->credTwo()->getFanMode(fan_m);
-        fan = (fan_m == "Automatic");
+        fan = (fan_m == "automatic");
         fli->camera()->getLedState(led);
         mtx.unlock();
 
         uint8_t stat;
-        stat = led << 3 + fan << 2 + 1 << 1 + 1;
+        stat = (led << 3) + (fan << 2) + (1 << 1) + 1;
         Stat_D->set_data(&stat);
     }
+
+    // start grabber
+    fli->start();
+
+}
+
+/*
+ * A function to turn on the camera and connect it through the FliSdk
+ */
+void cam_on(){
+
+    if (camConnected){ return; }
+
+    // prepare camera bit
+    uint8_t cam = (1 << (TC_PORT - 1));
+
+    // get current NPS D Shm
+    uint8_t stat;
+    NPSD->get_data(&stat);
+
+    if (!(stat & cam)){
+        // set new status using bit-wise or
+        stat = stat | cam;
+        NPSP->set_data(&stat);
+    }
+
+    cam_connect();
 }
 
 /*
@@ -201,41 +232,36 @@ void cam_on(){
  */
 void cam_off(){
 
-    if (!camOn){ return; }
+    if (!camConnected){ return; }
 
     mtx.lock();
-    // turn off the sdk
+    // stop acquisition
+    fli->stop();
+    // turn off the camera
     fli->camera()->shutDown();
     mtx.unlock();
 
-    // delete the observer
-    delete obs;
+    // give time for camera to shutdown
+    sleep(2);
 
     // request nps to turn off power
     // prepare camera bit
     uint8_t cam = (1 << (TC_PORT - 1));
 
-    // get current NPS P Shm
+    // get current NPS D Shm
     uint8_t stat;
-    NPSP->get_data(&stat);
+    NPSD->get_data(&stat);
 
     // set new status using subtraction and bit-wise
     //  (we use bit-wise and to ensure we only subtract if the camera bit is 1)
     stat = stat - (cam & stat);
     NPSP->set_data(&stat);
 
-    // wait for camera to turn off
-    NPSD->get_data(&stat);    
-    while(stat & cam){
-        sleep(.5);
-        NPSD->get_data(&stat);
-    }
-
     // update Stat_D
     stat = 1;
     Stat_D->set_data(&stat);
 
-    camOn = false;
+    camConnected = false;
 }
 
 /*
@@ -302,7 +328,21 @@ int Shm_connect(){
     
     // if a shared memory doesn't exist and we try to connect to it,
     //   it will throw an error. So make one in that case.
-    try { Stat_D = new Shm(dstat_cf); }
+    try { 
+        Stat_D = new Shm(dstat_cf);
+        uint8_t data;
+        Stat_D->get_data(&data);
+        // if there's already a control script running, fail
+        if (data & 1){
+            perror("Control script already alive.");
+            delete fli;
+            delete obs;
+            delete NPSD;
+            delete NPSP;
+            delete Stat_D;
+            exit(EXIT_FAILURE);
+        }
+    }
     catch (MissingSharedMemory& ex) {
         uint8_t data[1];
         uint16_t size[3] = {1, 0, 0};
@@ -339,28 +379,28 @@ int Shm_connect(){
 
     try { Stat_P = new Shm(pstat_cf, true); }
     catch (MissingSharedMemory& ex) {
-        uint8_t data[1];
+        uint8_t data[1] = {1};
         uint16_t size[3] = {1, 0, 0};
         Stat_P = new Shm(pstat_cf, size, 3, 1, &data, false, true, false);
     }
 
     try { Crop = new Shm(crop_cf, true); }
     catch (MissingSharedMemory& ex) {
-        uint16_t data[4];
+        uint16_t data[4] = {0, 0, 0, 0};
         uint16_t size[3] = {4, 0, 0};
         Crop = new Shm(crop_cf, size, 3, 3, &data, false, true, false);
     }
 
     try { NDR_P = new Shm(pndr_cf, true); }
     catch (MissingSharedMemory& ex) {
-        uint8_t data[1];
+        uint8_t data[1] = {0};
         uint16_t size[3] = {1, 0, 0};
         NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false, true, false);
     }
 
     try { FPS_P = new Shm(pfps_cf, true); }
     catch (MissingSharedMemory& ex) {
-        double data[1];
+        double data[1] = {20};
         uint16_t size[3] = {1, 0, 0};
         FPS_P = new Shm(pfps_cf, size, 3, 10, &data, false, true, false);
     }
@@ -374,10 +414,13 @@ int Shm_connect(){
 
     try { Exp_P = new Shm(pexp_cf, true); }
     catch (MissingSharedMemory& ex) {
-        double data[1];
+        double data[1] = {.001};
         uint16_t size[3] = {1, 0, 0};
         Exp_P = new Shm(pexp_cf, size, 3, 10, &data, false, true, false);
     }
+
+    if (cam){ cam_connect(); }
+    else{ uint8_t stat=1; Stat_D->set_data(&stat); }
 
     return 0;
 }
@@ -456,7 +499,7 @@ void handle_stat(){
 
     // wait for shm to be updated so we can end loop with wait
     Stat_P->get_data(&stat, true);
-    old = stat;
+    old = 1;
 
     while (alive){
 
@@ -467,25 +510,26 @@ void handle_stat(){
         }
 
         // if script bit is turned to 0, end
-        if (stat & 1){ TCC_close(0); continue; }
+        if (!(stat & 1)){ TCC_close(0); continue; }
 
         // if camera bit is 1 and camera is not on, turn on
-        if ((stat & 1 << 1) && ~camOn){ cam_on(); }
-        // if camera bit is 0 and camera is not on, turn on
-        else if (~(stat & 1 << 1) && camOn){ cam_off(); continue; }
+        if ((stat & (1 << 1)) && !camConnected){ cam_on(); }
+        // if camera bit is 0 and camera is on, turn off
+        else if (!(stat & (1 << 1)) && camConnected){ cam_off(); continue; }
+
+        bool fan_a = false;
+        bool led_a = false;
 
         // if camera is on, check led and fan status
-        if (camOn){
+        if (camConnected){
             // extract fan bit and led bit from stat
-            bool fan_req = stat & 1 << 2;
-            bool led_req = stat & 1 << 3;
+            bool fan_req = stat & (1 << 2);
+            bool led_req = stat & (1 << 3);
             // get current status of fan and led
-            bool fan_a;
-            bool led_a;
             std::string fan_m;
             mtx.lock();
             fli->credTwo()->getFanMode(fan_m);
-            fan_a = (fan_m == "Automatic");
+            fan_a = (fan_m == "automatic");
             fli->camera()->getLedState(led_a);
             mtx.unlock();
 
@@ -514,6 +558,15 @@ void handle_stat(){
             err = 1;
             Error->set_data(&err);
         }
+
+        uint8_t data[1];
+        data[0] = 1 + ((uint8_t)camConnected << 1) + ((uint8_t)fan_a << 2) +
+            ((uint8_t)led_a << 3);         
+        Stat_D->set_data(&data);
+
+        // wait for an update to shm
+        old = stat;
+        Stat_P->get_data(&stat, true);
     }
 
 }
@@ -524,7 +577,7 @@ void handle_stat(){
 void handle_crop(){
 
     // create variables to store crop and error
-    double crop[4];
+    uint16_t crop[4];
     uint8_t err;
 
     // wait for shm to be updated so we can end loop with wait
@@ -533,7 +586,7 @@ void handle_crop(){
     while (alive){
 
         // if camera is not on, set error and continue
-        if (~camOn){
+        if (!camConnected){
             err = 1;
             Error->set_data(&err);
             Crop->get_data(&crop, true);
@@ -542,13 +595,13 @@ void handle_crop(){
 
         // check if subwindowing should be turned off
         if (crop[0] == 0 && crop[1] == 0 && crop[2] == 0 && crop[3] == 0){
-                mtx.lock();
-                fli->credTwo()->setCropping(false, 0, 640, 0, 512);
-                mtx.unlock();
+            mtx.lock();
+            fli->credTwo()->setCropping(false, 0, 639, 0, 511);
+            mtx.unlock();
 
-                // clear any error that might be stored
-                err = 0;
-                Error->set_data(&err);
+            // clear any error that might be stored
+            err = 0;
+            Error->set_data(&err);
         } else {
             // check if subwindowing is valid
             mtx.lock();
@@ -589,7 +642,7 @@ void handle_ndr(){
 
     while (alive){
         // if camera is not on, set error and continue
-        if (~camOn){
+        if (!camConnected){
             err = 1;
             Error->set_data(&err);
             NDR_P->get_data(&ndr, true);
@@ -624,7 +677,7 @@ void handle_fps(){
 
     while (alive){
         // if camera is not on, set error and continue
-        if (~camOn){
+        if (!camConnected){
             err = 1;
             Error->set_data(&err);
             FPS_P->get_data(&fps, true);
@@ -658,26 +711,26 @@ void handle_temp(){
 
     // create a variable to store error
     uint8_t err;
-    // keep old temp_p value to see if it's changed
-    double old[2];
     // create a variable to hold new data
     double p_data[2];
     double d_data[6];
     Temp_P->get_data(&p_data);
     // variable to hold the update refresh rate
     timespec wait_time;
+    // create variable to hold current temp setpoint
+    double old = p_data[0];
 
     while (alive){
-        // update old
-        old[0] = p_data[0];
-        old[1] = p_data[1];
+        // set old setpoint
+        old = p_data[0];
+
         // get newest P data
         Temp_P->get_data(&p_data);
 
         // check if temp needs to be set
-        if (p_data[0] != old[0]){
+        if (p_data[0] != old){
             // if camera is not on, set error and continue
-            if (~camOn){
+            if (!camConnected){
                 err = 1;
                 Error->set_data(&err);
                 continue;
@@ -693,7 +746,7 @@ void handle_temp(){
         }
 
         // if camera is not on, skip updating temp_d
-        if (camOn){
+        if (camConnected){
             // get new temps
             mtx.lock();
             fli->credTwo()->getAllTemp(d_data[0], d_data[1], d_data[2], 
@@ -705,8 +758,9 @@ void handle_temp(){
         }
 
         // do a timed wait on temp_p semaphore.
-        wait_time.tv_sec = (long) p_data[1];
-        wait_time.tv_nsec = (long) (p_data[1] - wait_time.tv_sec)*(1000000000);
+        clock_gettime(CLOCK_REALTIME, &wait_time);
+        wait_time.tv_sec += (long) p_data[1];
+        wait_time.tv_nsec += (long) (p_data[1] - (long) p_data[1])*(1000000000);
         sem_timedwait(Temp_P->sem, &wait_time);
     }
 }
@@ -767,9 +821,13 @@ int main(){
     CONFIG += "/data";
 
     fli = new FliSdk();
+    fli->enableRingBuffer(false);
 
     // connect to NPS shm to see power
     NPS_connect();
+
+    // create a new KPIC_FliObserver
+    obs = new KPIC_FliObserver();
 
     // Connect to Shared memories, and connect to camera if it's on
     Shm_connect();
@@ -813,6 +871,10 @@ int main(){
     // turn off camera
     cam_off();
 
+    // set Stat_D shm
+    uint8_t stat = 0;
+    Stat_D->set_data(&stat);
+
     // cleanup semaphore
     sem_destroy(&wait);
 
@@ -832,6 +894,7 @@ int main(){
 
     // delete classes so destructors are called
     delete fli;
+    delete obs;
     delete Stat_D;
     delete Error;
     delete Temp_D;
