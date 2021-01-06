@@ -96,7 +96,7 @@ void cam_connect(){
             uint8_t err = 5;
             Error->set_data(&err);
             return;
-        }
+        } else if (!alive){ return; }
         sleep(1);
         listOfGrabbers = fli->detectGrabbers();
         cnt += 1;
@@ -111,7 +111,7 @@ void cam_connect(){
             uint8_t err = 4;
             Error->set_data(&err);
             return;
-        }
+        } else if (!alive){ return; }
         sleep(1);
         listOfCameras = fli->detectCameras();
         cnt += 1;
@@ -176,12 +176,12 @@ void cam_connect(){
 
     // put starting temp in Temp_D
     double p_data[2] = {STARTTEMP, 5};
+    Temp_P->set_data(&p_data); 
     // set temp to 0
     mtx.lock();
     fli->credTwo()->setSensorTemp(STARTTEMP);
     mtx.unlock();
     // set temp_p
-    Temp_P->set_data(&p_data); 
 
     // set stat_d
     {
@@ -291,7 +291,7 @@ int Shm_connect(){
 
     // open the config file and check for error
     conf.open(path.c_str());
-    if (!conf) { perror("Error loading config file."); exit(EXIT_FAILURE); }
+    if (!conf) { std::cout << "Error loading config file.\n"; exit(EXIT_FAILURE); }
     
     // iterate through the file (breaks are at spaces
     std::string word;
@@ -322,10 +322,6 @@ int Shm_connect(){
     ptemp_cf.erase(ptemp_cf.find(","), std::string::npos);
     pexp_cf.erase(pexp_cf.find(","), std::string::npos);
 
-    // query whether camera is on, this will tell us whether to pull values for
-    //   shm or just populate with whatever
-    bool cam = q_cam_pow();
-    
     // if a shared memory doesn't exist and we try to connect to it,
     //   it will throw an error. So make one in that case.
     try { 
@@ -334,7 +330,7 @@ int Shm_connect(){
         Stat_D->get_data(&data);
         // if there's already a control script running, fail
         if (data & 1){
-            perror("Control script already alive.");
+            std::cout << "Control script already alive.\n";
             delete fli;
             delete obs;
             delete NPSD;
@@ -342,44 +338,34 @@ int Shm_connect(){
             delete Stat_D;
             exit(EXIT_FAILURE);
         }
+        else {
+            data = 1;
+            Stat_D->set_data(&data);
+        }
     }
     catch (MissingSharedMemory& ex) {
-        uint8_t data[1];
+        uint8_t data = 1;
         uint16_t size[3] = {1, 0, 0};
-        bool script = 1;
-        bool fan;
-        bool led;
-        if (cam) {
-            std::string fan_m;
-            fli->credTwo()->getFanMode(fan_m);
-            fan = (fan_m == "Automatic");
-            fli->camera()->getLedState(led);
-        } else { fan = false; led = false; }
-
-        data[0] = (uint8_t)script + ((uint8_t)cam << 1) + ((uint8_t)fan << 2) +
-               ((uint8_t)led << 3);
         Stat_D = new Shm(dstat_cf, size, 3, 1, &data, false, false, false);
     } 
 
     try { Error = new Shm(err_cf); }
     catch (MissingSharedMemory& ex) {
-        uint8_t data[1] = {0};
+        uint8_t data = 0;
         uint16_t size[3] = {1, 0, 0};
         Error = new Shm(err_cf, size, 3, 1, &data, false, false, false); 
     }
 
     try { Temp_D = new Shm(dtemp_cf); }
     catch (MissingSharedMemory& ex) {
-        double data[6];
+        double data[6] = {0, 0, 0, 0, 0, 0};
         uint16_t size[3] = {6, 0, 0};
-        if (cam) { fli->credTwo()->getAllTemp(data[0], data[1], data[2], data[3], 
-                                   data[4], data[5]); }
         Temp_D = new Shm(dtemp_cf, size, 3, 10, &data, false, false, false);
     }
 
     try { Stat_P = new Shm(pstat_cf, true); }
     catch (MissingSharedMemory& ex) {
-        uint8_t data[1] = {1};
+        uint8_t data = 1;
         uint16_t size[3] = {1, 0, 0};
         Stat_P = new Shm(pstat_cf, size, 3, 1, &data, false, true, false);
     }
@@ -393,14 +379,14 @@ int Shm_connect(){
 
     try { NDR_P = new Shm(pndr_cf, true); }
     catch (MissingSharedMemory& ex) {
-        uint8_t data[1] = {0};
+        uint8_t data = 0;
         uint16_t size[3] = {1, 0, 0};
         NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false, true, false);
     }
 
     try { FPS_P = new Shm(pfps_cf, true); }
     catch (MissingSharedMemory& ex) {
-        double data[1] = {20};
+        double data = 20;
         uint16_t size[3] = {1, 0, 0};
         FPS_P = new Shm(pfps_cf, size, 3, 10, &data, false, true, false);
     }
@@ -414,13 +400,10 @@ int Shm_connect(){
 
     try { Exp_P = new Shm(pexp_cf, true); }
     catch (MissingSharedMemory& ex) {
-        double data[1] = {.001};
+        double data = .01;
         uint16_t size[3] = {1, 0, 0};
         Exp_P = new Shm(pexp_cf, size, 3, 10, &data, false, true, false);
     }
-
-    if (cam){ cam_connect(); }
-    else{ uint8_t stat=1; Stat_D->set_data(&stat); }
 
     return 0;
 }
@@ -450,7 +433,7 @@ int NPS_connect(){
 
     // open the nps config file and check for error
     conf.open(path.c_str(), std::ifstream::in);
-    if (!conf) { perror("Error loading config file."); exit(EXIT_FAILURE); }
+    if (!conf) { std::cout << "Error loading config file.\n"; exit(EXIT_FAILURE); }
 
     while (conf >> word){
         if (strncmp("D_Shm:", word.c_str(), 6) == 0){ conf >> fnamed; }
@@ -464,7 +447,7 @@ int NPS_connect(){
 
     // if port wasn't found, throw an error
     if (port == 0){
-        perror("No 'Tracking Camera' port found in NPS.ini");
+        std::cout << "No 'Tracking Camera' port found in NPS.ini\n";
         exit(EXIT_FAILURE);
     } else { TC_PORT = port; }
 
@@ -475,12 +458,12 @@ int NPS_connect(){
     // connect to shms
     try { NPSD = new Shm(fnamed); }
     catch(MissingSharedMemory& ex) {
-        perror("NPS control script must be alive");
+        std::cout << "NPS control script must be alive\n";
         exit(EXIT_FAILURE);
     }
     try { NPSP = new Shm(fnamep); }
     catch(MissingSharedMemory& ex) {
-        perror("NPS control script must be alive");
+        std::cout << "NPS control script must be alive\n";
         exit(EXIT_FAILURE);
     }
 
@@ -812,7 +795,7 @@ int main(){
     CONFIG = getenv("RELDIR");
     // format CONFIG to a known state
     if (CONFIG == "") {
-        perror("No $RELDIR environment variable found.");
+        std::cout << "No $RELDIR environment variable found.\n";
         exit(EXIT_FAILURE);
     } else if (CONFIG.compare(CONFIG.length() - 1, 1, "/") == 0){
         CONFIG.erase(CONFIG.length() - 1, 1);
@@ -831,6 +814,8 @@ int main(){
 
     // Connect to Shared memories, and connect to camera if it's on
     Shm_connect();
+
+    if (q_cam_pow()) { cam_connect(); }
 
     // start threads with each of the P shms
     std::thread th_stat(handle_stat);

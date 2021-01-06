@@ -357,18 +357,14 @@ void Shm::get_data(void *loc, bool wait){
     }
 
 
+    // grab lock
+    sem_wait(lock);
     if (buf) {
-        // grab lock
-        sem_wait(lock);
         // copy the data from the mmapping
         memcpy(loc, buf+DATA_OFFSET, DATA_SIZE);
         // get counter
         memcpy(&mtdata.cnt0, buf + CNT0_OFFSET, sizeof(mtdata.cnt0));
-        //release lock
-        sem_post(lock);
     } else {
-        // grab lock
-        sem_wait(lock);
         FILE* backing = fopen(fname.c_str(), "rb");
         if (!backing){ throw MissingSharedMemory(); }
         // get CNT0 (we avoid using getCounter() to only open file once)
@@ -379,9 +375,9 @@ void Shm::get_data(void *loc, bool wait){
         fread(loc, DATA_SIZE, 1, backing);
         // close the file
         fclose(backing);
-        //release lock
-        sem_post(lock);
     }
+    //release lock
+    sem_post(lock);
 }
 
 void Shm::resize(uint16_t dim1, uint16_t dim2, uint16_t dim3){

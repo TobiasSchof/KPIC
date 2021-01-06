@@ -91,9 +91,9 @@ KPIC_FliObserver::KPIC_FliObserver(){
     //    it will throw an error.
     try { img = new Shm(img_cf); }
     catch (MissingSharedMemory& ex) {
-        uint16_t data[640*512];
+        int16_t data[640*512];
         uint16_t size[3] = {640, 512, 0};
-        img = new Shm(img_cf, size, 3, 3, &data, true, false, true); 
+        img = new Shm(img_cf, size, 3, 4, &data, true, false, true); 
     }
  
     try { fps = new Shm(fps_cf); }
