@@ -2,7 +2,7 @@
 import sys
 
 # installed libraries
-from PyQt5.QtWidgets import QLabel, QComboBox
+from PyQt5.QtWidgets import QLabel, QComboBox, QLineEdit, QPushButton
 from PyQt5.QtCore import QTimer
 
 # keywords class
@@ -12,7 +12,7 @@ from epics import PV
 # module python libraries
 from NPS_cmds import NPS_cmds
 # library to get sep/pa
-from get_distort import get_dis_sep, get_raw_sep, get_dis_pa, get_raw_pa
+from get_distort import get_dis_sep, get_raw_sep, get_dis_pa, get_raw_pa, set_pa, set_sep
 # has various exceptions thrown by python libraries
 from dev_Exceptions import *
 
@@ -315,7 +315,7 @@ class Track_stat(QLabel):
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Track_gain(QLabel):
+class Track_gain(QPushButton):
     """A widget to get the gain of the tracking script"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -330,10 +330,24 @@ class Track_gain(QLabel):
         # store refresh rate
         self.refresh_rate = refresh_rate
 
+        # set button so checked state is green, unchecked state is red
+        self.setStyleSheet("QPushButton:checked { background-color: #c1ffba } QPushButton { background-color: #ffbaba }")
+
+        # connect set gain method to when the button is pushed
+        self.clicked.connect(self.set_gain)
+
         # create a timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(10)
+
+    def set_gain(self):
+        """Sets the gain on the tracking loop"""
+
+        gain = 1 if self.isChecked() else 0
+
+        if gain != tracking.get_gain():
+            tracking.set_gain(gain)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -341,17 +355,18 @@ class Track_gain(QLabel):
         # update value
         try:
             val = tracking.get_gain()
-            if val == 0:
-                self.setStyleSheet(red)
-            elif val < 1:
-                self.setStyleSheet(orange)
-            else:
-                self.setStyleSheet(green)
+            if val == 0 and self.isChecked():
+                self.toggle()
+            elif val == 1 and not self.isChecked():
+                self.toggle()
+            elif val > 0 and val < 1 and self.isChecked():
+                self.toggle()
             self.setText("{:04.3f}".format(val))
         except:
             self.setText("?")
-            self.setStyleSheet(red)
-        # run QLabel's update method
+            if self.isChecked():
+                self.toggle()
+        # run super's update method
         super().update()
         # start timer again
         self.timer.start(self.refresh_rate)
@@ -436,17 +451,19 @@ class Track_goal(QComboBox):
     def update(self):
         """updates the size and text in the widget"""
 
-        # update value
-        try:
-            val = tracking.get_goal()[1]
-            idx = self.sel_idx[val]
+        # don't update if a goal is currently being selected
+        if not self.view().isVisible():
+            # update value
+            try:
+                val = tracking.get_goal()[1]
+                idx = self.sel_idx[val]
 
-            if idx != self.currentIndex():
-                self.setCurrentIndex(idx)
-        except:
-            pass
-        # run QLabel's update method
-        super().update()
+                if idx != self.currentIndex():
+                    self.setCurrentIndex(idx)
+            except:
+                pass
+            # run QLabel's update method
+            super().update()
         # start timer again
         self.timer.start(self.refresh_rate)
 
@@ -668,7 +685,42 @@ class Usr_offset_y(QLabel):
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Astro_raw_pa(QLabel):
+class SEP_PA_validator():
+    """A validator for a QLineEdit that will validate input on focus loss
+        and return value to former value if new value is invalid"""
+
+    def __init__(self, validation_field, edit_func=None):
+        """Constructur for validator
+        
+        Args:
+            validation_field: the QLineEdit this validator is to work on
+            edit_func: the function that should be called after text is validated
+        """
+
+        # store QLineEdit we're editing
+        self.val_f = validation_field
+        validation_field.editingFinished.connect(self.validate)
+        self.old_val = validation_field.text()
+
+        self.set_field = edit_func
+
+    def validate(self):
+        """A method to validate the new input"""
+
+        # try to cast value as a double
+        try:
+            val = float(self.val_f.text())
+        # if it can't be cast, set text to old value
+        except:
+            self.val_f.setText(self.old_val)
+        # update old value and set new sep/pa
+        finally:
+            self.old_val = self.val_f.text
+            if not self.set_field is None:
+                try: self.set_field(float(self.val_f.text()))
+                except: pass
+
+class Astro_raw_pa(QLineEdit):
     """A widget to get the undistorted PA value"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -688,25 +740,38 @@ class Astro_raw_pa(QLabel):
         self.timer.timeout.connect(self.update)
         self.timer.start(10)
 
+        # make a validator for value
+        self.validator = SEP_PA_validator(self, set_pa)
+
+    def set_pa(self):
+        """Sets raw PA when a valid argument is provided"""
+
     def update(self):
         """updates the size and text in the widget"""
 
-        # update value
-        try:
-            self.setText("{:06.2f}".format(get_raw_pa()))
-            self.setStyleSheet(grey)
-        except AttributeError:
-            self.setText("Off")
-            self.setStyleSheet(red)
-        except:
-            self.setText("?")
-            self.setStyleSheet(red)
-        # run QLabel's update method
-        super().update()
+        if not self.hasFocus():
+            # update value
+            try:
+                self.setText("{:06.2f}".format(get_raw_pa()))
+                self.setStyleSheet(grey)
+            except AttributeError:
+                self.setText("Off")
+                self.setStyleSheet(red)
+            except:
+                self.setText("?")
+                self.setStyleSheet(red)
+            # run QLabel's update method
+            super().update()
         # start timer again
         self.timer.start(self.refresh_rate)
 
-class Astro_raw_sep(QLabel):
+    def setText(self, text):
+        """An extension of setText that sets the validator's old text field"""
+
+        super().setText(text)
+        self.validator.old_val = self.text()
+
+class Astro_raw_sep(QLineEdit):
     """A widget to get the undistorted Sep value"""
 
     def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
@@ -726,28 +791,38 @@ class Astro_raw_sep(QLabel):
         self.timer.timeout.connect(self.update)
         self.timer.start(10)
 
+        # make a validator for value
+        self.validator = SEP_PA_validator(self, set_sep)
+
     def update(self):
         """updates the size and text in the widget"""
 
-        # update value
-        try:
-            self.setText("{:07.2f}".format(get_raw_sep()))
-            self.setStyleSheet(grey)
-        except AttributeError:
-            self.setText("Off")
-            self.setStyleSheet(red)
-        except:
-            self.setText("?")
-            self.setStyleSheet(red)
-        # run QLabel's update method
-        super().update()
+        if not self.hasFocus():
+            # update value
+            try:
+                self.setText("{:07.2f}".format(get_raw_sep()))
+                self.setStyleSheet(grey)
+            except AttributeError:
+                self.setText("Off")
+                self.setStyleSheet(red)
+            except:
+                self.setText("?")
+                self.setStyleSheet(red)
+            # run QLabel's update method
+            super().update()
         # start timer again
         self.timer.start(self.refresh_rate)
+
+    def setText(self, text):
+        """An extension of setText that sets the validator's old text field"""
+
+        super().setText(text)
+        self.validator.old_val = self.text()
 
 class Astro_dist_pa(QLabel):
     """A widget to get the distorted PA value"""
 
-    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+    def __init__(self, *args, refresh_rate:int = 2000, **kwargs):
         """Constructor for distorted pa value widget
 
         Args:
@@ -785,7 +860,7 @@ class Astro_dist_pa(QLabel):
 class Astro_dist_sep(QLabel):
     """A widget to get the distorted Sep value"""
 
-    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+    def __init__(self, *args, refresh_rate:int = 2000, **kwargs):
         """Constructor for distorted sep value widget
 
         Args:
