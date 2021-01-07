@@ -230,7 +230,7 @@ class TC_cmds:
             raise ValueError("on must be of type bool")
 
         # get current status to avoid changing any other parameters
-        try: _ = Stat_D.get_data()
+        try: _ = self.Stat_D.get_data()
         except: raise ShmError("Stat D shm may be corrupted. Please kill control script, delete shm, and start again.")
 
         # change fan bit to requested value
@@ -238,7 +238,7 @@ class TC_cmds:
         else: _[0] = _[0] & ~(1 << 2)
 
         # set new status
-        try: Stat_P.set_data(_)
+        try: self.Stat_P.set_data(_)
         except: raise ShmError("Stat P shm may be corrupted. Please kill control script, delete shm, and start again.")
 
     def set_led(self, on:bool):
@@ -257,7 +257,7 @@ class TC_cmds:
             raise ValueError("on must be of type bool")
 
         # get current status to avoid changing any other parameters
-        try: _ = Stat_D.get_data()
+        try: _ = self.Stat_D.get_data()
         except: raise ShmError("Stat D shm may be corrupted. Please kill control script, delete shm, and start again.")
 
         # change led bit to requested value
@@ -265,7 +265,7 @@ class TC_cmds:
         else: _[0] = _[0] & ~(1 << 3)
 
         # set new status
-        try: Stat_P.set_data(_)
+        try: self.Stat_P.set_data(_)
         except: raise ShmError("Stat P shm may be corrupted. Please kill control script, delete shm, and start again.")
 
     def set_tint(self, tint:float):
@@ -531,7 +531,7 @@ class TC_cmds:
         """A method to throw an exception if control script is not alive"""
 
         if not self.is_active():
-            raise ScriptOff("No active control script. Please use 'NPS.activate_control_scipt()'.")
+            raise ScriptOff("No active control script. Please use 'TC.activate_control_scipt()'.")
 
     def _check_alive_and_connected(self):
         """A method to throw an exception if control script is not alive
