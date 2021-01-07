@@ -246,9 +246,10 @@ class TC_cmds:
 
         block = fits.HDUList()
         block.append(fits.PrimaryHDU(images[0], head_start))
-        for im in images[1:-1]:
-            block.append(fits.PrimaryHDU(im))
-        block.append(fits.PrimaryHDU(images[-1], head_end))
+        if n > 1:
+            for im in images[1:-1]:
+                block.append(fits.PrimaryHDU(im))
+            block.append(fits.PrimaryHDU(images[-1], head_end))
 
         if path is not None: block.writeto(path)
 
