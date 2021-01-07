@@ -3,11 +3,12 @@
  */
 
 #include <semaphore.h>  // adds POSIX semaphores
+#include <unistd.h>     // adds sysconf to find page size
 #include <fcntl.h>      // adds O POSIX tags (O_CREAT)
 #include <thread>       // adds threading
 #include <sys/mman.h>   // adds mmap
 #include <sys/stat.h>   // adds mmap tags
-#include <sys/types.h>   // with stat, adds directory checking
+#include <sys/types.h>  // with stat, adds directory checking
 #include <time.h>       // adds timespec and enables getting the time
 #include <string>       // adds string
 #include <cstring>      // adds strcpy
@@ -156,8 +157,13 @@ Shm::Shm(std::string filepath, bool has_sem)
     if (mtdata.mmap == 1){
         // open file as read and write to mmap
         backing = fopen(fname.c_str(), "rb+");
+        // get the amount of space needed, rounded up to the page size
+        long pg_sz = sysconf(_SC_PAGESIZE);
+        if (pg_sz == -1){ perror("no page size"); exit(EXIT_FAILURE);}
+        size_t buf_sz = DATA_SIZE+sizeof(mtdata);
+        if (buf_sz % pg_sz != 0) { buf_sz = ((buf_sz / pg_sz) + 1) * pg_sz; }
         // open the shm
-        buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
+        buf = (char*) mmap(0, buf_sz, PROT_READ | PROT_WRITE, 
             MAP_SHARED, fileno(backing), 0); 
         if (buf == MAP_FAILED){ perror("mmap"); exit(EXIT_FAILURE); }
         // close file
@@ -255,9 +261,15 @@ Shm::Shm(std::string filepath, uint16_t size[], uint8_t dims, uint8_t dtype,
     // mmap if desired
     if (mmap){
         fseek(backing, 0, SEEK_SET);
+        // get the amount of space needed, rounded up to the page size
+        long pg_sz = sysconf(_SC_PAGESIZE);
+        if (pg_sz == -1){ perror("no page size"); exit(EXIT_FAILURE);}
+        size_t buf_sz = DATA_SIZE+sizeof(mtdata);
+        if (buf_sz % pg_sz != 0) { buf_sz = ((buf_sz / pg_sz) + 1) * pg_sz; }
         // create mmap
-        buf = (char*) mmap(0, DATA_SIZE, PROT_READ | PROT_WRITE, 
+        buf = (char*) mmap(0, buf_sz, PROT_READ | PROT_WRITE, 
             MAP_SHARED, fileno(backing), 0); 
+        if (buf == MAP_FAILED){ perror("mmap"); exit(EXIT_FAILURE); }
     } else { buf = NULL; }
 
     // close file
