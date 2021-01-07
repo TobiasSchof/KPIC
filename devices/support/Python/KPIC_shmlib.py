@@ -242,7 +242,9 @@ class Shm:
             buf = backing.read()
             for i, fmt in enumerate(fmts):
                 # ignore padding bytes
-                if fmt.endswith("x"): continue
+                if fmt.endswith("x"): 
+                    offset += int(fmt[:-1])
+                    continue
 
                 if mtkeys[i] == "cnt0": self.c0_offset = offset
                 elif mtkeys[i] == "atime_sec": self.atime_offset = offset
@@ -441,6 +443,9 @@ class Shm:
         except AttributeError:
             self.load()
             i0 = self.im_offset
+
+        if self.mtdata["croppable"]:
+            self.read_meta_data()
 
         # short name for the end of the data
         i1 = i0 + self.mtdata["nel"]*asize[self.mtdata["atype"]]
