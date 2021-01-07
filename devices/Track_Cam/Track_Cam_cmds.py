@@ -3,7 +3,12 @@ from configparser import ConfigParser
 from subprocess import Popen
 from time import sleep
 from numpy import array
+from time import gmtime
 import os
+
+# installs
+import numpy as np
+from astropy.io import fits
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
@@ -26,6 +31,8 @@ class TC_cmds:
         get_crop
         get_temp
     Commands:
+        grab_n
+        save_reference
         set_fan
         set_led
         set_tint
@@ -40,6 +47,7 @@ class TC_cmds:
         _check_alive
         _check_alive_and_connected
         _handle_shms
+        _get_header
     """
 
     def __init__(self):
@@ -211,6 +219,90 @@ class TC_cmds:
             if all: return list(self.Temp_D.get_data())
             else: return float(self.Temp_D.get_data()[3])
         except: raise ShmError("Temp D shm may be corrupted. Please kill control script, delete shm, and start again.")
+
+    def grab_n(self, n:int, path:str=None):
+        """Grabs a block of images.
+
+        Puts camera parameters into the first and the last header of the cube
+            as described in _get_dict_for_header
+
+        Args:
+            n    = the number of images to grab
+            path = if not None, the path to store the images
+        Returns:
+            fits.HDUList
+        """
+
+        try:
+            assert type(n) is int
+            assert path is None or type(path) is str
+        except AssertionError:
+            raise ValueError("n must be int, path must be str.")
+
+        # grab N images with a header on either side
+        head_start = self._get_header()
+        images = [self.Img.get_data(True, reform=True) for x in range(0, n)]
+        head_end  = self._get_header()
+
+        block = fits.HDUList()
+        block.append(fits.PrimaryHDU(images[0], head_start))
+        for im in images[1:-1]:
+            block.append(fits.PrimaryHDU(im))
+        block.append(fits.PrimaryHDU(images[-1], head_end))
+
+        if path is not None: block.writeto(path)
+
+        return block
+
+    def save_reference(self, block_path:str=None, num:int=50, avg:str="mean"):
+        """A method used to save reference images
+
+        Args:
+            block_path    = the path to save the cube of reference images. Default is:
+                            /nfiudata/YYMMDD/TCReferences/HHMMSS.fits based on the time of the start of acquisition
+                            The combined reference will be stored as block_path with combined_ prepended
+            num           = the number of references to take, will appear in header of combined file
+            avg           = the means to combine reference images, will appear in header of combined file
+        """
+
+        if avg.lower() not in ["mean", "media"]:
+            raise ValueError("Unexpected value of 'avg'. Choices are 'mean' or 'median'.")
+
+        if block_path is None:
+            gmt = gmtime()
+            date = "{}{:02d}{:02d}".format(str(gmt.tm_year)[:-2], gmt.tm_mon, gmt.tm_mday)
+            time = "{:02d}{:02d}{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+            if not os.path.isdir("/nfiudata"):
+                raise FileNotFoundError("No '/nfiudata' folder.")
+            if not os.path.isdir("/nfiudata/{}".format(date)):
+                os.mkdir("/nfiudata/{}".format(date))
+            if not os.path.isdir("/nfiudata/{}/TCReferences".format(date)):
+                os.mkdir("/nfiudata/{}/TCReferences".format(date))
+
+            block_path = "/nfiudata/{}/TCReferences/{}.fits".format(date, time)
+
+        block = self.grab_n(num, block_path)
+
+        # grab a header to pull just the relevant areas of first and last header
+        tmp_h = self._get_header()
+        # store number of images and avg method
+        c_header = {"num":num, "avg":avg}
+        # append header data from start frame
+        c_header.update({"s{}".format(field):block[0].header[field] for field in tmp_h})
+        # append header data from end frame
+        c_header.update({"e{}".format(field):block[-1].header[field] for field in tmp_h})
+
+        np_block = np.array([im.data for im in block])
+        if avg.lower() == "mean":
+            combined = fits.PrimaryHDU(np_block.mean(2), fits.Header(c_header))
+        elif avg.lower() == "median":
+            combined = fits.PrimaryHDU(np_block.median(2), fits.Header(c_header))
+
+        # find last directory break
+        idx = block_path.rfind("/")
+        # prepend combined_ to file name
+        combined_path = block_path[:idx+1] + "combined_" + block_path[idx+1:]
+        combined.writeto(combined_path)
 
     def set_fan(self, on:bool):
         """Method to set the on status of the fan
@@ -586,6 +678,35 @@ class TC_cmds:
                     self.NDR_D  = Shm(self.NDR_D)
                     self.Crop_D = Shm(self.Crop_D)
                 except: raise ShmError("Please restart python session. If issue persists, restart control script.")
+
+    def _get_header(self):
+        """Returns a dictionary of camera parameters that can be used as a fits header
+        
+            contains the following info:
+                fps           = the fps of the camera
+                tint          = the exposure time (in s) of the camera
+                ndr           = the number of non-destructive reads of the camera
+                temp_MB       = the last reported temperature of the mother board
+                temp_FE       = the last reported temperature of the front end
+                temp_PB       = the last reported temperature of the power board
+                temp_sensor   = the last reported temperature of the sensor
+                temp_peltier  = the last reported temperature of the peltier
+                temp_heatsink = the last reported temperature of the heatsink
+                crop_LB       = the left bound of the subwindow (0 indexed)
+                crop_RB       = the right bound of the subwindow (0 indexed)
+                crop_UB       = the upper bound of the subwindow (0 indexed)
+                crop_LB       = the lower bound of the subwindow (0 indexed)
+        """
+
+        fps   = self.get_fps()
+        tint  = self.get_tint()
+        ndr   = self.get_ndr()
+        temps = self.get_temp(True)
+        crop  = self.get_crop()
+
+        return fits.Header({"fps":fps, "tint":tint, "ndr":ndr, "temp_MB":temps[0], "temp_FE":temps[1],
+            "temp_PB":temps[2], "temp_se":temps[3], "temp_pe":temps[4], "temp_he":temps[5],
+            "crop_LB":crop[0], "crop_RB":crop[1], "crop_UB":crop[2], "crop_LB":crop[3]})
 
 ######## Errors ########
 
