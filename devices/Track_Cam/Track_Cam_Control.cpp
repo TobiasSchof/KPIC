@@ -34,7 +34,7 @@ Shm *NPSP;
 double STARTTEMP = 0;
 double STARTFPS  = 20;
 double STARTTINT = .01;
-int STARTNDR  = 0;
+int STARTNDR  = 1;
 
 // mutex to control fli sdk
 std::mutex mtx;
@@ -151,7 +151,7 @@ void cam_connect(){
     // add observer to sdk
     fli->camera()->addObserver(obs);
     // add image receiver
-    fli->addRawImageReceivedObserver(obs);
+    fli->addRawImageReceivedObserver(obs, false);
 
     // set cropping to current cropping to make sure that shm and camera match
     {
@@ -218,11 +218,11 @@ void cam_on(){
     uint8_t stat;
     NPSD->get_data(&stat);
 
-    if (!(stat & cam)){
+    //if (!(stat & cam)){
         // set new status using bit-wise or
-        stat = stat | cam;
-        NPSP->set_data(&stat);
-    }
+    //    stat = stat | cam;
+    //    NPSP->set_data(&stat);
+    //}
 
     cam_connect();
 }
@@ -238,7 +238,7 @@ void cam_off(){
     // stop acquisition
     fli->stop();
     // turn off the camera
-    fli->camera()->shutDown();
+    //fli->camera()->shutDown();
     mtx.unlock();
 
     // give time for camera to shutdown
@@ -250,12 +250,12 @@ void cam_off(){
 
     // get current NPS D Shm
     uint8_t stat;
-    NPSD->get_data(&stat);
+    //NPSD->get_data(&stat);
 
     // set new status using subtraction and bit-wise
     //  (we use bit-wise and to ensure we only subtract if the camera bit is 1)
-    stat = stat - (cam & stat);
-    NPSP->set_data(&stat);
+    //stat = stat - (cam & stat);
+    //NPSP->set_data(&stat);
 
     // update Stat_D
     stat = 1;
@@ -379,7 +379,7 @@ int Shm_connect(){
 
     try { NDR_P = new Shm(pndr_cf, true); }
     catch (MissingSharedMemory& ex) {
-        uint8_t data = 0;
+        uint8_t data = 1;
         uint16_t size[3] = {1, 0, 0};
         NDR_P = new Shm(pndr_cf, size, 3, 1, &data, false, true, false);
     }
@@ -809,7 +809,7 @@ int main(){
     CONFIG += "/data";
 
     fli = new FliSdk();
-    fli->enableRingBuffer(false);
+    //fli->enableRingBuffer(false);
 
     // connect to NPS shm to see power
     NPS_connect();
