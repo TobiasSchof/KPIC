@@ -530,11 +530,16 @@ void handle_stat(){
                     fli->credTwo()->setFanSpeed(0);
                     mtx.unlock();
                 }
+
+                fli->credTwo()->getFanMode(fan_m);
+                fan_a = (fan_m == "automatic");
             }
             if (led_req != led_a){
                 mtx.lock();
                 fli->camera()->enableLed(led_req);
                 mtx.unlock();
+
+                fli->credTwo()->getLedState(led_a);
             }
         // otherwise, set error
         } else {
