@@ -17,7 +17,7 @@ from dev_Exceptions import *
 ######## Camera interface class ########
  
 class TC_cmds:
-    """Class for controlling the CRED2 Tracking Camera
+    """Class for controlling the CRED2 Tracking Camera and getting raw data
 
     method list:
     Queries:
@@ -30,9 +30,9 @@ class TC_cmds:
         get_ndr
         get_crop
         get_temp
-    Commands:
         grab_n
-        save_reference
+    Commands:
+        save_dark
         set_fan
         set_led
         set_tint
@@ -224,7 +224,7 @@ class TC_cmds:
         """Grabs a block of images.
 
         Puts camera parameters into the first and the last header of the cube
-            as described in _get_dict_for_header
+            as described in _get_header
 
         Args:
             n    = the number of images to grab
@@ -242,8 +242,9 @@ class TC_cmds:
         # grab N images with a header on either side
         head_start = self._get_header()
         images = [self.Img.get_data(True, reform=True) for x in range(0, n)]
-        head_end  = self._get_header()
+        if n > 1: head_end  = self._get_header()
 
+        # format numpy arrays as fits
         block = fits.HDUList()
         block.append(fits.PrimaryHDU(images[0], head_start))
         if n > 1:
@@ -255,13 +256,17 @@ class TC_cmds:
 
         return block
 
-    def save_reference(self, block_path:str=None, num:int=50, avg:str="mean"):
-        """A method used to save reference images
+    def save_dark(self, num:int=50, avg:str="mean"):
+        """A method used to save dark images
 
+        The path to save the cube of raw images is:
+        /nfiudata/YYMMDD/bias_HHMMSS_####_#####_##_#####_###_###_###_###_block.fits
+        where YYMMDD and HHMMSS are gmt at start of acquisition and numbered fields are (in order): 
+            fps, tint, ndr, temp setpoint, crop left bound, crop right bound, crop upper bound, crop lower bound
+
+        the combined frame is stored with the same name minus block in the same directory as well as
+            the same name minus block and the time in the directory specified in bias_dir in Track_Cam.ini
         Args:
-            block_path    = the path to save the cube of reference images. Default is:
-                            /nfiudata/YYMMDD/TCReferences/HHMMSS.fits based on the time of the start of acquisition
-                            The combined reference will be stored as block_path with combined_ prepended
             num           = the number of references to take, will appear in header of combined file
             avg           = the means to combine reference images, will appear in header of combined file
         """
@@ -269,18 +274,21 @@ class TC_cmds:
         if avg.lower() not in ["mean", "media"]:
             raise ValueError("Unexpected value of 'avg'. Choices are 'mean' or 'median'.")
 
-        if block_path is None:
-            gmt = gmtime()
-            date = "{}{:02d}{:02d}".format(str(gmt.tm_year)[:-2], gmt.tm_mon, gmt.tm_mday)
-            time = "{:02d}{:02d}{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
-            if not os.path.isdir("/nfiudata"):
-                raise FileNotFoundError("No '/nfiudata' folder.")
-            if not os.path.isdir("/nfiudata/{}".format(date)):
-                os.mkdir("/nfiudata/{}".format(date))
-            if not os.path.isdir("/nfiudata/{}/TCReferences".format(date)):
-                os.mkdir("/nfiudata/{}/TCReferences".format(date))
+        gmt = gmtime()
+        date = "{}{:02d}{:02d}".format(str(gmt.tm_year)[:-2], gmt.tm_mon, gmt.tm_mday)
+        time = "{:02d}{:02d}{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
+        if not os.path.isdir("/nfiudata"):
+            raise FileNotFoundError("No '/nfiudata' folder.")
+        if not os.path.isdir("/nfiudata/{}".format(date)):
+            os.mkdir("/nfiudata/{}".format(date))
+        if not os.path.isdir("/nfiudata/{}/TCReferences".format(date)):
+            os.mkdir("/nfiudata/{}/TCReferences".format(date))
 
-            block_path = "/nfiudata/{}/TCReferences/{}.fits".format(date, time)
+        crop = self.get_crop()
+        block_path = "/nfiudata/{date}/TCReferences/bias_{time}_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
+            +"{lb:03d}_{rb:03d}_{ub:03d}_{lb:03d}_block.fits".format(date=date, time=time,
+            fps = self.get_fps(), tint = self.get_tint(), ndr = self.get_ndr(), temp = self.get_temp(),
+            lb = crop[0], rb = crop[1], ub = crop[2], lb = crop[3])
 
         block = self.grab_n(num, block_path)
 
@@ -293,17 +301,25 @@ class TC_cmds:
         # append header data from end frame
         c_header.update({"e{}".format(field):block[-1].header[field] for field in tmp_h})
 
-        np_block = np.array([im.data for im in block])
+        data_block = 
         if avg.lower() == "mean":
-            combined = fits.PrimaryHDU(np_block.mean(2), fits.Header(c_header))
+            combined = fits.PrimaryHDU(np.mean([im.data for im in block], 0), fits.Header(c_header))
         elif avg.lower() == "median":
-            combined = fits.PrimaryHDU(np_block.median(2), fits.Header(c_header))
+            combined = fits.PrimaryHDU(np.median([im.data for im in block], 0), fits.Header(c_header))
 
-        # find last directory break
-        idx = block_path.rfind("/")
+        # find file extension
+        idx = block_path.rfind(".")
         # prepend combined_ to file name
-        combined_path = block_path[:idx+1] + "combined_" + block_path[idx+1:]
+        combined_path = block_path[:idx-6] + block_path[idx:]
         combined.writeto(combined_path)
+
+        # make filename for bias to be saved in bias folder
+        b_dir = self.config.get("Data", "bias_dir")
+        if b_dir[-1] != "/": b_dir += "/"
+        # get the file name of the combined file already saved
+        fname = combined_path[combined_path.rfind("/")+1:]
+        # delete HHMMSS from fname
+        fname = fname[:5] + fname[12:]
 
     def set_fan(self, on:bool):
         """Method to set the on status of the fan
@@ -624,7 +640,7 @@ class TC_cmds:
         """A method to throw an exception if control script is not alive"""
 
         if not self.is_active():
-            raise ScriptOff("No active control script. Please use 'TC.activate_control_scipt()'.")
+            raise ScriptOff("No active control script. Please use 'TC.activate_control_script()'.")
 
     def _check_alive_and_connected(self):
         """A method to throw an exception if control script is not alive
@@ -690,14 +706,16 @@ class TC_cmds:
                 temp_MB       = the last reported temperature of the mother board
                 temp_FE       = the last reported temperature of the front end
                 temp_PB       = the last reported temperature of the power board
-                temp_sensor   = the last reported temperature of the sensor
-                temp_peltier  = the last reported temperature of the peltier
-                temp_heatsink = the last reported temperature of the heatsink
+                temp_se       = the last reported temperature of the sensor
+                temp_pe       = the last reported temperature of the peltier
+                temp_he       = the last reported temperature of the heatsink
                 crop_LB       = the left bound of the subwindow (0 indexed)
                 crop_RB       = the right bound of the subwindow (0 indexed)
                 crop_UB       = the upper bound of the subwindow (0 indexed)
                 crop_LB       = the lower bound of the subwindow (0 indexed)
         """
+
+        self._check_alive_and_connected()
 
         fps   = self.get_fps()
         tint  = self.get_tint()
