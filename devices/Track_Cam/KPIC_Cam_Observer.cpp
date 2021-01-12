@@ -129,7 +129,7 @@ KPIC_FliObserver::KPIC_FliObserver(){
 /*
  * Set fps trigger to 0 to do fastest updates
  */
-uint16_t KPIC_FliObserver::fpsTrigger(){ return 20; }
+uint16_t KPIC_FliObserver::fpsTrigger(){ return 0; }
 
 /*
  * This method is called any time a new image is ready.

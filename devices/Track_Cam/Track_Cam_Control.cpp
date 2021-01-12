@@ -151,7 +151,7 @@ void cam_connect(){
     // add observer to sdk
     fli->camera()->addObserver(obs);
     // add image receiver
-    fli->addRawImageReceivedObserver(obs, false);
+    fli->addRawImageReceivedObserver(obs);
 
     // set cropping to current cropping to make sure that shm and camera match
     {
@@ -809,7 +809,7 @@ int main(){
     CONFIG += "/data";
 
     fli = new FliSdk();
-    //fli->enableRingBuffer(false);
+    fli->enableRingBuffer(false);
 
     // connect to NPS shm to see power
     NPS_connect();
