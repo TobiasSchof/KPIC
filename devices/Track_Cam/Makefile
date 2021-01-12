@@ -3,10 +3,14 @@
 override SYSNAM = kss/nirspec/nsfiu/devices/Track_Cam
 override VERNUM = 1.0
 
+override ENABLE_PYTHON2 = False
+
 SOURCE = Track_Cam_Control.cpp KPIC_Cam_Observer.cpp
 RELINC = KPIC_Cam_Observer.hpp
 RELBIN = Track_Cam_Control
 RELDAT = Track_Cam.ini 
+RELLIB = Track_Cam_cmds.py
+LIBSUB = python
 
 
 ################################################################################
