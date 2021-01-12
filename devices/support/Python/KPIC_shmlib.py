@@ -219,7 +219,7 @@ class Shm:
                 minibuf += struct.pack(fmt, *tpl)
             except (ValueError, AssertionError, IndexError):
                 if fmt.endswith("x"):
-                    pass
+                    minibuf += struct.pack(fmt)
                 elif isinstance(self.mtdata[mtkeys[i]], str):
                     minibuf += struct.pack(fmt, self.mtdata[mtkeys[i]].encode())
                 else:
@@ -243,7 +243,9 @@ class Shm:
             for i, fmt in enumerate(fmts):
                 # ignore padding bytes
                 if fmt.endswith("x"): 
-                    offset += int(fmt[:-1])
+                    hlen = struct.calcsize(fmt)
+                    struct.unpack(fmt, buf[offset:offset+hlen])
+                    offset += hlen
                     continue
 
                 if mtkeys[i] == "cnt0": self.c0_offset = offset
@@ -468,8 +470,6 @@ class Shm:
 
         # if requested, reshape data
         if reform:
-            if self.croppable:
-                self.get_size()
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
             data = np.reshape(data, rsz)
 
@@ -493,6 +493,15 @@ class Shm:
         #get the nanoseconds part of the time
         nsec = int((atime%1) * 10**9)
 
+        resize = False
+        # if the size of the new data doesn't match current size, change it
+        if self.mtdata["croppable"] and data.shape != self.mtdata["size"]:
+            self.mtdata["size"] = data.shape
+            self.mtdata["nel"] = 1
+            for dim in self.mtdata["size"]: 
+                if dim != 0: self.mtdata["nel"] *= dim
+            resize = True
+
         # start of the data
         i0 = self.im_offset
         # end of the data
@@ -513,6 +522,11 @@ class Shm:
                 cntr = struct.unpack('Q', self.buf[c0:c0+8])[0] + 1
                 # write cnt0 increment
                 self.buf[c0:c0+8]   = struct.pack('Q', cntr)
+                # if necessary, write size and nel
+                if resize:
+                    # nel is the 4 bytes before size
+                    self.buf[self.sz_offset-4:self.sz_offset] = struct.pack("I", self.mtdata["nel"])
+                    self.buf[self.sz_offset:self.sz_offset+6] = struct.pack("3H", self.mtdata["size"])
         else:
             with self.lock, open(self.fname, "rb+") as file_:
                 # get file contents
@@ -526,6 +540,11 @@ class Shm:
                 cntr = struct.unpack('Q', bytes(buf)[c0:c0+8])[0] + 1
                 # write cnt0 increment
                 buf[c0:c0+8]   = struct.pack('Q', cntr)
+                # if necessary, write size and nel
+                if resize:
+                    # nel is the 4 bytes before size
+                    self.buf[self.sz_offset-4:self.sz_offset] = struct.pack("I", self.mtdata["nel"])
+                    self.buf[self.sz_offset:self.sz_offset+6] = struct.pack("3H", self.mtdata["size"])
                 # write updates
                 file_.seek(0)
                 file_.write(bytes(buf))
