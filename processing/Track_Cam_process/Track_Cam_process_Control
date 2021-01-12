@@ -80,7 +80,7 @@ def main():
         
         rng = [None, None]
         # get commanded mins and maxes
-        min_u, min_val, max_u, max_val = *PRng.get_data()
+        min_u, min_val, max_u, max_val = PRng.get_data()[:]
 
         # get min value
         if min_u: rng[0] = min_val 
@@ -145,15 +145,21 @@ def roll_avg(avg:np.array, raw:list):
 def close(*args, **kwargs):
     """Method to perform a clean close"""
 
+    # delete Set shm to indicate that control script is off
+    try: os.remove(Set.fname)
+    except Exception as ouch: print("Exception on close {}".format(ouch))
+
+    unregister(close)
+
+def signal_handler(*args, **kwargs):
+    """A method to end execution when a signal is recieved"""
+
+    global alive
     alive = False
 
     # try to wake up main if it's waiting for processing to start
     try: Set.sem.release()
     except: pass
-
-    # delete Set shm to indicate that control script is off
-    try: os.remove(Set.fname)
-    except Exception as ouch: print("Exception on close {}".format(ouch))
 
 # get RELDIR location which has all kroot made files
 RELDIR = os.environ.get("RELDIR")
@@ -187,7 +193,7 @@ else:
         mmap = (Set[2] == "1"))
 
 Scale   = config.get("Shm Info", "Scale").split(",")
-Avg_cnt = config.get("Shm Info", "Avg").split(",")
+Avg_cnt = config.get("Shm Info", "Avg_cnt").split(",")
 Ref     = config.get("Shm Info", "Ref").split(",")
 Proc    = config.get("Shm Info", "Proc").split(",")
 Bkgrd   = config.get("Shm Info", "Bkgrd").split(",")
@@ -221,15 +227,15 @@ else: Bias = Shm(Bias[0], data = np.zeros([640, 512], dtype = type_[Bias[1]]),
         mmap = (Bias[2] == "1"))
 
 if os.path.isfile(Error[0]): Error = Shm(Error[0])
-else: Error = Shm(Error[0], data = np.zeros([640, 512], dtype = type_[Error[1]]),
+else: Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),
         mmap = (Error[2] == "1"))
 
 if os.path.isfile(DRng[0]): DRng = Shm(DRng[0])
-else: DRng = Shm(DRng[0], data = np.zeros([640, 512], dtype = type_[DRng[1]]),
+else: DRng = Shm(DRng[0], data = np.array([0, 0], dtype = type_[DRng[1]]),
         mmap = (DRng[2] == "1"))
 
 if os.path.isfile(PRng[0]): PRng = Shm(PRng[0])
-else: PRng = Shm(PRng[0], data = np.zeros([640, 512], dtype = type_[PRng[1]]),
+else: PRng = Shm(PRng[0], data = np.array([0, 0, 0, 0], dtype = type_[PRng[1]]),
         mmap = (PRng[2] == "1"))
 
 # connect to raw img shm
