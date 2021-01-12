@@ -286,9 +286,9 @@ class TC_cmds:
 
         crop = self.get_crop()
         block_path = "/nfiudata/{date}/TCReferences/bias_{time}_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
-            +"{lb:03d}_{rb:03d}_{ub:03d}_{lb:03d}_block.fits".format(date=date, time=time,
+            +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}_block.fits".format(date=date, time=time,
             fps = self.get_fps(), tint = self.get_tint(), ndr = self.get_ndr(), temp = self.get_temp(),
-            lb = crop[0], rb = crop[1], ub = crop[2], lb = crop[3])
+            lb = crop[0], rb = crop[1], ub = crop[2], bb = crop[3])
 
         block = self.grab_n(num, block_path)
 
@@ -301,7 +301,6 @@ class TC_cmds:
         # append header data from end frame
         c_header.update({"e{}".format(field):block[-1].header[field] for field in tmp_h})
 
-        data_block = 
         if avg.lower() == "mean":
             combined = fits.PrimaryHDU(np.mean([im.data for im in block], 0), fits.Header(c_header))
         elif avg.lower() == "median":
@@ -586,6 +585,8 @@ class TC_cmds:
             cnt += 1
             sleep(1)
 
+        self.set_fan(True)
+
     def turn_off_camera(self, wait:bool=True):
         """A method to tell the control script to disconnect from and turn off the camera
 
@@ -620,18 +621,10 @@ class TC_cmds:
     def activate_control_script(self=None):
         """A method to start the control script for the Tracking Camera"""
 
-        RELDIR = os.environ.get("RELDIR")
-        if RELDIR == "": raise Exception("$RELDIR not found")
-        if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
-
-        config = ConfigParser()
-        config.read(RELDIR+"/data/NPS.ini")
-
-        # check to see if a control script is already running
-        if os.path.isfile(config.get("Shm Info", "P_Shm").split(",")[0]):
+        if self.is_active():
             raise ScriptAlreadActive("Tracking camera control script already alive.")
 
-        command = config.get("Environment", "start_command").split("|")
+        command = self.config.get("Environment", "start_command").split("|")
         # provide a sleep time so tmux session has chance to start before 
         #   next command is sent
         for cmd in command: Popen(cmd.split(" ")); sleep(.1)
@@ -709,23 +702,25 @@ class TC_cmds:
                 temp_se       = the last reported temperature of the sensor
                 temp_pe       = the last reported temperature of the peltier
                 temp_he       = the last reported temperature of the heatsink
+                t_setp        = the sensor temperature setpoint
                 crop_LB       = the left bound of the subwindow (0 indexed)
                 crop_RB       = the right bound of the subwindow (0 indexed)
                 crop_UB       = the upper bound of the subwindow (0 indexed)
-                crop_LB       = the lower bound of the subwindow (0 indexed)
+                crop_BB       = the lower (bottom) bound of the subwindow (0 indexed)
         """
 
         self._check_alive_and_connected()
 
-        fps   = self.get_fps()
-        tint  = self.get_tint()
-        ndr   = self.get_ndr()
-        temps = self.get_temp(True)
-        crop  = self.get_crop()
+        fps     = self.get_fps()
+        tint    = self.get_tint()
+        ndr     = self.get_ndr()
+        temps   = self.get_temp(True)
+        temp_sp = self.Temp_P.get_data()[1]
+        crop    = self.get_crop()
 
         return fits.Header({"fps":fps, "tint":tint, "ndr":ndr, "temp_MB":temps[0], "temp_FE":temps[1],
-            "temp_PB":temps[2], "temp_se":temps[3], "temp_pe":temps[4], "temp_he":temps[5],
-            "crop_LB":crop[0], "crop_RB":crop[1], "crop_UB":crop[2], "crop_LB":crop[3]})
+            "temp_PB":temps[2], "temp_se":temps[3], "temp_pe":temps[4], "temp_he":temps[5], "t_setp":temp_sp,
+            "crop_LB":crop[0], "crop_RB":crop[1], "crop_UB":crop[2], "crop_BB":crop[3]})
 
 ######## Errors ########
 
