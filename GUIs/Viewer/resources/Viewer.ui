@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1113</width>
-    <height>680</height>
+    <width>910</width>
+    <height>697</height>
    </rect>
   </property>
   <property name="focusPolicy">
@@ -16,42 +16,8 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QGridLayout" name="gridLayout" rowstretch="10,0" columnstretch="0,0,0,0,0,0">
-   <item row="0" column="0" colspan="3">
-    <widget class="Img" name="image">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="sizeIncrement">
-      <size>
-       <width>5</width>
-       <height>4</height>
-      </size>
-     </property>
-     <property name="baseSize">
-      <size>
-       <width>640</width>
-       <height>512</height>
-      </size>
-     </property>
-     <property name="text">
-      <string/>
-     </property>
-     <property name="pixmap">
-      <pixmap>Trippy-Phone-Wallpapers-036.jpg</pixmap>
-     </property>
-     <property name="scaledContents">
-      <bool>false</bool>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignCenter</set>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="5" rowspan="2">
+  <layout class="QGridLayout" name="gridLayout" rowstretch="10,0,0,0" columnstretch="0,0,10,0,0,0,0">
+   <item row="0" column="6" rowspan="4">
     <widget class="QPushButton" name="minimize_btn">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
@@ -90,8 +56,41 @@ QPushButton {
      </property>
     </widget>
    </item>
-   <item row="0" column="3">
-    <spacer name="ctrl_separator">
+   <item row="2" column="4">
+    <widget class="QCheckBox" name="overlay">
+     <property name="text">
+      <string>Overlay</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <widget class="QLabel" name="hmag_label">
+     <property name="styleSheet">
+      <string notr="true">border-style: none;</string>
+     </property>
+     <property name="text">
+      <string>Hmag:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="2">
+    <widget class="QLineEdit" name="hmag_field">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">border-style: none;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="3">
+    <spacer name="hmag_overlay_spacer">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>
@@ -103,99 +102,542 @@ QPushButton {
      </property>
     </spacer>
    </item>
-   <item row="1" column="1">
-    <spacer name="horiz_scale_element">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
+   <item row="0" column="5" rowspan="3">
+    <widget class="QTabWidget" name="interfaces">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
      </property>
-     <property name="sizeHint" stdset="0">
+     <property name="minimumSize">
       <size>
-       <width>40</width>
-       <height>20</height>
+       <width>421</width>
+       <height>641</height>
       </size>
      </property>
-    </spacer>
-   </item>
-   <item row="0" column="4" rowspan="2">
-    <widget class="QFrame" name="ctrl_frame">
-     <layout class="QGridLayout" name="control_layout">
-      <property name="horizontalSpacing">
-       <number>0</number>
-      </property>
-      <item row="1" column="0">
-       <widget class="QLabel" name="track_title">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::NoFrame</enum>
-        </property>
-        <property name="text">
-         <string>Fiber Tracking</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-        <property name="margin">
-         <number>5</number>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QFrame" name="track_stat_frame">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">border-radius: 10px;
+     <property name="baseSize">
+      <size>
+       <width>0</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">/*
+ * style sheet from https://doc.qt.io/qt-5/stylesheet-examples.html#customizing-qtabwidget-and-qtabbar
+ */
+
+QTabWidget::pane { /* The tab widget frame */
+    border-top: 2px solid #C2C7CB;
+}
+
+QTabWidget::tab-bar {
+    left: 5px; /* move to the right by 5px */
+}
+
+/* Style the tab using the tab sub-control. Note that
+    it reads QTabBar _not_ QTabWidget */
+QTabBar::tab {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #E1E1E1, stop: 0.4 #DDDDDD,
+                                stop: 0.5 #D8D8D8, stop: 1.0 #D3D3D3);
+    border: 2px solid #C4C4C3;
+    border-bottom-color: #C2C7CB; /* same as the pane color */
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    min-width: 8ex;
+    padding: 2px;
+}
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #fafafa, stop: 0.4 #f4f4f4,
+                                stop: 0.5 #e7e7e7, stop: 1.0 #fafafa);
+}
+
+QTabBar::tab:selected {
+    border-color: #9B9B9B;
+    border-bottom-color: #C2C7CB; /* same as pane color */
+}
+
+QTabBar::tab:!selected {
+    margin-top: 2px; /* make non-selected tabs look smaller */
+}
+
+/* make use of negative margins for overlapping tabs */
+QTabBar::tab:selected {
+    /* expand/overlap to the left and right by 4px */
+    margin-left: -4px;
+    margin-right: -4px;
+}
+
+QTabBar::tab:first:selected {
+    margin-left: 0; /* the first selected tab has nothing to overlap with on the left */
+}
+
+QTabBar::tab:last:selected {
+    margin-right: 0; /* the last selected tab has nothing to overlap with on the right */
+}
+
+QTabBar::tab:only-one {
+    margin: 0; /* if there is only one tab, we don't want overlapping margins */
+}</string>
+     </property>
+     <property name="tabPosition">
+      <enum>QTabWidget::North</enum>
+     </property>
+     <property name="tabShape">
+      <enum>QTabWidget::Rounded</enum>
+     </property>
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <property name="usesScrollButtons">
+      <bool>false</bool>
+     </property>
+     <widget class="QWidget" name="Processing">
+      <attribute name="title">
+       <string>Processing</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <widget class="QLabel" name="scale_label">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-width: 1px;
+border-style: solid;
+border-left-style: none;
+border-right-style: none;</string>
+         </property>
+         <property name="text">
+          <string>Scale</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="scl_frame">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
 border-style: ridge;
 border-width: 1px;</string>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::Panel</enum>
-        </property>
-        <layout class="QHBoxLayout" name="track_on_l">
-         <property name="leftMargin">
-          <number>10</number>
          </property>
-         <property name="topMargin">
-          <number>15</number>
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
          </property>
-         <property name="rightMargin">
-          <number>15</number>
+         <layout class="QGridLayout" name="gridLayout_11" columnstretch="3,1,1">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>15</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>15</number>
+          </property>
+          <item row="1" column="2">
+           <widget class="QLineEdit" name="max_scl">
+            <property name="styleSheet">
+             <string notr="true">border-radius: 0px;</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLabel" name="max_scl_label">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>Max:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="Scale_chk_box" name="sqrt_scl">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>square root</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="Scale_chk_box" name="log_scl">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>log</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLabel" name="min_scl_label">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>Min:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QLineEdit" name="min_scl">
+            <property name="styleSheet">
+             <string notr="true">border-radius: 0px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="frm_sub_label">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
-         <property name="bottomMargin">
-          <number>15</number>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
          </property>
-         <item>
-          <widget class="QLabel" name="track_stat_label">
-           <property name="styleSheet">
-            <string notr="true">border-width: 0 px</string>
-           </property>
-           <property name="text">
-            <string>Tracking:</string>
-           </property>
-           <property name="margin">
-            <number>0</number>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="track_stat_btn">
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>20</height>
-            </size>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">QPushButton:checked { 
+         <property name="styleSheet">
+          <string notr="true">border-width: 1px;
+border-style: solid;
+border-left-style: none;
+border-right-style: none;</string>
+         </property>
+         <property name="text">
+          <string>Frame subtractions</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="subtraction_frame">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
+border-style: ridge;
+border-width: 1px;</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_12" columnstretch="3,1,1">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>15</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>15</number>
+          </property>
+          <item row="0" column="1">
+           <widget class="QPushButton" name="bias_take">
+            <property name="styleSheet">
+             <string notr="true">QPushButton { 
+	background-color: #c7c7c7;
+	border-radius: 0px;
+	border-style: inset;
+	border-width: 1px;
+}
+QPushButton:pressed {
+	background-color: #c1ffba;
+	border-radius: 0px;
+	border-style: outset;
+	border-width: 1px;
+}</string>
+            </property>
+            <property name="text">
+             <string>Take</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QCheckBox" name="bias_sub">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>Bias / Dark</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QCheckBox" name="bkgrd_sub">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>Background</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QCheckBox" name="ref_sub">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>Reference frame</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="bias_save">
+            <property name="styleSheet">
+             <string notr="true">QPushButton { 
+	background-color: #c7c7c7;
+	border-radius: 0px;
+	border-style: inset;
+	border-width: 1px;
+}
+QPushButton:pressed {
+	background-color: #c1ffba;
+	border-radius: 0px;
+	border-style: outset;
+	border-width: 1px;
+}</string>
+            </property>
+            <property name="text">
+             <string>Save</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="bkgrd_take">
+            <property name="styleSheet">
+             <string notr="true">QPushButton { 
+	background-color: #c7c7c7;
+	border-radius: 0px;
+	border-style: inset;
+	border-width: 1px;
+}
+QPushButton:pressed {
+	background-color: #c1ffba;
+	border-radius: 0px;
+	border-style: outset;
+	border-width: 1px;
+}</string>
+            </property>
+            <property name="text">
+             <string>Take</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="bkgrd_save">
+            <property name="styleSheet">
+             <string notr="true">QPushButton { 
+	background-color: #c7c7c7;
+	border-radius: 0px;
+	border-style: inset;
+	border-width: 1px;
+}
+QPushButton:pressed {
+	background-color: #c1ffba;
+	border-radius: 0px;
+	border-style: outset;
+	border-width: 1px;
+}</string>
+            </property>
+            <property name="text">
+             <string>Save</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QPushButton" name="ref_take">
+            <property name="styleSheet">
+             <string notr="true">QPushButton { 
+	background-color: #c7c7c7;
+	border-radius: 0px;
+	border-style: inset;
+	border-width: 1px;
+}
+QPushButton:pressed {
+	background-color: #c1ffba;
+	border-radius: 0px;
+	border-style: outset;
+	border-width: 1px;
+}</string>
+            </property>
+            <property name="text">
+             <string>Take</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QPushButton" name="ref_save">
+            <property name="styleSheet">
+             <string notr="true">QPushButton { 
+	background-color: #c7c7c7;
+	border-radius: 0px;
+	border-style: inset;
+	border-width: 1px;
+}
+QPushButton:pressed {
+	background-color: #c1ffba;
+	border-radius: 0px;
+	border-style: outset;
+	border-width: 1px;
+}</string>
+            </property>
+            <property name="text">
+             <string>Save</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="subtraction_fram_spacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="interfacesPage2">
+      <attribute name="title">
+       <string>Tracking</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_5">
+       <item>
+        <widget class="QLabel" name="track_title">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-width: 1px;
+border-style: solid;
+border-left-style: none;
+border-right-style: none;</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <property name="text">
+          <string>Fiber Tracking</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+         <property name="margin">
+          <number>5</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="track_stat_frame">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
+border-style: ridge;
+border-width: 1px;</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
+         </property>
+         <layout class="QHBoxLayout" name="track_on_l_3">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>10</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>10</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="track_stat_label">
+            <property name="styleSheet">
+             <string notr="true">border-width: 0 px</string>
+            </property>
+            <property name="text">
+             <string>Tracking:</string>
+            </property>
+            <property name="margin">
+             <number>0</number>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="track_stat_btn">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton:checked { 
 	background-color: #c1ffba;
 	border-style: inset;
 	border-radius: 0px;
@@ -205,242 +647,242 @@ QPushButton {
 	border-style: outset;
 	border-radius: 0px;
 }</string>
-           </property>
-           <property name="text">
-            <string>Off</string>
-           </property>
-           <property name="checkable">
-            <bool>true</bool>
-           </property>
-           <property name="autoDefault">
-            <bool>false</bool>
-           </property>
-           <property name="default">
-            <bool>false</bool>
-           </property>
-           <property name="flat">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="Loc_Selection" name="psf_loc_frame">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>380</width>
-          <height>70</height>
-         </size>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">border-radius: 10px;
+            </property>
+            <property name="text">
+             <string>Off</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <property name="autoDefault">
+             <bool>false</bool>
+            </property>
+            <property name="default">
+             <bool>false</bool>
+            </property>
+            <property name="flat">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="Loc_Selection" name="psf_loc_frame">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>380</width>
+           <height>70</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
 border-style: ridge;
 border-width: 1px;</string>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::Panel</enum>
-        </property>
-        <layout class="QGridLayout" name="gridLayout_4" columnstretch="1,1">
-         <property name="leftMargin">
-          <number>10</number>
          </property>
-         <property name="topMargin">
-          <number>10</number>
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
          </property>
-         <property name="rightMargin">
-          <number>15</number>
-         </property>
-         <property name="bottomMargin">
-          <number>5</number>
-         </property>
-         <property name="verticalSpacing">
-          <number>1</number>
-         </property>
-         <item row="0" column="1">
-          <widget class="QComboBox" name="psf_loc_dropdown">
-           <property name="styleSheet">
-            <string notr="true">QComboBox {
+         <layout class="QGridLayout" name="gridLayout_7" columnstretch="1,1">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>5</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>5</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>1</number>
+          </property>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="psf_loc_dropdown">
+            <property name="styleSheet">
+             <string notr="true">QComboBox {
 	border-radius: 0px;
 }
 
 QComboBox QAbstractItemView{
 	border-style: none;
 }</string>
-           </property>
-           <item>
+            </property>
+            <item>
+             <property name="text">
+              <string>SF 1</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>SF 2</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>SF 3</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>SF 4</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>SF 5</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Custom</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="psf_loc_label">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
             <property name="text">
-             <string>SF 1</string>
+             <string>PSF Location:</string>
             </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>SF 2</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>SF 3</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>SF 4</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>SF 5</string>
-            </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>Custom</string>
-            </property>
-           </item>
-          </widget>
-         </item>
-         <item row="0" column="0">
-          <widget class="QLabel" name="psf_loc_label">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>PSF Location:</string>
-           </property>
-           <property name="margin">
-            <number>5</number>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0" colspan="2">
-          <widget class="QFrame" name="psf_input_frame">
-           <property name="styleSheet">
-            <string notr="true">border-style: none;</string>
-           </property>
-           <layout class="QHBoxLayout" name="psf_input_layout" stretch="0,3,0,3,1">
-            <property name="spacing">
-             <number>-1</number>
-            </property>
-            <property name="leftMargin">
-             <number>0</number>
-            </property>
-            <property name="topMargin">
+            <property name="margin">
              <number>5</number>
             </property>
-            <property name="rightMargin">
-             <number>0</number>
+           </widget>
+          </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QFrame" name="psf_input_frame">
+            <property name="styleSheet">
+             <string notr="true">border-style: none;</string>
             </property>
-            <property name="bottomMargin">
-             <number>0</number>
-            </property>
-            <item>
-             <widget class="QLabel" name="psf_x_label">
-              <property name="styleSheet">
-               <string notr="true">border-style: none;</string>
-              </property>
-              <property name="text">
-               <string>X:</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="psf_x_input">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>65</width>
-                <height>20</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
+            <layout class="QHBoxLayout" name="psf_input_layout_2" stretch="0,3,0,3,1">
+             <property name="spacing">
+              <number>-1</number>
+             </property>
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>5</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="psf_x_label">
+               <property name="styleSheet">
+                <string notr="true">border-style: none;</string>
+               </property>
+               <property name="text">
+                <string>X:</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="psf_x_input">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>65</width>
+                 <height>20</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
 border-style: solid;</string>
-              </property>
-              <property name="frame">
-               <bool>true</bool>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="clearButtonEnabled">
-               <bool>false</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="psf_y_label">
-              <property name="styleSheet">
-               <string notr="true">border-style: none;</string>
-              </property>
-              <property name="text">
-               <string>Y:</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="psf_y_input">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>65</width>
-                <height>20</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
+               </property>
+               <property name="frame">
+                <bool>true</bool>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="clearButtonEnabled">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="psf_y_label">
+               <property name="styleSheet">
+                <string notr="true">border-style: none;</string>
+               </property>
+               <property name="text">
+                <string>Y:</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="psf_y_input">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>65</width>
+                 <height>20</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
 border-style: solid;</string>
-              </property>
-              <property name="frame">
-               <bool>true</bool>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="clearButtonEnabled">
-               <bool>false</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="psf_loc_btn">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">QPushButton { 
+               </property>
+               <property name="frame">
+                <bool>true</bool>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="clearButtonEnabled">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="psf_loc_btn">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QPushButton { 
 	background-color: #c7c7c7;
 	border-radius: 0px;
 	border-style: inset;
@@ -452,527 +894,366 @@ QPushButton:pressed {
 	border-style: outset;
 	border-width: 1px;
 }</string>
-              </property>
-              <property name="text">
-               <string>↵</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QFrame" name="star_pos_layout">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">border-radius: 10px;
+               </property>
+               <property name="text">
+                <string>↵</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="star_pos_layout">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
 border-style: ridge;
 border-width: 1px;</string>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::Panel</enum>
-        </property>
-        <layout class="QGridLayout" name="gridLayout_2" rowstretch="0,0,0" columnstretch="0,2,0,2" rowminimumheight="0,0,0">
-         <property name="leftMargin">
-          <number>10</number>
          </property>
-         <property name="topMargin">
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_5" rowstretch="0,0,0" columnstretch="0,0,0,0">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>5</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>5</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>-1</number>
+          </property>
+          <item row="2" column="2">
+           <widget class="QLabel" name="goal_y_label">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>Goal:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLabel" name="star_pos_y_act">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>pix</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLabel" name="star_pos_x_act">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>pix</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="star_pos_x_label">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="midLineWidth">
+             <number>0</number>
+            </property>
+            <property name="text">
+             <string>X:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QLabel" name="goal_x_label">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>Goal:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="star_pos_y_label">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>Y:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="4">
+           <widget class="QLabel" name="star_pos_label">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>Star Position</string>
+            </property>
+            <property name="scaledContents">
+             <bool>false</bool>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QLabel" name="star_pos_x_goal">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>pix</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="3">
+           <widget class="QLabel" name="star_pos_y_goal">
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>pix</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="offset_title">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-width: 1px;
+border-style: solid;
+border-left-style: none;
+border-right-style: none;</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <property name="text">
+          <string>Offset</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+         <property name="margin">
           <number>5</number>
          </property>
-         <property name="rightMargin">
-          <number>15</number>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="astrometry_layout">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
-         <property name="bottomMargin">
-          <number>5</number>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>210</height>
+          </size>
          </property>
-         <property name="verticalSpacing">
-          <number>-1</number>
+         <property name="styleSheet">
+          <string notr="true"/>
          </property>
-         <item row="2" column="3">
-          <widget class="QLabel" name="star_pos_y_goal">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>pix</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="3">
-          <widget class="QLabel" name="star_pos_x_goal">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>pix</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="0" colspan="4">
-          <widget class="QLabel" name="star_pos_label">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>Star Position</string>
-           </property>
-           <property name="scaledContents">
-            <bool>false</bool>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="2">
-          <widget class="QLabel" name="goal_x_label">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>Goal:</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="2">
-          <widget class="QLabel" name="goal_y_label">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>Goal:</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="0">
-          <widget class="QLabel" name="star_pos_y_label">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>Y:</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="star_pos_x_label">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="midLineWidth">
-            <number>0</number>
-           </property>
-           <property name="text">
-            <string>X:</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="1">
-          <widget class="QLabel" name="star_pos_y_act">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>pix</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="1">
-          <widget class="QLabel" name="star_pos_x_act">
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>pix</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item row="9" column="0">
-       <widget class="QFrame" name="astrometry_layout">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>210</height>
-         </size>
-        </property>
-        <property name="styleSheet">
-         <string notr="true"/>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::NoFrame</enum>
-        </property>
-        <layout class="QVBoxLayout" name="verticalLayout">
-         <property name="leftMargin">
-          <number>0</number>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
          </property>
-         <property name="topMargin">
-          <number>5</number>
-         </property>
-         <property name="rightMargin">
-          <number>0</number>
-         </property>
-         <property name="bottomMargin">
-          <number>5</number>
-         </property>
-         <item>
-          <widget class="QLabel" name="astrometry_label">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">border: 0px</string>
-           </property>
-           <property name="text">
-            <string>   Astrometry</string>
-           </property>
-           <property name="scaledContents">
-            <bool>false</bool>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
-           </property>
-           <property name="margin">
-            <number>0</number>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QFrame" name="astrometry_table_layout">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">border-radius: 10px;
+         <layout class="QVBoxLayout" name="verticalLayout_6">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="astrometry_label">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">border: 0px</string>
+            </property>
+            <property name="text">
+             <string>   Astrometry</string>
+            </property>
+            <property name="scaledContents">
+             <bool>false</bool>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+            </property>
+            <property name="margin">
+             <number>0</number>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QFrame" name="astrometry_table_layout">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">border-radius: 10px;
 border-style: ridge;
 border-width: 1px;</string>
-           </property>
-           <property name="frameShape">
-            <enum>QFrame::Box</enum>
-           </property>
-           <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0,0" columnstretch="2,0,0,0">
-            <property name="leftMargin">
-             <number>0</number>
             </property>
-            <property name="topMargin">
-             <number>0</number>
+            <property name="frameShape">
+             <enum>QFrame::Box</enum>
             </property>
-            <property name="rightMargin">
-             <number>0</number>
-            </property>
-            <property name="bottomMargin">
-             <number>0</number>
-            </property>
-            <property name="spacing">
-             <number>0</number>
-            </property>
-            <item row="0" column="1">
-             <widget class="QLabel" name="dist_label">
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
-border-top-style: none;
-border-bottom-style: none;</string>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
-              </property>
-              <property name="text">
-               <string>Distorted</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>10</number>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="2">
-             <widget class="QLabel" name="raw_pa">
-              <property name="minimumSize">
-               <size>
-                <width>65</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
-border-style: none;
-</string>
-              </property>
-              <property name="text">
-               <string>23</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>10</number>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::NoTextInteraction</set>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="pa_label">
-              <property name="styleSheet">
-               <string notr="true">border-style: none;</string>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
-              </property>
-              <property name="text">
-               <string>PA (deg):</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>20</number>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="2">
-             <widget class="QLabel" name="raw_sep">
-              <property name="minimumSize">
-               <size>
-                <width>65</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
-border-left-style: none;
-border-right-style: none;</string>
-              </property>
-              <property name="text">
-               <string>50000</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>10</number>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::NoTextInteraction</set>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QLabel" name="dist_sep">
-              <property name="minimumSize">
-               <size>
-                <width>65</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;</string>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
-              </property>
-              <property name="text">
-               <string>456.1</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>10</number>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::NoTextInteraction</set>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="2" colspan="2">
-             <widget class="QLabel" name="ra_label">
-              <property name="styleSheet">
-               <string notr="true">border-style: none</string>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
-              </property>
-              <property name="text">
-               <string>Raw</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>10</number>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::NoTextInteraction</set>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QLabel" name="dist_pa">
-              <property name="minimumSize">
-               <size>
-                <width>65</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
-border-bottom-style: none;
-border-top-style: none;</string>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
-              </property>
-              <property name="text">
-               <string>23.54</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>10</number>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::NoTextInteraction</set>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="sep_label">
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
-border-left-style: none;
-border-right-style: none;</string>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
-              </property>
-              <property name="text">
-               <string>Sep (mas):</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="margin">
-               <number>20</number>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="3">
-             <widget class="QFrame" name="pa_input_layout">
-              <property name="styleSheet">
-               <string notr="true">border-style: none;</string>
-              </property>
-              <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="10,2">
-               <property name="spacing">
-                <number>3</number>
+            <layout class="QGridLayout" name="gridLayout_6" rowstretch="0,0,0" columnstretch="2,0,0,0">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <property name="spacing">
+              <number>0</number>
+             </property>
+             <item row="2" column="3">
+              <widget class="QFrame" name="pa_input_layout">
+               <property name="styleSheet">
+                <string notr="true">border-style: none;</string>
                </property>
-               <property name="sizeConstraint">
-                <enum>QLayout::SetDefaultConstraint</enum>
-               </property>
-               <property name="leftMargin">
-                <number>10</number>
-               </property>
-               <property name="topMargin">
-                <number>10</number>
-               </property>
-               <property name="rightMargin">
-                <number>10</number>
-               </property>
-               <property name="bottomMargin">
-                <number>10</number>
-               </property>
-               <item>
-                <widget class="QLineEdit" name="raw_pa_input">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="minimumSize">
-                  <size>
-                   <width>65</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">border-radius: 0px;
+               <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="10,2">
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+                <property name="sizeConstraint">
+                 <enum>QLayout::SetDefaultConstraint</enum>
+                </property>
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLineEdit" name="raw_pa_input">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                   <size>
+                    <width>65</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">border-radius: 0px;
 border-style: solid;</string>
-                 </property>
-                 <property name="frame">
-                  <bool>true</bool>
-                 </property>
-                 <property name="alignment">
-                  <set>Qt::AlignCenter</set>
-                 </property>
-                 <property name="clearButtonEnabled">
-                  <bool>false</bool>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QPushButton" name="raw_pa_button">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="minimumSize">
-                  <size>
-                   <width>40</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                 <property name="autoFillBackground">
-                  <bool>false</bool>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">QPushButton { 
+                  </property>
+                  <property name="frame">
+                   <bool>true</bool>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignCenter</set>
+                  </property>
+                  <property name="clearButtonEnabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="raw_pa_button">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                  <property name="autoFillBackground">
+                   <bool>false</bool>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QPushButton { 
 	background-color: #c7c7c7;
 	border-style: inset;
 	border-radius:0px;
@@ -984,106 +1265,106 @@ QPushButton:pressed {
 	border-radius:0px;
 	border-width: 1px;
 }</string>
-                 </property>
-                 <property name="text">
-                  <string>↵</string>
-                 </property>
-                 <property name="iconSize">
-                  <size>
-                   <width>16</width>
-                   <height>16</height>
-                  </size>
-                 </property>
-                 <property name="autoDefault">
-                  <bool>false</bool>
-                 </property>
-                 <property name="default">
-                  <bool>true</bool>
-                 </property>
-                 <property name="flat">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </widget>
-            </item>
-            <item row="1" column="3">
-             <widget class="QFrame" name="sep_input_layout">
-              <property name="styleSheet">
-               <string notr="true">border-radius: 0px;
+                  </property>
+                  <property name="text">
+                   <string>↵</string>
+                  </property>
+                  <property name="iconSize">
+                   <size>
+                    <width>16</width>
+                    <height>16</height>
+                   </size>
+                  </property>
+                  <property name="autoDefault">
+                   <bool>false</bool>
+                  </property>
+                  <property name="default">
+                   <bool>true</bool>
+                  </property>
+                  <property name="flat">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item row="1" column="3">
+              <widget class="QFrame" name="sep_input_layout">
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
 border-right-style: none;
 border-left-style: none;
 
 </string>
-              </property>
-              <layout class="QHBoxLayout" name="horizontalLayout_7" stretch="10,2">
-               <property name="spacing">
-                <number>3</number>
                </property>
-               <property name="sizeConstraint">
-                <enum>QLayout::SetDefaultConstraint</enum>
-               </property>
-               <property name="leftMargin">
-                <number>10</number>
-               </property>
-               <property name="topMargin">
-                <number>10</number>
-               </property>
-               <property name="rightMargin">
-                <number>10</number>
-               </property>
-               <property name="bottomMargin">
-                <number>10</number>
-               </property>
-               <item>
-                <widget class="QLineEdit" name="raw_sep_input">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="minimumSize">
-                  <size>
-                   <width>65</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">border-radius: 0px;
+               <layout class="QHBoxLayout" name="horizontalLayout_8" stretch="10,2">
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+                <property name="sizeConstraint">
+                 <enum>QLayout::SetDefaultConstraint</enum>
+                </property>
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLineEdit" name="raw_sep_input">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                   <size>
+                    <width>65</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">border-radius: 0px;
 border-style: solid;</string>
-                 </property>
-                 <property name="frame">
-                  <bool>true</bool>
-                 </property>
-                 <property name="alignment">
-                  <set>Qt::AlignCenter</set>
-                 </property>
-                 <property name="clearButtonEnabled">
-                  <bool>false</bool>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QPushButton" name="raw_sep_button">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="minimumSize">
-                  <size>
-                   <width>40</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                 <property name="autoFillBackground">
-                  <bool>false</bool>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">QPushButton { 
+                  </property>
+                  <property name="frame">
+                   <bool>true</bool>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignCenter</set>
+                  </property>
+                  <property name="clearButtonEnabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="raw_sep_button">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                  <property name="autoFillBackground">
+                   <bool>false</bool>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QPushButton { 
 	background-color: #c7c7c7;
 	border-style: inset;
 	border-radius:0px;
@@ -1095,99 +1376,294 @@ QPushButton:pressed {
 	border-radius:0px;
 	border-width: 1px;
 }</string>
-                 </property>
-                 <property name="text">
-                  <string>↵</string>
-                 </property>
-                 <property name="iconSize">
-                  <size>
-                   <width>16</width>
-                   <height>16</height>
-                  </size>
-                 </property>
-                 <property name="autoDefault">
-                  <bool>false</bool>
-                 </property>
-                 <property name="default">
-                  <bool>true</bool>
-                 </property>
-                 <property name="flat">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-              </layout>
+                  </property>
+                  <property name="text">
+                   <string>↵</string>
+                  </property>
+                  <property name="iconSize">
+                   <size>
+                    <width>16</width>
+                    <height>16</height>
+                   </size>
+                  </property>
+                  <property name="autoDefault">
+                   <bool>false</bool>
+                  </property>
+                  <property name="default">
+                   <bool>true</bool>
+                  </property>
+                  <property name="flat">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLabel" name="dist_label">
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
+border-top-style: none;
+border-bottom-style: none;</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::NoFrame</enum>
+               </property>
+               <property name="text">
+                <string>Distorted</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>10</number>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="2">
+              <widget class="QLabel" name="raw_pa">
+               <property name="minimumSize">
+                <size>
+                 <width>65</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
+border-style: none;
+</string>
+               </property>
+               <property name="text">
+                <string>23</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>10</number>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::NoTextInteraction</set>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="pa_label">
+               <property name="styleSheet">
+                <string notr="true">border-style: none;</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::NoFrame</enum>
+               </property>
+               <property name="text">
+                <string>PA (deg):</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>20</number>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="2">
+              <widget class="QLabel" name="raw_sep">
+               <property name="minimumSize">
+                <size>
+                 <width>65</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
+border-left-style: none;
+border-right-style: none;</string>
+               </property>
+               <property name="text">
+                <string>50000</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>10</number>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::NoTextInteraction</set>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLabel" name="dist_sep">
+               <property name="minimumSize">
+                <size>
+                 <width>65</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::NoFrame</enum>
+               </property>
+               <property name="text">
+                <string>456.1</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>10</number>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::NoTextInteraction</set>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="sep_label">
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
+border-left-style: none;
+border-right-style: none;</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::NoFrame</enum>
+               </property>
+               <property name="text">
+                <string>Sep (mas):</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>20</number>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="2" colspan="2">
+              <widget class="QLabel" name="ra_label">
+               <property name="styleSheet">
+                <string notr="true">border-style: none</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::NoFrame</enum>
+               </property>
+               <property name="text">
+                <string>Raw</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>10</number>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::NoTextInteraction</set>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QLabel" name="dist_pa">
+               <property name="minimumSize">
+                <size>
+                 <width>65</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">border-radius: 0px;
+border-bottom-style: none;
+border-top-style: none;</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::NoFrame</enum>
+               </property>
+               <property name="text">
+                <string>23.54</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="margin">
+                <number>10</number>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::NoTextInteraction</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="dar_layout">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
+border-style: ridge;
+border-width: 1px;</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
+         </property>
+         <layout class="QHBoxLayout" name="track_on_l_4" stretch="0,0">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>10</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>10</number>
+          </property>
+          <item>
+           <layout class="QHBoxLayout" name="dar_offset_layout">
+            <item>
+             <widget class="QLabel" name="dar_offset_label">
+              <property name="styleSheet">
+               <string notr="true">border-style: none;</string>
+              </property>
+              <property name="text">
+               <string>DAR Offset:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="dar_offset_val">
+              <property name="styleSheet">
+               <string notr="true">border-style: none;</string>
+              </property>
+              <property name="text">
+               <string>23 mas</string>
+              </property>
              </widget>
             </item>
            </layout>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item row="10" column="0">
-       <widget class="QFrame" name="dar_layout">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">border-radius: 10px;
-border-style: ridge;
-border-width: 1px;</string>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::Panel</enum>
-        </property>
-        <layout class="QHBoxLayout" name="track_on_l_2" stretch="0,0">
-         <property name="leftMargin">
-          <number>10</number>
-         </property>
-         <property name="topMargin">
-          <number>15</number>
-         </property>
-         <property name="rightMargin">
-          <number>15</number>
-         </property>
-         <property name="bottomMargin">
-          <number>15</number>
-         </property>
-         <item>
-          <layout class="QHBoxLayout" name="dar_offset_layout">
-           <item>
-            <widget class="QLabel" name="dar_offset_label">
-             <property name="styleSheet">
-              <string notr="true">border-style: none;</string>
-             </property>
-             <property name="text">
-              <string>DAR Offset:</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="dar_offset_val">
-             <property name="styleSheet">
-              <string notr="true">border-style: none;</string>
-             </property>
-             <property name="text">
-              <string>23 mas</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <widget class="QPushButton" name="dar_btn">
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>20</height>
-            </size>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">QPushButton:checked { 
+          </item>
+          <item>
+           <widget class="QPushButton" name="dar_btn">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton:checked { 
 	background-color: #c1ffba;
 	border-style: inset;
 	border-radius: 0px;
@@ -1197,173 +1673,63 @@ QPushButton {
 	border-style: outset;
 	border-radius: 0px;
 }</string>
-           </property>
-           <property name="text">
-            <string>Off</string>
-           </property>
-           <property name="checkable">
-            <bool>true</bool>
-           </property>
-           <property name="autoDefault">
-            <bool>false</bool>
-           </property>
-           <property name="default">
-            <bool>false</bool>
-           </property>
-           <property name="flat">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item row="7" column="0">
-       <widget class="QLabel" name="offset_title">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::NoFrame</enum>
-        </property>
-        <property name="text">
-         <string>Offset</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-        <property name="margin">
-         <number>5</number>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="Line" name="hline2">
-        <property name="frameShadow">
-         <enum>QFrame::Plain</enum>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0" colspan="2">
-       <widget class="Line" name="hline3">
-        <property name="frameShadow">
-         <enum>QFrame::Plain</enum>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="0">
-       <widget class="Line" name="hline1">
-        <property name="frameShadow">
-         <enum>QFrame::Plain</enum>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item row="8" column="0" colspan="2">
-       <widget class="Line" name="hline4">
-        <property name="frameShadow">
-         <enum>QFrame::Plain</enum>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
+            </property>
+            <property name="text">
+             <string>Off</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <property name="autoDefault">
+             <bool>false</bool>
+            </property>
+            <property name="default">
+             <bool>false</bool>
+            </property>
+            <property name="flat">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
-   <item row="1" column="0">
-    <widget class="Log_Scale" name="logscale_box">
-     <property name="title">
-      <string>Log scale</string>
+   <item row="0" column="1" rowspan="2" colspan="4">
+    <widget class="Img" name="image">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
      </property>
-     <property name="checkable">
-      <bool>true</bool>
+     <property name="sizeIncrement">
+      <size>
+       <width>5</width>
+       <height>4</height>
+      </size>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_6">
-      <property name="topMargin">
-       <number>0</number>
-      </property>
-      <property name="bottomMargin">
-       <number>0</number>
-      </property>
-      <item>
-       <widget class="QLabel" name="max_label">
-        <property name="text">
-         <string>Max:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="log_lineedit" name="max_input"/>
-      </item>
-      <item>
-       <widget class="QLabel" name="min_label">
-        <property name="text">
-         <string>Min:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="log_lineedit" name="min_input"/>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="1" column="2">
-    <widget class="QFrame" name="horizontalFrame_3">
-     <property name="styleSheet">
-      <string notr="true">border-style: none;</string>
+     <property name="baseSize">
+      <size>
+       <width>640</width>
+       <height>512</height>
+      </size>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_5">
-      <property name="leftMargin">
-       <number>5</number>
-      </property>
-      <property name="topMargin">
-       <number>20</number>
-      </property>
-      <property name="rightMargin">
-       <number>5</number>
-      </property>
-      <item>
-       <widget class="QLabel" name="label_23">
-        <property name="styleSheet">
-         <string notr="true">border-style: none;</string>
-        </property>
-        <property name="text">
-         <string>Hmag:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="lineEdit_3">
-        <property name="styleSheet">
-         <string notr="true">border-style: none;</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="checkBox">
-        <property name="text">
-         <string>Overlay</string>
-        </property>
-        <property name="checked">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="pixmap">
+      <pixmap>Trippy-Phone-Wallpapers-036.jpg</pixmap>
+     </property>
+     <property name="scaledContents">
+      <bool>false</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
     </widget>
    </item>
   </layout>
@@ -1381,19 +1747,30 @@ QPushButton {
    <header>Viewer_Widgets.h</header>
   </customwidget>
   <customwidget>
-   <class>Log_Scale</class>
-   <extends>QGroupBox</extends>
-   <header>Viewer_Widgets.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>log_lineedit</class>
-   <extends>QLineEdit</extends>
+   <class>Scale_chk_box</class>
+   <extends>QCheckBox</extends>
    <header>Viewer_Widgets.h</header>
   </customwidget>
  </customwidgets>
  <resources>
   <include location="no_img.qrc"/>
  </resources>
- <connections/>
+ <connections>
+  <connection>
+   <sender>minimize_btn</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>interfaces</receiver>
+   <slot>setVisible(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>890</x>
+     <y>348</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>623</x>
+     <y>337</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
 </ui>

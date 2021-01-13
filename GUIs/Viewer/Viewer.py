@@ -5,13 +5,14 @@ from time import sleep
 import sys
 
 # installs
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QFrame, QComboBox
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QTabWidget
 from PyQt5 import uic
 
-# custom widgets
+# nfiuserver libraries
 from Viewer_Widgets import *
+from Track_Cam_process import TC_process
 
-resource_path = "/Users/tobias/Documents/Git/KPIC/GUIs/Viewer/resources"
+resource_path = "/Transfer/Viewer/resources"
 
 class Stack(QWidget):
 
@@ -20,27 +21,40 @@ class Stack(QWidget):
 
         super().__init__()
 
+        # instantiate TC_process class
+        self.proc = TC_process()
+
         uic.loadUi("{}/Viewer.ui".format(resource_path), self)
 
         # setup widgets after elements are loaded
-        self.findChild(Loc_Selection, "psf_loc_frame").setup()
+        self.interfaces = self.findChild(QTabWidget, "interfaces")
 
+        # setup widgets in Tracking tab
+        self.interfaces.findChild(Loc_Selection, "psf_loc_frame").setup()
+
+        # setup widgets in Processing tab
+        log_scl = self.interfaces.findChild(Scale_chk_box, "log_scl")
+        sqrt_scl = self.interfaces.findChild(Scale_chk_box, "sqrt_scl")
+
+        scls = [log_scl, sqrt_scl]
+        log_scl.setup(scls, self.proc.use_log_scale)
+        sqrt_scl.setup(scls, self.proc.use_sqrt_scale)
+
+        # setup minimize interface button
         self.min_btn = self.findChild(QPushButton, "minimize_btn")
         self.min_btn.clicked.connect(self.btn_click)
 
-        self.log_box = self.findChild(Log_Scale, "logscale_box")
-        self.log_box.setup()
-
-        self.ctrl_pnl = self.findChild(QFrame, "ctrl_frame")
+        #self.log_box = self.interfaces.findChild(Log_Scale, "logscale_box")
+        #self.log_box.setup()
 
         self.img_label = self.findChild(QLabel, "image")
 
         self.resize(self.minimumWidth(), self.minimumHeight())
         self.show()
 
-        self.log = self.log_box.isChecked
-        self.img_max = lambda : self.log_box.max
-        self.img_min = lambda : self.log_box.min
+        #self.log = self.log_box.isChecked
+        #self.img_max = lambda : self.log_box.max
+        #self.img_min = lambda : self.log_box.min
 
         self.setWindowTitle("KPIC Display")
     
@@ -51,13 +65,11 @@ class Stack(QWidget):
         width = self.geometry().width()
 
         if self.min_btn.isChecked():
-            self.ctrl_pnl.show()
             self.min_btn.setText("<")
-            width += self.ctrl_pnl.geometry().width()
+            width += self.interfaces.geometry().width()
         else:
-            self.ctrl_pnl.hide()
             self.min_btn.setText(">")
-            width -= self.ctrl_pnl.geometry().width()
+            width -= self.interfaces.geometry().width()
 
         app.processEvents()
         self.resize(width, self.geometry().height())
