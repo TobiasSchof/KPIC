@@ -1,6 +1,6 @@
 import os
 
-from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QFrame, QComboBox, QGroupBox, QHBoxLayout
+from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QFrame, QComboBox, QGroupBox, QHBoxLayout, QCheckBox
 from PyQt5.QtCore import Qt, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator
 from PyQt5 import uic
@@ -80,7 +80,7 @@ class Img(QLabel):
 
         self.setPixmap(self.placeholder)
 
-        self.Img = "/tmp/Track_Cam/RAWIMG.im.shm"
+        self.Img = "/tmp/Track_Cam/PROCIMG.im.shm"
 
         self.timer.timeout.connect(self.update)
         self.timer.start(self.refresh_rate)
@@ -92,13 +92,9 @@ class Img(QLabel):
             if type(self.Img) is str:
                 self.Img = Shm(self.Img)
 
-            raw_img = self.Img.get_data()
-            if self.parent().log():
-                raw_img = np.log10(np.clip(raw_img, 1, None)).astype(np.float16)
-                if self.parent().img_min() is not None or self.parent().img_max() is not None:
-                    raw_img = np.clip(raw_img, self.parent().img_min(), self.parent().img_max())
+            img = self.Img.get_data()
 
-            self.unscaled_img = QPixmap(QImage(raw_img, self.Img.mtdata["size"][0],
+            self.unscaled_img = QPixmap(QImage(img, self.Img.mtdata["size"][0],
                 self.Img.mtdata["size"][1], QImage.Format_Grayscale16))
             self.scaled_img = self.unscaled_img.scaled(self.width(), self.height(), Qt.KeepAspectRatio)
 
@@ -106,22 +102,12 @@ class Img(QLabel):
         except:
             if type(self.Img) is not str and not os.path.exists(self.Img.fname):
                 self.Img = self.Img.fname
-            if self.unscaled_img != self.placeholder:
-                self.unscaled_img = self.placeholder
-                self.scaled_img = self.unscaled_img.scaled(self.width(), self.height(), Qt.KeepAspectRatio)
-                self.setPixmap(self.scaled_img)
 
-        self.timer.start(self.refresh_rate)
-
-    def resizeEvent(self, event):
-        """Changes the resize event to scale picture keeping aspect ratio"""
-
-        super().resizeEvent(event)
-
-        # resize event is called in constructor, before base_img is defined
-        if not self.unscaled_img is None:
+            self.unscaled_img = self.placeholder
             self.scaled_img = self.unscaled_img.scaled(self.width(), self.height(), Qt.KeepAspectRatio)
             self.setPixmap(self.scaled_img)
+
+        self.timer.start(self.refresh_rate)
 
     def minimumSizeHint(self):
         """Returns the size of the unscaled image as a minimum size"""
@@ -131,27 +117,38 @@ class Img(QLabel):
         except:
             return QSize(640, 512)
 
-class Log_Scale(QGroupBox):
-    """A widget to toggle the log scale on the image"""
+class Scale_chk_box(QCheckBox):
+    """A widget to toggle a scale on the image"""
 
     def __init__(self, *args, **kwargs):
-        """Constructor for log scale component"""
+        """Constructor for scale chk box component"""
 
         # run super constructor
         super().__init__(*args, **kwargs)
 
-    def setup(self):
-        """A method to set up the input boxes"""
+    def setup(self, all_scales:list, my_scale):
+        """A method to set up the scale checkboxes
+        
+        Args:
+            all_scales = a list of all Scale_chk_boxes (including this one)
+            my_scale   = the method to turn the correct scale on/off
+        """
 
-        # collect relevant parts
-        self.__min = self.findChild(log_lineedit, "min_input")
-        self.__max = self.findChild(log_lineedit, "max_input")
+        # get sqrt scale checkbox
+        self.chkboxes = all_scales[:]
+        self.chkboxes.remove(self)
 
-        self.__min.setValidator(log_lineedit.log_validator(parent_scope=self, which='min'))
-        self.__max.setValidator(log_lineedit.log_validator(parent_scope=self, which='max'))
+        self.my_scale = my_scale
+        self.toggled.connect(self.act)
 
-        self.min = None
-        self.max = None
+    def act(self, toggled:bool):
+        """A method that turns on/off the relevant scale and, if turning
+            on, turns off any other scales"""
+
+        if toggled:
+            for chkbox in self.chkboxes:
+                chkbox.setChecked(False)
+        self.my_scale(toggled)
 
 class log_lineedit(QLineEdit):
     """A QLineEdit that reverts text if focus is lost with intermediate input"""
@@ -160,7 +157,15 @@ class log_lineedit(QLineEdit):
 
         super().__init__(*args, **kwargs)
 
+        # field to hold last valid input
         self.last_valid = ""
+        # field to hold current value
+        self.val = None
+
+    def setup(self):
+        """A method to setup the line edit"""
+
+        self.setValidator(log_lineedit.log_validator())
 
     def focusOutEvent(self, QFocusEvent):
         """Override to revert text if it is in 'Intermediate' state"""
@@ -191,8 +196,7 @@ class log_lineedit(QLineEdit):
             """sets the min value in the log_scale parent of this validator"""
 
             if text == "":
-                if self.role == 'min': self.p_sc.min = None
-                else: self.p_sc.max = None
+                self.p_sc.val = None
                 return QValidator.Acceptable, text, pos
 
             _state = QValidator.Invalid
@@ -202,12 +206,11 @@ class log_lineedit(QLineEdit):
                 if self.role == 'max': _state = QValidator.Intermediate
             except: return _state, text, pos
 
-            if (self.role == 'min' and (self.p_sc.max is None or num < self.p_sc.max))\
-                or (self.role == 'max' and (self.p_sc.min is None or num > self.p_sc.min)):
+            if (self.role == 'min' and (self.p_sc.val is None or num < self.p_sc.val))\
+                or (self.role == 'max' and (self.p_sc.val is None or num > self.p_sc.val)):
 
                 _state = QValidator.Acceptable
 
-                if self.role == 'min': self.p_sc.min = num
-                else: self.p_sc.max = num
+                self.p_sc.val = num
 
             return _state, text, pos
