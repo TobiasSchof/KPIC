@@ -8,6 +8,7 @@ from time import sleep
 from astropy.io import fits
 
 # nfiuserver libraries
+from KPIC_shmlib import Shm
 from Track_Cam_cmds import TC_cmds
 from dev_Exceptions import *
 
@@ -17,7 +18,7 @@ class TC_process:
     Method list:
     Queries:
         is_active
-        is_processesing
+        is_processing
         is_log_scale
         is_sqrt_scale
         get_range
@@ -58,7 +59,7 @@ class TC_process:
         if RELDIR == "": raise Exception("$RELDIR not found")
         if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
-        self.config = ConfigParser
+        self.config = ConfigParser()
         self.config.read(RELDIR + "/data/Track_Cam_process.ini")
 
         # get file paths for shms
@@ -89,7 +90,7 @@ class TC_process:
 
         return type(self.Set) is not str
 
-    def is_processesing(self):
+    def is_processing(self):
         """Method to determine whether the control script is processing images
 
         Returns:
@@ -247,21 +248,35 @@ class TC_process:
 
         self._check_alive()
 
-        self.Scale(np.array([0], self.Scale.npdtype))
+        self.Scale.set_data(np.array([0], self.Scale.npdtype))
 
-    def use_log_scale(self):
-        """A method to set scale to use log scale"""
-
-        self._check_alive()
-
-        self.Scale(np.array([1], self.Scale.npdtype))
-
-    def use_sqrt_scale(self):
-        """A method to set scale to use sqrt scale"""
+    def use_log_scale(self, use:bool=True):
+        """A method to set scale to use log scale
+        
+        Args:
+            use = if True, sets to log scale, if False clears scale if scale
+                is log scale, does nothing otherwise
+        """
 
         self._check_alive()
 
-        self.Scale(np.array([2], self.Scale.npdtype))
+        if use: self.Scale.set_data(np.array([1], self.Scale.npdtype))
+        elif self.Scale.get_data()[0] == 1:
+            self.Scale.set_data(np.array([0], self.Scale.npdtype))
+
+    def use_sqrt_scale(self, use:bool=True):
+        """A method to set scale to use sqrt scale
+        
+        Args:
+            use = if True, sets to sqrt scale, if False clears scale if scale
+                is log scale, does nothing otherwise
+        """
+
+        self._check_alive()
+
+        if use: self.Scale.set_data(np.array([2], self.Scale.npdtype))
+        elif self.Scale.get_data()[0] == 2:
+            self.Scale.set_data(np.array([0], self.Scale.npdtype))
     
     def use_custom_range(self, min:int=None, max:int=None):
         """A method to set a custom scale (min and max clip)
@@ -460,13 +475,13 @@ class TC_process:
     def _check_alive(self):
         """A method to raise an error if the control script is not active"""
 
-        if not self.is_active:
+        if not self.is_active():
             raise ScriptOff("No active control script. Use activate_control_script().")
-    
+
     def _check_alive_and_processing(self):
         """A method to raise an error if the control script is not processing images"""
 
-        self._check_alive(self)
+        self._check_alive()
         
         if not self.is_processing():
             raise ProcessingOff("Processing is off. Please turn on and try again.")
