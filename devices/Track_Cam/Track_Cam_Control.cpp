@@ -197,6 +197,8 @@ void cam_connect(){
         uint8_t stat;
         stat = (led << 3) + (fan << 2) + (1 << 1) + 1;
         Stat_D->set_data(&stat);
+
+        // also set stat_p so updates are noticed
     }
 
     // start grabber
@@ -246,7 +248,7 @@ void cam_off(){
 
     // request nps to turn off power
     // prepare camera bit
-    uint8_t cam = (1 << (TC_PORT - 1));
+    //uint8_t cam = (1 << (TC_PORT - 1));
 
     // get current NPS D Shm
     uint8_t stat;
@@ -482,11 +484,12 @@ void handle_stat(){
 
     // wait for shm to be updated so we can end loop with wait
     Stat_P->get_data(&stat, true);
-    old = 1;
+    Stat_D->get_data(&old);
 
     while (alive){
 
         // if nothing has changed, do nothing
+        Stat_D->get_data(&old);
         if (old == stat){
             Stat_P->get_data(&stat, true);
             continue;
@@ -498,7 +501,12 @@ void handle_stat(){
         // if camera bit is 1 and camera is not on, turn on
         if ((stat & (1 << 1)) && !camConnected){ cam_on(); }
         // if camera bit is 0 and camera is on, turn off
-        else if (!(stat & (1 << 1)) && camConnected){ cam_off(); continue; }
+        else if (!(stat & (1 << 1)) && camConnected){ 
+            cam_off(); 
+            // wait for an update to shm
+            Stat_P->get_data(&stat, true);
+            continue;
+        }
 
         bool fan_a = false;
         bool led_a = false;
@@ -553,7 +561,6 @@ void handle_stat(){
         Stat_D->set_data(&data);
 
         // wait for an update to shm
-        old = stat;
         Stat_P->get_data(&stat, true);
     }
 
