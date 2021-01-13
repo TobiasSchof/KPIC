@@ -197,8 +197,6 @@ void cam_connect(){
         uint8_t stat;
         stat = (led << 3) + (fan << 2) + (1 << 1) + 1;
         Stat_D->set_data(&stat);
-
-        // also set stat_p so updates are noticed
     }
 
     // start grabber
