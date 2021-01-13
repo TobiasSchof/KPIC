@@ -599,7 +599,7 @@ class TC_cmds:
 
         self._check_alive_and_connected()
 
-        try:self.Stat_P.set_data(array([1], self.Stat_P.npdtype))
+        try: self.Stat_P.set_data(array([1], self.Stat_P.npdtype))
         except: raise ShmError("Stat P shm may be corrupted. Please kill control script and start again.")
 
         # make a counter to cap wait time at 2 min
@@ -625,9 +625,19 @@ class TC_cmds:
             raise ScriptAlreadActive("Tracking camera control script already alive.")
 
         command = self.config.get("Environment", "start_command").split("|")
-        # provide a sleep time so tmux session has chance to start before 
-        #   next command is sent
-        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
+        for cmd in command:
+            # an array to hold the processed command
+            proc_cmd = []
+            # split by " to get command to send
+            tmp = cmd.split('"')
+            for idx, word in enumerate(tmp):
+                # if index is 1 mod 2, this was in quotes
+                if idx % 2 == 1: proc_cmd += [word]
+                else: proc_cmd += word.split(" ")
+
+            Popen(proc_cmd)
+            # add a sleep to give tmux time to initialize after new commands
+            sleep(.1)
 
     def _check_alive(self):
         """A method to throw an exception if control script is not alive"""
