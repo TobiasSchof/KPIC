@@ -54,6 +54,9 @@ def main():
         # copy avg to new array to modify
         proc = avg.copy()
 
+        # first four pixels are tags, so copy fifth bit to overwrite
+        proc[0][:4] = proc[0][4]
+
         # try to subtract bias
         if Set.get_data()[0] & 2:
             try: proc = proc - Bias.get_data()
@@ -91,7 +94,7 @@ def main():
         else: rng[1] = proc.max()
 
         # clip if using any custom values
-        if max_u or min_u: proc.clip(min if min_u else None, max if max_u else None)
+        if max_u or min_u: proc.clip(rng[0] if min_u else None, rng[1] if max_u else None)
 
         # save frame's min and max values
         DRng.set_data(np.array(rng, DRng.npdtype))
@@ -100,7 +103,7 @@ def main():
         if err != 0 or err != Error.get_data():
             Error.set_data(np.array([err], Error.npdtype))
 
-        Proc.set_data(proc.astype(np.float16))
+        Proc.set_data(proc.astype(np.int16))
 
 def roll_avg(avg:np.array, raw:list):
     """A method that refreshes the average

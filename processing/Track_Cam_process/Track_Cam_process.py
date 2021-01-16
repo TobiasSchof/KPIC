@@ -1,5 +1,6 @@
 # standard library
 from configparser import ConfigParser
+from subprocess import Popen
 import os
 
 # installs
@@ -30,6 +31,7 @@ class TC_process:
     Command:
         grab_n
         set_processing
+        set_range
         clear_scale
         use_log_scale
         use_sqrt_scale
@@ -229,6 +231,42 @@ class TC_process:
         if path is not None: block.writeto(path)
 
         return block
+
+    def set_range(self, min:int="no change", max:int="no change"):
+        """Sets the min and/or max values for clipping
+
+        NOTE: None as a value indicates to just use min/max value in frame (turn off 
+            custom range), 'no change' as a value indicates to keep current settings
+
+        Args:
+            min = an int to set a minimum pixel value, 
+                  None to use frame's minimum,
+                  or 'no change' (default) to keep current settings
+            max = an int to set a maximum pixel value,
+                  None to use frame's maximum,
+                  or 'no change' (default) to keep current settings
+        """
+
+        self._check_alive_and_processing()
+
+        rng = self.PRng.get_data()
+
+        if str(min) != "no change":
+            if min is None: rng[0] = 0
+            else:
+                try:
+                    rng[1] = int(min)
+                    rng[0] = 1
+                except ValueError: raise ValueError("min must be an int, None, or 'no change'.")
+        if str(max) != "no change":
+            if max is None: rng[2] = 0
+            else:
+                try:
+                    rng[3] = int(max)
+                    rng[2] = 1
+                except ValueError: raise ValueError("max must be an int, None, or 'no change'.")
+
+        self.PRng.set_data(rng)
 
     def set_processing(self, proc:bool=True):
         """A method to set processing on or off
@@ -465,12 +503,22 @@ class TC_process:
         """A method to start the control script for Tracking Camera processing"""
 
         if self.is_active():
-            raise ScriptAlreadActive("Tracking camera processessing control script already alive.")
+            raise ScriptAlreadActive("Tracking camera processing control script already alive.")
 
         command = self.config.get("Environment", "start_command").split("|")
-        # provide a sleep time so tmux session has chance to start before 
-        #   next command is sent
-        for cmd in command: Popen(cmd.split(" ")); sleep(.1)
+        for cmd in command:
+            # an array to hold the processed command
+            proc_cmd = []
+            # split by " to get command to send
+            tmp = cmd.split('"')
+            for idx, word in enumerate(tmp):
+                # if index is 1 mod 2, this was in quotes
+                if idx % 2 == 1: proc_cmd += [word]
+                else: proc_cmd += word.split(" ")
+
+            Popen(proc_cmd)
+            # add a sleep to give tmux time to initialize after new commands
+            sleep(.1)
 
     def _check_alive(self):
         """A method to raise an error if the control script is not active"""
