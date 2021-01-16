@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>910</width>
-    <height>697</height>
+    <width>1110</width>
+    <height>669</height>
    </rect>
   </property>
   <property name="focusPolicy">
@@ -16,8 +16,33 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QGridLayout" name="gridLayout" rowstretch="10,0,0,0" columnstretch="0,0,10,0,0,0,0">
-   <item row="0" column="6" rowspan="4">
+  <property name="styleSheet">
+   <string notr="true"/>
+  </property>
+  <layout class="QGridLayout" name="gridLayout" rowstretch="10,0,0" columnstretch="0,0,0,0,0,0">
+   <item row="0" column="0" colspan="4">
+    <widget class="Img" name="image" native="true">
+     <property name="styleSheet">
+      <string notr="true">border-style: solid;
+border-width: 1px;
+border-color: black;</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="2">
+    <spacer name="hmag_overlay_spacer">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>40</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="0" column="5" rowspan="3">
     <widget class="QPushButton" name="minimize_btn">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
@@ -56,17 +81,7 @@ QPushButton {
      </property>
     </widget>
    </item>
-   <item row="2" column="4">
-    <widget class="QCheckBox" name="overlay">
-     <property name="text">
-      <string>Overlay</string>
-     </property>
-     <property name="checked">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item row="2" column="1">
+   <item row="1" column="0">
     <widget class="QLabel" name="hmag_label">
      <property name="styleSheet">
       <string notr="true">border-style: none;</string>
@@ -76,7 +91,17 @@ QPushButton {
      </property>
     </widget>
    </item>
-   <item row="2" column="2">
+   <item row="1" column="3">
+    <widget class="QCheckBox" name="overlay">
+     <property name="text">
+      <string>Overlay</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
     <widget class="QLineEdit" name="hmag_field">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -85,24 +110,13 @@ QPushButton {
       </sizepolicy>
      </property>
      <property name="styleSheet">
-      <string notr="true">border-style: none;</string>
+      <string notr="true">border-color: black;
+border-width: 1px;
+border-style: solid;</string>
      </property>
     </widget>
    </item>
-   <item row="2" column="3">
-    <spacer name="hmag_overlay_spacer">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>40</width>
-       <height>20</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item row="0" column="5" rowspan="3">
+   <item row="0" column="4" rowspan="2">
     <widget class="QTabWidget" name="interfaces">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -191,6 +205,9 @@ QTabBar::tab:only-one {
      <property name="currentIndex">
       <number>0</number>
      </property>
+     <property name="elideMode">
+      <enum>Qt::ElideLeft</enum>
+     </property>
      <property name="usesScrollButtons">
       <bool>false</bool>
      </property>
@@ -198,8 +215,115 @@ QTabBar::tab:only-one {
       <attribute name="title">
        <string>Processing</string>
       </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_2">
-       <item>
+      <layout class="QGridLayout" name="gridLayout_2">
+       <item row="4" column="1">
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <property name="spacing">
+          <number>-1</number>
+         </property>
+         <item>
+          <widget class="Gradient" name="viridis" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>viridis</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Gradient" name="plasma" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>plasma</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Gradient" name="inferno" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>inferno</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Gradient" name="magma" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>magma</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="2" column="1">
         <widget class="QLabel" name="scale_label">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -227,93 +351,7 @@ border-right-style: none;</string>
          </property>
         </widget>
        </item>
-       <item>
-        <widget class="QFrame" name="scl_frame">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="styleSheet">
-          <string notr="true">border-radius: 10px;
-border-style: ridge;
-border-width: 1px;</string>
-         </property>
-         <property name="frameShape">
-          <enum>QFrame::Panel</enum>
-         </property>
-         <layout class="QGridLayout" name="gridLayout_11" columnstretch="3,1,1">
-          <property name="leftMargin">
-           <number>10</number>
-          </property>
-          <property name="topMargin">
-           <number>15</number>
-          </property>
-          <property name="rightMargin">
-           <number>15</number>
-          </property>
-          <property name="bottomMargin">
-           <number>15</number>
-          </property>
-          <item row="1" column="2">
-           <widget class="QLineEdit" name="max_scl">
-            <property name="styleSheet">
-             <string notr="true">border-radius: 0px;</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLabel" name="max_scl_label">
-            <property name="styleSheet">
-             <string notr="true">border-style:none;</string>
-            </property>
-            <property name="text">
-             <string>Max:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="Scale_chk_box" name="sqrt_scl">
-            <property name="styleSheet">
-             <string notr="true">border-style:none;</string>
-            </property>
-            <property name="text">
-             <string>square root</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="Scale_chk_box" name="log_scl">
-            <property name="styleSheet">
-             <string notr="true">border-style:none;</string>
-            </property>
-            <property name="text">
-             <string>log</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLabel" name="min_scl_label">
-            <property name="styleSheet">
-             <string notr="true">border-style:none;</string>
-            </property>
-            <property name="text">
-             <string>Min:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="2">
-           <widget class="QLineEdit" name="min_scl">
-            <property name="styleSheet">
-             <string notr="true">border-radius: 0px;</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
+       <item row="0" column="1">
         <widget class="QLabel" name="frm_sub_label">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -341,7 +379,7 @@ border-right-style: none;</string>
          </property>
         </widget>
        </item>
-       <item>
+       <item row="1" column="1">
         <widget class="QFrame" name="subtraction_frame">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -532,22 +570,61 @@ QPushButton:pressed {
          </layout>
         </widget>
        </item>
-       <item>
-        <spacer name="subtraction_fram_spacer">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
+       <item row="3" column="1">
+        <widget class="QFrame" name="scl_frame">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
+         <property name="styleSheet">
+          <string notr="true">border-radius: 10px;
+border-style: ridge;
+border-width: 1px;</string>
          </property>
-        </spacer>
+         <property name="frameShape">
+          <enum>QFrame::Panel</enum>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_11" columnstretch="0,0">
+          <property name="leftMargin">
+           <number>10</number>
+          </property>
+          <property name="topMargin">
+           <number>10</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>10</number>
+          </property>
+          <item row="0" column="1" alignment="Qt::AlignLeft">
+           <widget class="Scale_chk_box" name="sqrt_scl">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>square root</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" alignment="Qt::AlignHCenter">
+           <widget class="Scale_chk_box" name="log_scl">
+            <property name="styleSheet">
+             <string notr="true">border-style:none;</string>
+            </property>
+            <property name="text">
+             <string>log</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="interfacesPage2">
+     <widget class="QWidget" name="Tracking">
       <attribute name="title">
        <string>Tracking</string>
       </attribute>
@@ -1698,40 +1775,6 @@ QPushButton {
      </widget>
     </widget>
    </item>
-   <item row="0" column="1" rowspan="2" colspan="4">
-    <widget class="Img" name="image">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="sizeIncrement">
-      <size>
-       <width>5</width>
-       <height>4</height>
-      </size>
-     </property>
-     <property name="baseSize">
-      <size>
-       <width>640</width>
-       <height>512</height>
-      </size>
-     </property>
-     <property name="text">
-      <string/>
-     </property>
-     <property name="pixmap">
-      <pixmap>Trippy-Phone-Wallpapers-036.jpg</pixmap>
-     </property>
-     <property name="scaledContents">
-      <bool>false</bool>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignCenter</set>
-     </property>
-    </widget>
-   </item>
   </layout>
  </widget>
  <customwidgets>
@@ -1742,14 +1785,21 @@ QPushButton {
    <container>1</container>
   </customwidget>
   <customwidget>
-   <class>Img</class>
-   <extends>QLabel</extends>
-   <header>Viewer_Widgets.h</header>
-  </customwidget>
-  <customwidget>
    <class>Scale_chk_box</class>
    <extends>QCheckBox</extends>
    <header>Viewer_Widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Img</class>
+   <extends>QWidget</extends>
+   <header>Viewer_Widgets.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>Gradient</class>
+   <extends>QWidget</extends>
+   <header>Viewer_Widgets.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>

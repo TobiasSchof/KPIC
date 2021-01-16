@@ -1,14 +1,20 @@
 import os
 
-from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QFrame, QComboBox, QGroupBox, QHBoxLayout, QCheckBox
-from PyQt5.QtCore import Qt, QTimer, QSize
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator
+from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton
+from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile 
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator 
 from PyQt5 import uic
+from PIL import Image
+from time import time
+from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
+import pyqtgraph as pg
 import numpy as np
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
 import resources.no_img
+
+resource_path = "/Transfer/Viewer/resources"
 
 class Loc_Selection(QFrame):
     """A class to represent the QFrame holding PSF location information in the KPIC GUI"""
@@ -44,7 +50,7 @@ class Loc_Selection(QFrame):
         else:
             self.input_frame.hide()
 
-class Img(QLabel):
+class Img(pg.GraphicsView):
     """A widget to display the image and maintain aspect ratio while changing size"""
 
     def __init__(self, *args, refresh_rate:int = 40, **kwargs):
@@ -56,66 +62,81 @@ class Img(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # save copy of placeholder image for if img file is old
-        #   or doesn't exist
-        self.placeholder = None
-        # save copy of unscaled image so that we can rescale GUI
-        self.unscaled_img = None
-        # save copy of scaled image
-        self.scaled_img = None
-
         # store refresh rate
         self.refresh_rate = refresh_rate
 
+        # set a single-shot timer to setup the image widget
         self.timer = QTimer()
+        self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.setup)
         self.timer.start(10)
 
     def setup(self):
-        """Saves an unscaled image"""
+        """Sets up the image view and puts in a placeholder image"""
 
-        self.placeholder = QPixmap(":/placeholder/no_img.jpg")
-        self.unscaled_img = self.placeholder
-        self.scaled_img = self.unscaled_img.scaled(self.width(), self.height(), Qt.KeepAspectRatio)
+        # get a pyqtgraph viewbox
+        self.vb = pg.ViewBox()
+        # make the viewbox this central item
+        self.setCentralItem(self.vb)
+        # lock aspect ratio
+        self.vb.setAspectLocked()
+        # put an image item in this viewbox
+        self.img = pg.ImageItem()
+        self.vb.addItem(self.img)
+        # extract placeholder image
+        tempDir = QTemporaryDir()
+        tmpfile = tempDir.path() + "/placeholder.jpg"
+        QFile.copy(":/placeholder/no_img.jpg", tmpfile)
+        self.placeholder = Image.open(tmpfile)
+        # image comes in rotated, so rotate to correct orientation
+        self.placeholder = self.placeholder.rotate(270)
+        # convert to numpy array
+        self.placeholder = np.array(self.placeholder.getdata()).reshape(self.placeholder.size[1],
+            self.placeholder.size[0], 3)
+        self.img.setImage(self.placeholder)
+        # delete temporary dir
+        tempDir.remove()
+        tempDir = None
+        tmpfile = None
 
-        self.setPixmap(self.placeholder)
+        # set grey-scale colormap
+        self.no_lup = Gradients["grey"]
+        self.no_lup = pg.ColorMap([c[0] for c in self.no_lup['ticks']],
+                           [c[1] for c in self.no_lup['ticks']],
+                            mode = self.no_lup['mode'])
+        self.no_lup = self.no_lup.getLookupTable()
+        self.img.setLookupTable(self.no_lup)
 
-        self.Img = "/tmp/Track_Cam/PROCIMG.im.shm"
+        # a variable to store the currently active gradient widget
+        self.grad_widg = None
 
+        # connect to shm
+        self.Img_shm = "/tmp/Track_Cam/PROCIMG.im.shm"
+
+        # start a repeating timer to trigger update
         self.timer.timeout.connect(self.update)
+        self.timer.timeout.disconnect(self.setup)
+        self.timer.setSingleShot(False)
         self.timer.start(self.refresh_rate)
 
     def update(self):
         """Method to try to fetch a new image"""
 
         try:
-            if type(self.Img) is str:
-                self.Img = Shm(self.Img)
+            if type(self.Img_shm) is str:
+                self.Img_shm = Shm(self.Img_shm)
 
-            img = self.Img.get_data()
+            self.Img_shm.read_meta_data()
+            # if image is at least two minutes old, use placeholder
+            if time() - self.Img_shm.mtdata["atime_sec"] > 120: assert 0 == 1
 
-            self.unscaled_img = QPixmap(QImage(img, self.Img.mtdata["size"][0],
-                self.Img.mtdata["size"][1], QImage.Format_Grayscale16))
-            self.scaled_img = self.unscaled_img.scaled(self.width(), self.height(), Qt.KeepAspectRatio)
+            self.img.setImage(self.Img_shm.get_data(reform=True))
 
-            self.setPixmap(self.scaled_img)
         except:
-            if type(self.Img) is not str and not os.path.exists(self.Img.fname):
-                self.Img = self.Img.fname
+            if type(self.Img_shm) is not str and not os.path.exists(self.Img_shm.fname):
+                self.Img_shm = self.Img_shm.fname
 
-            self.unscaled_img = self.placeholder
-            self.scaled_img = self.unscaled_img.scaled(self.width(), self.height(), Qt.KeepAspectRatio)
-            self.setPixmap(self.scaled_img)
-
-        self.timer.start(self.refresh_rate)
-
-    def minimumSizeHint(self):
-        """Returns the size of the unscaled image as a minimum size"""
-
-        try:
-            return QSize(self.unscaled_img.width(), self.unscaled_img.height())
-        except:
-            return QSize(640, 512)
+            self.img.setImage(self.placeholder)
 
 class Scale_chk_box(QCheckBox):
     """A widget to toggle a scale on the image"""
@@ -150,67 +171,226 @@ class Scale_chk_box(QCheckBox):
                 chkbox.setChecked(False)
         self.my_scale(toggled)
 
-class log_lineedit(QLineEdit):
+class Scale_rng_input(QLineEdit):
     """A QLineEdit that reverts text if focus is lost with intermediate input"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, refresh_rate:int = 500, **kwargs):
 
         super().__init__(*args, **kwargs)
 
         # field to hold last valid input
         self.last_valid = ""
-        # field to hold current value
-        self.val = None
+        # field to hold refresh rate
+        self.refresh_rate = refresh_rate
 
-    def setup(self):
-        """A method to setup the line edit"""
+    def setup(self, proc, role:str):
+        """A method to setup the line edit
+        
+        Args:
+            proc = an instance of TC_process to get/set min/max values
+            role = 'min' or 'max' depending on which range box this is
+        """
 
-        self.setValidator(log_lineedit.log_validator())
+        self.role = role
+        if self.role == "min":
+            # a lambda function to check that value is less than max
+            self.check = lambda x : x <= proc.get_range()[1]
+            # a lambda function to get current min value
+            self.val   = lambda : proc.get_range()[0]
+            # a lambda function to set the min value (None to turn off)
+            self.set   = lambda x : proc.set_range(min=x)
+        elif self.role == "max":
+            # a lambda function to check that value is greater than max
+            self.check = lambda x : x >= proc.get_range()[1]
+            # a lambda function to get current max value
+            self.val   = lambda : proc.get_range()[1]
+            # a lambda function to set the max value (None to turn off)
+            self.set   = lambda x : proc.set_range(max=x)
+        else:
+            raise ValueError("Only 'min' and 'max' roles are valid")
+        try: self.last_valid = self.val()
+        except: self.last_valid = "---"
+        
+        self.setValidator(Scale_rng_input.rng_validator(le = self))
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """A method to update the current min and max value if a custom value
+            isn't requested"""
+
+        try:
+            self.setText(str(self.val()))
+            self.last_valid = self.val()        
+        except:
+            self.setText("---")
 
     def focusOutEvent(self, QFocusEvent):
         """Override to revert text if it is in 'Intermediate' state"""
 
         _state, _, _ = self.validator().validate(self.text(), self.pos())
-        if _state == QValidator.Intermediate: self.setText(self.last_valid)
+        if _state == QValidator.Intermediate: self.setText(str(self.last_valid))
         elif _state == QValidator.Acceptable: self.last_valid = self.text()
 
         super().focusOutEvent(QFocusEvent)
 
-    class log_validator(QValidator):
+    class rng_validator(QValidator):
         """A validator to validate the min value for the log scale"""
 
-        def __init__(self, *args, parent_scope, which, **kwargs):
+        def __init__(self, *args, le, **kwargs):
             """Stores the QGroubBox this belongs to
 
             Args:
-                parent_scope = the groupbox that this exists within
-                which = one of 'min' or 'max'
+                le = the lineedit that this validator is to validate
             """
 
             super().__init__(*args, **kwargs)
 
-            self.p_sc = parent_scope
-            self.role = which
+            self.p_le = le
 
         def validate(self, text:str, pos:str):
             """sets the min value in the log_scale parent of this validator"""
 
-            if text == "":
-                self.p_sc.val = None
-                return QValidator.Acceptable, text, pos
+            # blank text is not valid, but we want to allow users to clear text box
+            if text == "": return QValidator.Intermediate, text, pos
 
+            # default to invalid
             _state = QValidator.Invalid
             try: 
+                # check if text can be cast as an int
                 num = int(text)
                 # intermediate will be rejected on focus loss
-                if self.role == 'max': _state = QValidator.Intermediate
+                #   we want intermediate for max so you can clear number and then input
+                #   we don't want it for min so you shouldn't be typing a number that's too large
+                if self.p_le.role == 'max': _state = QValidator.Intermediate
             except: return _state, text, pos
 
-            if (self.role == 'min' and (self.p_sc.val is None or num < self.p_sc.val))\
-                or (self.role == 'max' and (self.p_sc.val is None or num > self.p_sc.val)):
-
+            if self.p_le.check(num):
                 _state = QValidator.Acceptable
-
-                self.p_sc.val = num
+                if self.p_le.isEnabled(): self.p_le.set(num)
+                self.p_le.last_valid = num
 
             return _state, text, pos
+
+class Scale_rng_chk_box(QCheckBox):
+    """A class to handle the min/max scale range checkboxes"""
+
+    def __init__(self, *args, **kwargs):
+        """Constructor for scale rng chk box component"""
+
+        # run super constructor
+        super().__init__(*args, **kwargs)
+
+    def setup(self, my_scale):
+        """A method to set up the scale checkboxes
+        
+        Args:
+            my_scale   = the method to turn the currect field on/off
+        """
+
+        self.my_scale = my_scale
+        self.toggled.connect(self.act)
+
+    def act(self, toggled:bool):
+        """A method that turns on/off the relevant scale and, if turning
+            on, turns off any other scales"""
+
+        try: self.my_scale(toggled)
+        except: pass
+
+class Gradient(QWidget):
+    """A class to make a selectable gradient"""
+
+    def __init__(self, *args, **kwargs):
+        """Constructor"""
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # start a timer to run setup after 10 ms
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup the gradient"""
+
+        self.top_lv = self.parent().parent().parent().parent()
+
+        self.imv = self.top_lv.image
+
+        # load widget ui
+        uic.loadUi("{}/gradient_sel.ui".format(resource_path), self)
+
+        # setup checkboxes
+        self.min_chk.setup(lambda b : self.top_lv.proc.set_range(min=0 if b else None))
+        self.max_chk.setup(lambda b : self.top_lv.proc.set_range(max=65536 if b else None))
+        if self.top_lv.proc.PRng.get_data()[0]: self.min_chk.setChecked(True)
+        else: self.min_chk.setChecked(False)
+        if self.top_lv.proc.PRng.get_data()[2]: self.max_chk.setChecked(True)
+        else: self.max_chk.setChecked(False)
+
+        # setup inputs
+        self.min_val.setup(self.top_lv.proc, "min")
+        self.max_val.setup(self.top_lv.proc, "max")
+
+        # gradient type will be in accessible description
+        grad = self.toolTip()
+
+        grad = Gradients[grad]
+
+        # format stylesheet of gradient
+        bkgrd = "background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2: 1"
+        for tick in grad["ticks"]:
+            bkgrd += ", stop:{} rgba{}".format(1-tick[0], str(tick[1]))
+        bkgrd = bkgrd + ");"
+        bkgrd = """
+        QPushButton{{
+            {0}
+            border-style: none;
+        }}
+        QPushButton:checked {{
+            {0}
+            border-style: none;
+        }}""".format(bkgrd)
+        self.grad_btn.setStyleSheet(self.styleSheet()+bkgrd)
+
+        # format lookup table (flip colormaps so darker colors are 0)
+        self.lup = pg.ColorMap([1-c[0] for c in grad['ticks']],
+                           [c[1] for c in grad['ticks']],
+                            mode = grad['mode'])
+        self.lup = self.lup.getLookupTable()
+
+        # deactivate gradient
+        self.grad_btn.setChecked(True)
+        self.grad_btn.setChecked(False)
+
+        # connect grad_btn to interact with other grad buttons and with image
+        self.grad_btn.toggled.connect(self.act)
+
+    def act(self, toggled_on:bool):
+        """
+        A method to act when a button is toggled
+
+        if button is toggled on, will deactivate any currently active gradient and switch
+            image's gradient to this one
+        if button is toggled off, will set image's gradient to no_gradient
+
+        Args:
+            toggled_on = True if toggled on, False if toggled off
+        """
+
+        if toggled_on:
+            # toggle old gardient widget if there's an active one
+            if self.imv.grad_widg is not None:
+                self.imv.grad_widg.grad_btn.setChecked(False)
+            # set new lookup table (colormap)
+            self.imv.img.setLookupTable(self.lup)
+            # set image's gradien widget to self
+            self.imv.grad_widg = self
+        else:
+            self.imv.img.setLookupTable(self.imv.no_lup)
+            self.imv.grad_widg = None
