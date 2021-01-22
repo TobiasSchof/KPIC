@@ -100,9 +100,10 @@ class FIU_TTM_cmds:
             int = the error message. See FIU_TTM.ini for translation
         """
 
-        self._checkConnectedAndAlive()
-
-        return self.Error.get_data()[0]
+        try:
+            return self.Error.get_data()[0]
+        except:
+            raise ScriptOff("Error shm not initialized. Please start control script.")
 
     def get_pos(self, update:bool=True, time:bool=False):
         """Returns the current position in the device's shared memory.
@@ -128,7 +129,7 @@ class FIU_TTM_cmds:
         elif type(self.Pos_D) is str: 
             self._handleShms()
             # if Pos_D is still a string, the control script needs to be started
-            if type(Pos_D) is str:
+            if type(self.Pos_D) is str:
                 raise ScriptOff("No Shm file. Please start control script.") 
 
         if time: return list(self.Pos_D.get_data()), self.Pos_D.get_time()
