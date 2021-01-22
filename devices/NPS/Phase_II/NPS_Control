@@ -5,7 +5,7 @@ from telnetlib import Telnet
 from configparser import ConfigParser
 from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
-from time import gmtime
+from time import gmtime, sleep
 import sys, os
 
 # installs
@@ -201,6 +201,7 @@ class NPS:
     def __exit__(self, type, value, tb):
         """Closes connection"""
 
+        self.telnet.write("quit\r\n".encode())
         self.telnet.close()
 
 ########## CONTROL SCRIPT ########## 
@@ -233,6 +234,8 @@ def main():
         with NPS(ADDR, PORT, timeout=TMT) as nps:
             # send requests
             nps.s_port(req)
+
+            sleep(1)
 
             # get status of all nps ports
             stat = nps.q_port("all")
