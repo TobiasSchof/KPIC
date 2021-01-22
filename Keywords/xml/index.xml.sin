@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<index service="@KTLSERVICE@">
+	<directories>
+	</directories>
+	<files>
+		<file>
+			<name>DEVICES</name>
+			<location>devices.xml</location>
+			<comment>Keywords for FIU hardware.</comment>
+		</file>
+	</files>
+</index>

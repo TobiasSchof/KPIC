@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<bundle name="DEVICES" service="nsfiu" xmlns:xsi="http://www.w3.org/2001/XML-Schema-instance">
+	<dispatcher>
+		<name>+service+_dispatch_1</name>
+	</dispatcher>
+	<keyword>
+		<name>TTMPOSX</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">X position of FIU TTM</help>
+		<help level="verbose">X position of FIU TTM (0 - 10000).</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+</bundle>

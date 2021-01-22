@@ -1,0 +1,3 @@
+# kattr_version=3.0
+# Key        Type         nElt Read? Write? Bcast? Notify? ServersList Aliases
+ttmposx      double          1    1     0     1      0 +service+_dispatch_1 nsfiu-ttm-pos-x

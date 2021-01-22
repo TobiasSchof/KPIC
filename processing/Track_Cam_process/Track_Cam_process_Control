@@ -28,6 +28,9 @@ See Track_Cam_process for the user-end library
 # variable to track whether this script should be alive
 alive = True
 
+# coefficient for bad pixel filter
+BPM_FILT = 3.5
+
 class AlreadyAlive(Exception):
     """An exception to be thrown if control code is initialized twice"""
     pass
@@ -37,6 +40,15 @@ def main():
 
     # start an average
     avg, raw = roll_avg(None, [])
+
+    # bad pixel map
+    bpm = None
+    # bias
+    _bias = None
+    # background
+    _bkgrd = None
+    # reference image
+    _ref = None
 
     while alive:
 
@@ -59,15 +71,45 @@ def main():
 
         # try to subtract bias
         if Set.get_data()[0] & 2:
-            try: proc = proc - Bias.get_data()
+            try: 
+                # get the bias if either there is a new one, none is loaded, or no bad pixel map
+                #   is calculated
+                new_bias = Bias.mtdata["cnt0"] != Bias.get_counter()
+                if _bias is None or bpm is None or new_bias:
+                    # get new bias
+                    _bias = Bias.get_data(reform = True)
+                    # calculate bad pixel map (copied from thorcam)
+                    bpm = np.ones_like(_bias)
+                    std = np.std(_bias)
+                    mu = np.median(_bias)
+                    bpm[_bias > mu + filt*std] = 0
+                    bpm[_bias < mu - filt*std] = 0
+                # subtract bias
+                proc = proc - _bias
+                # apply bad pixel map
+                proc *= bpm
             except: err = 1
         # try to subtract background
         if Set.get_data()[0] & 4:
-            try: proc = proc - Bkgrd.get_data()
+            try: 
+                # if there's a new background, get it
+                new_bkgrd = Bkgrd.mtdata["cnt0"] != Bkgrd.get_counter()
+                if _bkgrd is None or new_bkgrd:
+                    # get background
+                    _bkgrd = Bkgrd.get_data(reform = True)
+                # subtract background
+                proc = proc - Bkgrd.get_data()
             except: err = 2
         # try to subtract reference image
         if Set.get_data()[0] & 8:
-            try: proc = proc - Ref.get_data()
+            try:
+                # if there's a new reference frame, get it
+                new_ref = Ref.mtdata["cnt0"] != Ref.get_counter()
+                if _ref is None or new_ref:
+                    # get reference frame
+                    _ref = Ref.get_data(reform = True)
+                # subtract reference
+                proc = proc - Ref.get_data()
             except: err = 3
 
         # apply any scale desired
