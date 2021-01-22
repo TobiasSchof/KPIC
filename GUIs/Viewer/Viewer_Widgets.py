@@ -65,6 +65,9 @@ class Img(pg.GraphicsView):
         # store refresh rate
         self.refresh_rate = refresh_rate
 
+        # create a placeholder for greyscale map
+        self.no_lup = None
+
         # set a single-shot timer to setup the image widget
         self.timer = QTimer()
         self.timer.setSingleShot(True)
@@ -99,14 +102,6 @@ class Img(pg.GraphicsView):
         tempDir = None
         tmpfile = None
 
-        # set grey-scale colormap
-        self.no_lup = Gradients["grey"]
-        self.no_lup = pg.ColorMap([c[0] for c in self.no_lup['ticks']],
-                           [c[1] for c in self.no_lup['ticks']],
-                            mode = self.no_lup['mode'])
-        self.no_lup = self.no_lup.getLookupTable()
-        self.img.setLookupTable(self.no_lup)
-
         # a variable to store the currently active gradient widget
         self.grad_widg = None
 
@@ -130,7 +125,7 @@ class Img(pg.GraphicsView):
             # if image is at least two minutes old, use placeholder
             if time() - self.Img_shm.mtdata["atime_sec"] > 120: assert 0 == 1
 
-            self.img.setImage(self.Img_shm.get_data(reform=True))
+            self.img.setImage(np.rot90(self.Img_shm.get_data(reform=True)))
 
         except:
             if type(self.Img_shm) is not str and not os.path.exists(self.Img_shm.fname):
@@ -222,8 +217,9 @@ class Scale_rng_input(QLineEdit):
             isn't requested"""
 
         try:
-            self.setText(str(self.val()))
-            self.last_valid = self.val()        
+            if not self.isEnabled():
+                self.setText(str(self.val()))
+                self.last_valid = self.val()        
         except:
             self.setText("---")
 
@@ -342,7 +338,7 @@ class Gradient(QWidget):
 
         grad = Gradients[grad]
 
-        # format stylesheet of gradient
+        # format stylesheet of gradient (Gradient is upside down, so flip it)
         bkgrd = "background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2: 1"
         for tick in grad["ticks"]:
             bkgrd += ", stop:{} rgba{}".format(1-tick[0], str(tick[1]))
@@ -359,17 +355,19 @@ class Gradient(QWidget):
         self.grad_btn.setStyleSheet(self.styleSheet()+bkgrd)
 
         # format lookup table (flip colormaps so darker colors are 0)
-        self.lup = pg.ColorMap([1-c[0] for c in grad['ticks']],
+        self.lup = pg.ColorMap([c[0] for c in grad['ticks']],
                            [c[1] for c in grad['ticks']],
                             mode = grad['mode'])
         self.lup = self.lup.getLookupTable()
 
-        # deactivate gradient
-        self.grad_btn.setChecked(True)
-        self.grad_btn.setChecked(False)
-
         # connect grad_btn to interact with other grad buttons and with image
         self.grad_btn.toggled.connect(self.act)
+
+        self.grad_btn.setChecked(True)
+        if self.toolTip() == "grey":
+            # if this is greyscale, save it in the image widget
+            self.imv.no_lup = self
+            self.imv.grad_widg = self
 
     def act(self, toggled_on:bool):
         """
@@ -384,13 +382,15 @@ class Gradient(QWidget):
         """
 
         if toggled_on:
-            # toggle old gardient widget if there's an active one
-            if self.imv.grad_widg is not None:
-                self.imv.grad_widg.grad_btn.setChecked(False)
+            # store old gradient
+            old_grad = self.imv.grad_widg
+            # set image's gradient widget to self
+            self.imv.grad_widg = self
             # set new lookup table (colormap)
             self.imv.img.setLookupTable(self.lup)
-            # set image's gradien widget to self
-            self.imv.grad_widg = self
-        else:
-            self.imv.img.setLookupTable(self.imv.no_lup)
-            self.imv.grad_widg = None
+
+            if old_grad is not self and old_grad is not None:
+                # disable current gradient
+                old_grad.grad_btn.setChecked(False)
+        elif not self.imv.grad_widg.grad_btn.isChecked():
+            self.grad_btn.setChecked(True)
