@@ -471,6 +471,9 @@ class Shm:
         # if requested, reshape data
         if reform:
             rsz = self.mtdata['size'][:self.mtdata['naxis']]
+            # if there's an x and y axis, flip them (row, column vs width, height)
+            if self.mtdata['naxis'] >= 2:
+                rsz = (rsz[1], rsz[0], *rsz[2:len(rsz)]) 
             data = np.reshape(data, rsz)
 
         return data
