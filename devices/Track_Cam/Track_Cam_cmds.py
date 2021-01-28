@@ -275,7 +275,7 @@ class TC_cmds:
             raise ValueError("Unexpected value of 'avg'. Choices are 'mean' or 'median'.")
 
         gmt = gmtime()
-        date = "{}{:02d}{:02d}".format(str(gmt.tm_year)[:-2], gmt.tm_mon, gmt.tm_mday)
+        date = "{}{:02d}{:02d}".format(str(gmt.tm_year)[-2:], gmt.tm_mon, gmt.tm_mday)
         time = "{:02d}{:02d}{:02d}".format(gmt.tm_hour, gmt.tm_min, gmt.tm_sec)
         if not os.path.isdir("/nfiudata"):
             raise FileNotFoundError("No '/nfiudata' folder.")
@@ -286,9 +286,10 @@ class TC_cmds:
 
         crop = self.get_crop()
         block_path = "/nfiudata/{date}/TCReferences/bias_{time}_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
-            +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}_block.fits".format(date=date, time=time,
-            fps = self.get_fps(), tint = self.get_tint(), ndr = self.get_ndr(), temp = self.get_temp(),
-            lb = crop[0], rb = crop[1], ub = crop[2], bb = crop[3])
+            +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}_block.fits"
+        block_path = block_path.format(date=date, time=time, fps = self.get_fps(), tint = self.get_tint(), 
+            ndr = self.get_ndr(), temp = self.Temp_P.get_data()[0], lb = crop[0], rb = crop[1], 
+            ub = crop[2], bb = crop[3])
 
         block = self.grab_n(num, block_path)
 
@@ -319,6 +320,8 @@ class TC_cmds:
         fname = combined_path[combined_path.rfind("/")+1:]
         # delete HHMMSS from fname
         fname = fname[:5] + fname[12:]
+        # save file in darks directory
+        combined.writeto(b_dir + fname, overwrite = True)
 
     def set_fan(self, on:bool):
         """Method to set the on status of the fan
