@@ -494,7 +494,7 @@ class TLS_Device(object):
         rd  = self.readAll()
         
         #Format result
-        stat = struct.unpack('<I', rd[8:])[0]   #Translate Output
+        stat = struct.unpack('<I', rd[-4:])[0]   #Translate Output
         stat = format(stat, '08b')     #Convert to binary string with 0 padding
         
         #Interperet result
