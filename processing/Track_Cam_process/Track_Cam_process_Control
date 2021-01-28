@@ -78,6 +78,8 @@ def main():
                 if _bias is None or bpm is None or new_bias:
                     # get new bias
                     _bias = Bias.get_data(reform = True)
+                    # copy over image tags
+                    _bias[0][:4] = _bias[0][4]
                     # calculate bad pixel map (copied from thorcam)
                     bpm = np.ones_like(_bias)
                     std = np.std(_bias)
@@ -97,8 +99,10 @@ def main():
                 if _bkgrd is None or new_bkgrd:
                     # get background
                     _bkgrd = Bkgrd.get_data(reform = True)
+                    # copy over image tags
+                    _bkgrd[0][:4] = _bkgrd[0][4]
                 # subtract background
-                proc = proc - Bkgrd.get_data()
+                proc = proc - _bkgrd
             except: err = 2
         # try to subtract reference image
         if Set.get_data()[0] & 8:
@@ -108,8 +112,10 @@ def main():
                 if _ref is None or new_ref:
                     # get reference frame
                     _ref = Ref.get_data(reform = True)
+                    # copy over image tags
+                    _ref[0][:4] = _ref[0][4]
                 # subtract reference
-                proc = proc - Ref.get_data()
+                proc = proc - _ref
             except: err = 3
 
         # apply any scale desired
@@ -175,7 +181,7 @@ def roll_avg(avg:np.array, raw:list):
 
     # make sure that all our frames are the same size
     while(raw[0].shape != raw[-1].shape):
-        old_frames.append(raw.pop[0])
+        old_frames.append(raw.pop(0))
         new_frames.append(Img.get_data(True, reform=True))
         raw.append(new_frames[-1])
 
@@ -257,19 +263,19 @@ else: Avg_cnt = Shm(Avg_cnt[0], data = np.array([5], dtype = type_[Avg_cnt[1]]),
 
 if os.path.isfile(Proc[0]): Proc = Shm(Proc[0])
 else: Proc = Shm(Proc[0], data = np.zeros([640, 512], dtype = type_[Proc[1]]),
-        mmap = (Proc[2] == "1"))
+        mmap = (Proc[2] == "1"), croppable = True)
 
 if os.path.isfile(Ref[0]): Ref = Shm(Ref[0])
 else: Ref = Shm(Ref[0], data = np.zeros([640, 512], dtype = type_[Ref[1]]),
-        mmap = (Ref[2] == "1"))
+        mmap = (Ref[2] == "1"), croppable = True)
 
 if os.path.isfile(Bkgrd[0]): Bkgrd = Shm(Bkgrd[0])
 else: Bkgrd = Shm(Bkgrd[0], data = np.zeros([640, 512], dtype = type_[Bkgrd[1]]),
-        mmap = (Bkgrd[2] == "1"))
+        mmap = (Bkgrd[2] == "1"), croppable = True)
 
 if os.path.isfile(Bias[0]): Bias = Shm(Bias[0])
 else: Bias = Shm(Bias[0], data = np.zeros([640, 512], dtype = type_[Bias[1]]),
-        mmap = (Bias[2] == "1"))
+        mmap = (Bias[2] == "1"), croppable = True)
 
 if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else: Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),

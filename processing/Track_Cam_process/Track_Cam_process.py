@@ -367,13 +367,27 @@ class TC_process:
 
         Args:
             use   = subtract bias if True, don't if False
-            fname = the path to a bias to load. If None, the currently
-                loaded bias will be subtracted.
+            fname = the path to a bias to load. If None, a bias file
+                with the current camera parameters will be looked for.
         """
 
         self._check_alive_and_processing()
 
-        if not fname is None:
+        if fname is None:
+            # get bias name for matching parameters
+            fname = "/nfiudata/darks/bias_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
+                +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}.fits"
+            crop = self.tc.get_crop()
+            fname = fname.format(fps = self.tc.get_fps(), tint = self.tc.get_tint(), 
+                ndr = self.tc.get_ndr(), temp = self.tc.Temp_P.get_data()[0], lb = crop[0], rb = crop[1], 
+                ub = crop[2], bb = crop[3])
+            # if no bias with current settings is found, raise error
+            if not os.path.isfile(fname):
+                raise FileNotFoundError("No bias file to match current camera parameters.")
+            # otherwise load bias
+            with fits.open(fname) as f:
+                self.Bias.set_data(np.array(f[0].data, self.Bias.npdtype))
+        else:
             # load bias into shm
             self.load_bias(fname)
 
@@ -381,6 +395,8 @@ class TC_process:
         _ = self.Set.get_data()
         if use: _[0] = _[0] | 2
         else:   _[0] = _[0] & ~2
+
+        self.Set.set_data(_)
 
     def load_bias(self, fname:str=None):
         """Loads the bias at the destination into the shm
@@ -402,7 +418,7 @@ class TC_process:
                     raise BiasParams("Loaded Bias parameters don't match current settings.")
 
                 # load bias into shm
-                self.Bias.set_data(f.data)
+                self.Bias.set_data(np.array(f[0].data, self.Bias.dtype))
         else:
             self.Bias.set_data(self.tc.Img.get_data())
 
@@ -429,6 +445,8 @@ class TC_process:
         if use: _[0] = _[0] | 4
         else:   _[0] = _[0] & ~4
 
+        self.Set.set_data(_)
+
     def load_bkgrd(self, fname:str=None):
         """Loads the background at the destination into the shm
 
@@ -449,7 +467,7 @@ class TC_process:
                     raise BkgrdParams("Loaded background parameters don't match current settings.")
 
                 # load bias into shm
-                self.Bkgrd.set_data(f.data)
+                self.Bkgrd.set_data(np.array(f[0].data, self.Bkgrd.npdtype))
         else:
             self.Bkgrd.set_data(self.Proc.get_data())
 
@@ -476,6 +494,8 @@ class TC_process:
         if use: _[0] = _[0] | 8
         else:   _[0] = _[0] & ~8
 
+        self.Set.set_data(_)
+
     def load_ref(self, fname:str=None):
         """Loads the reference image at the destination into the shm
 
@@ -495,7 +515,7 @@ class TC_process:
                     self.Error.set_data(np.array([3], self.Error.npdtype))
                     raise RefParams("Loaded reference image parameters don't match current settings.")
                 # load bias into shm
-                self.Ref.set_data(f.data)
+                self.Ref.set_data(np.array(f[0].data, self.Ref.npdtype))
         else:
             self.Ref.set_data(self.Proc.get_data())
 
