@@ -190,7 +190,7 @@ void KPIC_FliObserver::onCroppingChanged(bool enabled, uint16_t col1,
                                       uint16_t row2){
     if (enabled){
         // resize the image in shm
-        img->resize(col2 - col1, row2 - row1, 0);
+        img->resize(col2 - col1+1, row2 - row1+1, 0);
 
         // set crop_d shm
         uint16_t data[4] = {col1, col2, row1, row2};
