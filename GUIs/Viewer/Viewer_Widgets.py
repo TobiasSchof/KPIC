@@ -2,7 +2,7 @@ import os
 
 from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton
 from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile 
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator 
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QFont 
 from PyQt5 import uic
 from PIL import Image
 from time import time
@@ -69,10 +69,10 @@ class Img(pg.GraphicsView):
         self.no_lup = None
 
         # set a single-shot timer to setup the image widget
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.setup)
-        self.timer.start(10)
+        self.setup_timer = QTimer()
+        self.setup_timer.setSingleShot(True)
+        self.setup_timer.timeout.connect(self.setup)
+        self.setup_timer.start(10)
 
     def setup(self):
         """Sets up the image view and puts in a placeholder image"""
@@ -108,15 +108,70 @@ class Img(pg.GraphicsView):
         # connect to shm
         self.Img_shm = "/tmp/Track_Cam/PROCIMG.im.shm"
 
-        # start a repeating timer to trigger update
-        self.timer.timeout.connect(self.update)
-        self.timer.timeout.disconnect(self.setup)
-        self.timer.setSingleShot(False)
-        self.timer.start(self.refresh_rate)
+        # create Label to display current coordinates
+        self.cur_pix = pg.TextItem(color = "w", fill = pg.mkBrush(color="k"))
+        self.cur_pix.setFont(QFont("not set", pointSize = 10))
+        self.addItem(self.cur_pix)
 
-    def update(self):
+        self.stats = pg.TextItem(color = "w", fill = pg.mkBrush(color="k"), anchor=(1, 0))
+        self.stats.setFont(QFont("not set", pointSize = 10))
+        # set position to top right
+        self.stats.setPos(self.width()-1, 0)
+        # set position to move to top right on resize
+        self.addItem(self.stats)
+
+        # variable to hold position of mouse, if it's hovering over image
+        self.mousePos = None
+
+        # connect mouseMoved item to mouseover event on image
+        self.scene().sigMouseMoved.connect(self.mouseMoved)
+
+        # start a repeating timer to trigger updates for images and labels
+        self.setup_timer = None
+        self.img_timer = QTimer()
+        self.lbl_timer = QTimer()
+
+        self.img_timer.timeout.connect(self.img_update)
+        self.img_timer.start(self.refresh_rate)
+
+        self.lbl_timer.timeout.connect(self.lbl_update)
+        self.lbl_timer.start(500)
+
+    def resizeEvent(self, *args, **kwargs):
+        """Repositions stats label when window is resized"""
+
+        super().resizeEvent(*args, **kwargs)
+        try: self.stats.setPos(self.width()-1, 0)
+        except: pass
+
+    def leaveEvent(self, QEvent):
+        """A mthod to handle when the mouse leaves the image view
+        
+        Hides the current pixel label if it is not already hidden
+        """
+
+        if self.cur_pix.isVisible(): self.cur_pix.hide()
+        self.mousePos = None
+
+    def mouseMoved(self, event):
+        """A method to update the tooltip with pixel location and intensity"""
+
+        # get view coordinates from scene coordinates
+        mousePoint = self.vb.mapSceneToView(event)
+        # get image coordinates from view coordinates
+        mousePoint = self.vb.mapFromViewToItem(self.img, mousePoint)
+        x = int(mousePoint.x())
+        # y coordinate gets inverted
+        y = int(self.img.image.shape[1] - mousePoint.y())
+        # if coordinates are within bounds, set tool tip
+        if 0 <= x < self.img.image.shape[0] and 0 <= y < self.img.image.shape[1]:
+            self.mousePos = (x, y)
+        else: self.mousePos = None
+
+    def img_update(self):
         """Method to try to fetch a new image"""
 
+        # set new image
         try:
             if type(self.Img_shm) is str:
                 self.Img_shm = Shm(self.Img_shm)
@@ -126,12 +181,24 @@ class Img(pg.GraphicsView):
             if time() - self.Img_shm.mtdata["atime_sec"] > 120: assert 0 == 1
 
             self.img.setImage(np.rot90(self.Img_shm.get_data(reform=True)))
-
         except:
             if type(self.Img_shm) is not str and not os.path.exists(self.Img_shm.fname):
                 self.Img_shm = self.Img_shm.fname
 
             self.img.setImage(self.placeholder)
+        
+    def lbl_update(self):
+        """Method to set label text""" 
+
+        # deal with current position text label
+        if not self.mousePos is None:
+            intensity = self.img.image[self.mousePos[0]][self.mousePos[1]]
+            self.cur_pix.setHtml("({x:d}, {y:d}): <b>{intensity:d}</b>".format(x = self.mousePos[0], 
+               y = self.mousePos[1], intensity = intensity))
+            if not self.cur_pix.isVisible(): self.cur_pix.show() 
+        elif self.cur_pix.isVisible(): self.cur_pix.hide()
+
+        self.stats.setHtml("min: <b>{:d}</b> max: <b>{:d}</b>".format(*self.parent().proc.get_range()))
 
 class Scale_chk_box(QCheckBox):
     """A widget to toggle a scale on the image"""

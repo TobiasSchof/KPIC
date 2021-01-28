@@ -247,56 +247,6 @@ QTabBar::tab:only-one {
           </widget>
          </item>
          <item>
-          <widget class="Gradient" name="viridis" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>100</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>viridis</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="Gradient" name="plasma" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>100</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>plasma</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="Gradient" name="inferno" native="true">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
@@ -343,6 +293,56 @@ QTabBar::tab:only-one {
            </property>
            <property name="toolTip">
             <string>magma</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Gradient" name="plasma" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>plasma</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Gradient" name="viridis" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>viridis</string>
            </property>
           </widget>
          </item>
@@ -433,30 +433,6 @@ border-width: 1px;</string>
           <property name="bottomMargin">
            <number>15</number>
           </property>
-          <item row="0" column="1">
-           <widget class="QPushButton" name="bias_take">
-            <property name="styleSheet">
-             <string notr="true">QPushButton { 
-	background-color: #c7c7c7;
-	border-radius: 0px;
-	border-style: inset;
-	border-width: 1px;
-}
-QPushButton:pressed {
-	background-color: #c1ffba;
-	border-radius: 0px;
-	border-style: outset;
-	border-width: 1px;
-}</string>
-            </property>
-            <property name="text">
-             <string>Take</string>
-            </property>
-            <property name="checkable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
           <item row="0" column="0">
            <widget class="QCheckBox" name="bias_sub">
             <property name="styleSheet">
@@ -489,6 +465,9 @@ QPushButton:pressed {
           </item>
           <item row="0" column="2">
            <widget class="QPushButton" name="bias_save">
+            <property name="toolTip">
+             <string/>
+            </property>
             <property name="styleSheet">
              <string notr="true">QPushButton { 
 	background-color: #c7c7c7;
