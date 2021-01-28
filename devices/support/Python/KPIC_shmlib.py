@@ -498,12 +498,24 @@ class Shm:
 
         resize = False
         # if the size of the new data doesn't match current size, change it
-        if self.mtdata["croppable"] and data.shape != self.mtdata["size"]:
-            self.mtdata["size"] = data.shape
-            self.mtdata["nel"] = 1
-            for dim in self.mtdata["size"]: 
-                if dim != 0: self.mtdata["nel"] *= dim
-            resize = True
+        if self.mtdata["croppable"]:
+            if len(data.shape) >= 2:
+                sz = list(data.shape)
+                sz[0] = sz[1]
+                sz[1] = data.shape[0]
+            else: sz = list(data.shape)
+            if len(sz) < 3:
+                sz += [0]*(3-len(sz))
+            if self.mtdata["size"] != sz:
+                if len(sz) <= 3:
+                    self.mtdata["size"] = list(sz) + [0]*(3 - len(sz))
+                # shms of up to 3 axes are supported
+                else:
+                    self.mtdata["size"] = list(sz[:3])
+                self.mtdata["nel"] = 1
+                for dim in self.mtdata["size"]: 
+                    if dim != 0: self.mtdata["nel"] *= dim
+                resize = True
 
         # start of the data
         i0 = self.im_offset
@@ -529,7 +541,7 @@ class Shm:
                 if resize:
                     # nel is the 4 bytes before size
                     self.buf[self.sz_offset-4:self.sz_offset] = struct.pack("I", self.mtdata["nel"])
-                    self.buf[self.sz_offset:self.sz_offset+6] = struct.pack("3H", self.mtdata["size"])
+                    self.buf[self.sz_offset:self.sz_offset+6] = struct.pack("3H", *self.mtdata["size"])
         else:
             with self.lock, open(self.fname, "rb+") as file_:
                 # get file contents
@@ -546,8 +558,8 @@ class Shm:
                 # if necessary, write size and nel
                 if resize:
                     # nel is the 4 bytes before size
-                    self.buf[self.sz_offset-4:self.sz_offset] = struct.pack("I", self.mtdata["nel"])
-                    self.buf[self.sz_offset:self.sz_offset+6] = struct.pack("3H", self.mtdata["size"])
+                    buf[self.sz_offset-4:self.sz_offset] = struct.pack("I", self.mtdata["nel"])
+                    buf[self.sz_offset:self.sz_offset+6] = struct.pack("3H", *self.mtdata["size"])
                 # write updates
                 file_.seek(0)
                 file_.write(bytes(buf))
