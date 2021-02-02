@@ -309,7 +309,7 @@ class TCP_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_Connected(): raise StageOff("Stage is off. Please use on() method.")
+        if not self.is_Connected(): raise StageOff("Stage is off. Please use connect() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""
