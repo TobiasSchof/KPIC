@@ -51,7 +51,13 @@ def main():
         return
 
     # grab camera parameters
-    head = cam._get_header()
+    try:
+        head = cam._get_header()
+    except:
+        Error.set_data(np.array([4], Error.npdtype))
+        sleep(1)
+        return
+        
     # median images
     im = []
     for x in range(0, Avg_cnt.get_data()[0]):
@@ -77,10 +83,10 @@ def main():
     # if subtracting calibration image, subtract
     if stat & 2:
         # check if a new calibration image should be loaded
-        if cal.mtdata["cnt0"] != cal.get_counter():
+        if Calib.mtdata["cnt0"] != Calib.get_counter():
             # pull new calibration image
             global _cal_im
-            _cal_im = cal.get_data(reform = True)
+            _cal_im = Calib.get_data(reform = True)
             # extract if includes bias
             global _cal_raw
             _cal_raw = _cal_im[0][0] == 0 
@@ -97,10 +103,11 @@ def main():
                 _bpm[_cal_im < mu - BPM_FILT*std] = 0  
 
         # if calibration frame shape doesn't match, post error
-        if im.shape != _cal_im.shape:
-            Err.set_data(np.array([2], Err.npdtype))
-
-        try: im -= _cal_im
+        try:
+            if im.shape != _cal_im.shape:
+                Err.set_data(np.array([2], Err.npdtype))
+            else:    
+                im -= _cal_im
         except: Err.set_data(np.array([2], Err.npdtype))
 
     # if bias wasn't included in calibration image, or if calibration
@@ -252,6 +259,10 @@ signal(SIGTERM, signal_handler)
 
 # instantiate TC_cmds
 cam = TC_cmds()
+
+# variables to store calibration info
+_cal_im = None
+_cal_raw = False
 
 cur_head = fits.Header()
 

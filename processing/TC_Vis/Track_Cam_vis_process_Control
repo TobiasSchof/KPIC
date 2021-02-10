@@ -9,10 +9,15 @@ from time import sleep
 
 # installs
 import numpy as np
+from scipy.signal import medfilt
+from astropy.io import fits
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
 from Track_Cam_cmds import TC_cmds
+
+# coefficient for bad pixel filter
+BPM_FILT = 3.5
 
 def main():
     """Method to process an image"""
@@ -57,14 +62,14 @@ def main():
 
                 avg, raw = roll_avg(avg, raw)
 
-                im = avg
+                im = avg.copy()
     else:
         if not tc.is_connected():
             Error.set_data(np.array([6], Error.npdtype))
 
         avg, raw = roll_avg(avg, raw)
 
-        im = avg
+        im = avg.copy()
     global _bpm    
     # do frame subtraction, respecting larger bits first
     if stat & 32:
@@ -77,10 +82,12 @@ def main():
 
         # if using base proc and medfilt is on, medfilt ref
         #   before subtracting it
+        if _ref is None:
+            _ref = np.zeros_like(im)
         if stat & 2 and b_stat & 4:
-            im -= medfilt(_bpm * _ref)
+            im -= medfilt(_bpm * _ref).astype(im.dtype)
         else:
-            im -= _ref
+            im -= _ref.astype(im.dtype)
     elif stat & 16 and not (stat & 2 and b_stat & 2):
         # if background frame has been updated recently, load it
         if Bkgrd.mtdata["cnt0"] != Bkgrd.get_counter():
@@ -98,10 +105,12 @@ def main():
 
         # if using base proc and medfilt is on, medfilt bkgrd
         #   before subtracting it
+        if _bkgrd is None:
+            _bkgrd = np.zeros_like(im)
         if stat & 2 and b_stat & 4:
-            im -= medfilt(_bkgrd)
+            im -= medfilt(_bkgrd).astype(im.dtype)
         else:
-            im -= _bkgrd
+            im -= _bkgrd.astype(im.dtype)
     elif stat & 8 and not stat & 2:
         # if camera parameters have changed since the last bias
         #   load, try to load a new bias
@@ -111,42 +120,48 @@ def main():
             global _bias
 
             # format bias file name based on camera parameters from header
-            fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+            fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
                 ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
                 ub = header["crop_UB"], bb = header["crop_BB"])
 
             crop = False
             # if bias file doesn't exist, check for bias file with full crop
             if not os.path.isfile(fname):
-                fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+                fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
                     ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
                     ub = 0, bb = 0) 
                 crop = True
-                # if bias file still doesn't exist, throw an error
-                if not os.path.isfile(fname): raise BiasError("No bias file found")
+                # if bias file still doesn't exist, post error
+                if not os.path.isfile(fname): Error.set_data(np.array([1], Error.npdtype))
 
-            # load bias from file
-            with fits.open(fname) as f:
-                _bias = f[0].data
+            if os.path.isfile(fname):
+                # load bias from file
+                with fits.open(fname) as f:
+                    _bias = f[0].data
 
-            # crop bias if we changed cropping
-            if crop:
-                _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
+                # crop bias if we changed cropping
+                if crop:
+                    _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
 
-            # if first 4 image bits are in bias, copy over them in case of tags
-            if header["UB"] == 0 and header["crop_LB"] < 4:
-                _bias[0][:4] = _bias[0][4] 
+                # if first 4 image bits are in bias, copy over them in case of tags
+                if header["UB"] == 0 and header["crop_LB"] < 4:
+                    _bias[0][:4] = _bias[0][4] 
 
-            # calculate bad pixel map
-            _bpm = np.ones_like(_bias)
-            std = np.std(_bias)
-            mu = np.median(_bias)
-            _bpm[_bias > mu + BPM_FILT*std] = 0
-            _bpm[_bias < mu - BPM_FILT*std] = 0
+                # calculate bad pixel map
+                _bpm = np.ones_like(_bias)
+                std = np.std(_bias)
+                mu = np.median(_bias)
+                _bpm[_bias > mu + BPM_FILT*std] = 0
+                _bpm[_bias < mu - BPM_FILT*std] = 0
 
-            head = header
+                head = header
 
-        im -= _bias 
+        if _bias is None:
+            _bias = np.zeros_like(im)
+        try:
+            im -= _bias.astype(im.dtype)
+        except:
+            Error.set_data(np.array([1], Error.npdtype))
 
     # multiply by bad pixel map
     try: im *= _bpm
@@ -200,14 +215,14 @@ def load_bias(header):
     global _bias, _bpm
 
     # format bias file name based on camera parameters from header
-    fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+    fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
         ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
         ub = header["crop_UB"], bb = header["crop_BB"])
 
     crop = False
     # if bias file doesn't exist, check for bias file with full crop
     if not os.path.isfile(fname):
-        fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+        fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
             ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
             ub = 0, bb = 0) 
         crop = True
@@ -260,10 +275,15 @@ def roll_avg(avg:np.array, raw:list):
 
     # case 1: we have all new frames, throw out avg and remake
     if len(new_frames) >= len(raw):
-        return np.mean(raw, 0), raw
+        avg = np.mean(raw, 0)
+        avg[0][:4] = avg[0][4]
+        return avg, raw
     # case 2: the more likely one, we can use avg to cut down the calculations needed
     else:
         avg = (avg*old_len - np.sum(old_frames, 0) + np.sum(new_frames, 0)) / len(raw)
+        # copy over first four pixels
+        avg[0][:4] = avg[0][4]
+
         return avg, raw
 
 def close(*args, **kwargs):
@@ -322,7 +342,6 @@ Ref     = config.get("Shm Info", "Ref").split(",")
 Proc    = config.get("Shm Info", "Proc").split(",")
 Bkgrd   = config.get("Shm Info", "Bkgrd").split(",")
 Error   = config.get("Shm Info", "Error").split(",")
-DRng    = config.get("Shm Info", "DRng").split(",")
 
 if os.path.isfile(Scale[0]): Scale = Shm(Scale[0])
 else: Scale = Shm(Scale[0], data = np.array([0], dtype = type_[Scale[1]]),
@@ -347,10 +366,6 @@ else: Bkgrd = Shm(Bkgrd[0], data = np.zeros([640, 512], dtype = type_[Bkgrd[1]])
 if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else: Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),
         mmap = (Error[2] == "1"))
-
-if os.path.isfile(DRng[0]): DRng = Shm(DRng[0])
-else: DRng = Shm(DRng[0], data = np.array([0, 0], dtype = type_[DRng[1]]),
-        mmap = (DRng[2] == "1"))
 
 # register cleanup after shm initialization so that they
 #   get cleaned up before being deleted

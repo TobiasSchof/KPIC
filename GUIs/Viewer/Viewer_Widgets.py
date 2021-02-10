@@ -1,18 +1,21 @@
+# standard libraries
+from time import time
 import os
 
-from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton
+# installs
+from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton, QFileDialog, QDialog, QMessageBox
 from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile 
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QFont 
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QDoubleValidator, QFont 
 from PyQt5 import uic
 from PIL import Image
-from time import time
+from astropy.io import fits
 from pyqtgraph.graphicsItems.GradientEditorItem import Gradients
 import pyqtgraph as pg
 import numpy as np
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
-import resources.no_img
+import resources.images
 
 resource_path = "/Transfer/Viewer/resources"
 
@@ -126,6 +129,12 @@ class Img(pg.GraphicsView):
         # connect mouseMoved item to mouseover event on image
         self.scene().sigMouseMoved.connect(self.mouseMoved)
 
+        # variables to store min/max
+        self.min     = 0
+        self.max     = 16000
+        self.automin = True
+        self.automax = True
+
         # start a repeating timer to trigger updates for images and labels
         self.setup_timer = None
         self.img_timer = QTimer()
@@ -179,7 +188,19 @@ class Img(pg.GraphicsView):
             # if image is at least two minutes old, use placeholder
             if time() - self.Img_shm.mtdata["atime_sec"] > 120: assert 0 == 1
 
-            self.img.setImage(np.rot90(self.Img_shm.get_data(reform=True)))
+            img = self.Img_shm.get_data(reform = True)
+            # save auto min/max
+            if self.automin:
+                self.min = img.min()
+            if self.automax:
+                self.max = img.max()
+
+            # clip if not auto
+            if not self.automin or not self.automax:
+                img = np.clip(img, None if self.automin else self.min,
+                    None if self.automax else self.max)
+
+            self.img.setImage(np.rot90(img))
         except:
             if type(self.Img_shm) is not str and not os.path.exists(self.Img_shm.fname):
                 self.Img_shm = self.Img_shm.fname
@@ -200,7 +221,7 @@ class Img(pg.GraphicsView):
         elif self.cur_pix.isVisible(): self.cur_pix.hide()
 
         # deal with min/max label
-        try: self.stats.setHtml("min: <b>{:d}</b> max: <b>{:d}</b>".format(*self.parent().proc.get_range()))
+        try: self.stats.setHtml("min: <b>{:d}</b> max: <b>{:d}</b>".format(self.min, self.max))
         except: self.stats.setHtml("min: <b>---</b> max: <b>---</b>")
 
 class Scale_chk_box(QCheckBox):
@@ -248,29 +269,30 @@ class Scale_rng_input(QLineEdit):
         # field to hold refresh rate
         self.refresh_rate = refresh_rate
 
-    def setup(self, proc, role:str):
+    def setup(self, role:str):
         """A method to setup the line edit
         
         Args:
-            proc = an instance of TC_process to get/set min/max values
             role = 'min' or 'max' depending on which range box this is
         """
+
+        self.imv = self.parent().parent().top_lv.image
 
         self.role = role
         if self.role == "min":
             # a lambda function to check that value is less than max
-            self.check = lambda x : x <= proc.get_range()[1]
+            self.check = lambda x : x <= self.imv.max 
             # a lambda function to get current min value
-            self.val   = lambda : proc.get_range()[0]
-            # a lambda function to set the min value (None to turn off)
-            self.set   = lambda x : proc.set_range(min=x)
+            self.val   = lambda : self.imv.min
+            # function to set a value (None to turn off)
+            self.set   = self.set_min 
         elif self.role == "max":
             # a lambda function to check that value is greater than max
-            self.check = lambda x : x >= proc.get_range()[1]
+            self.check = lambda x : x >= self.imv.min
             # a lambda function to get current max value
-            self.val   = lambda : proc.get_range()[1]
-            # a lambda function to set the max value (None to turn off)
-            self.set   = lambda x : proc.set_range(max=x)
+            self.val   = lambda : self.imv.max
+            # function to set a value (None to turn off)
+            self.set   = self.set_max
         else:
             raise ValueError("Only 'min' and 'max' roles are valid")
         try: self.last_valid = self.val()
@@ -282,14 +304,22 @@ class Scale_rng_input(QLineEdit):
         self.timer.timeout.connect(self.update)
         self.timer.start(self.refresh_rate)
 
+    def set_max(self, val):
+        self.imv.max = val
+
+    def set_min(self, val):
+        self.imv.min = val
+
     def update(self):
         """A method to update the current min and max value if a custom value
             isn't requested"""
 
+        # if we have focus, don't update
+        if self.hasFocus(): return
+
         try:
-            if not self.isEnabled():
-                self.setText(str(self.val()))
-                self.last_valid = self.val()        
+            self.setText(str(self.val()))
+            self.last_valid = self.val()        
         except:
             self.setText("---")
 
@@ -392,8 +422,8 @@ class Gradient(QWidget):
         uic.loadUi("{}/gradient_sel.ui".format(resource_path), self)
 
         # setup checkboxes
-        self.min_chk.setup(lambda b : self.top_lv.proc.set_range(min=0 if b else None))
-        self.max_chk.setup(lambda b : self.top_lv.proc.set_range(max=65536 if b else None))
+        self.min_chk.setup(self.min_lamb)
+        self.max_chk.setup(self.max_lamb)
         try:
             if self.top_lv.proc.PRng.get_data()[0]: self.min_chk.setChecked(True)
             else: self.min_chk.setChecked(False)
@@ -404,8 +434,8 @@ class Gradient(QWidget):
         except: self.max_chk.setChecked(False)
 
         # setup inputs
-        self.min_val.setup(self.top_lv.proc, "min")
-        self.max_val.setup(self.top_lv.proc, "max")
+        self.min_val.setup("min")
+        self.max_val.setup("max")
 
         # gradient type will be in accessible description
         grad = self.toolTip()
@@ -443,6 +473,9 @@ class Gradient(QWidget):
             self.imv.no_lup = self
             self.imv.grad_widg = self
 
+    def min_lamb(self, toggled): self.top_lv.image.automin = not toggled
+    def max_lamb(self, toggled): self.top_lv.image.automax = not toggled
+
     def act(self, toggled_on:bool):
         """
         A method to act when a button is toggled
@@ -468,3 +501,378 @@ class Gradient(QWidget):
                 old_grad.grad_btn.setChecked(False)
         elif not self.imv.grad_widg.grad_btn.isChecked():
             self.grad_btn.setChecked(True)
+
+class FPS(QLineEdit):
+    """A class to control the FPS of the tracking camera
+        (meant to be used in lab view only)
+    """
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self, refresh_rate = 1000):
+        """A method to setup this widget"""
+
+        self.tc = self.parent().proc.tc
+
+        self.setValidator(QIntValidator())
+
+        # run update once
+        self.update()
+
+        # setup repeating timer to update value
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+    def update(self):
+        """A method to keep field value correct"""
+
+        # if we have focus (meaning someone is editing field),
+        #   don't update
+        if self.hasFocus(): return
+
+        try: self.setText(str(self.tc.get_fps()))
+        except: self.setText("---")
+
+    def focusOutEvent(self, *args, **kwargs):
+        """A method to send new FPS on focus loss"""
+
+        # try to set tint
+        try: self.tc.set_fps(int(self.text()))
+        except: pass
+
+        super().focusOutEvent(*args, **kwargs)
+
+        self.update() 
+
+class Tint(QLineEdit):
+    """A class to control the Tint of the tracking camera
+        (meant to be used in lab view only)
+    """
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self, refresh_rate = 1000):
+        """A method to setup this widget"""
+
+        self.tc = self.parent().proc.tc
+
+        self.setValidator(QDoubleValidator())
+
+        # run update once
+        self.update()
+
+        # setup repeating timer to update value
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+    def update(self):
+        """A method to keep field value correct"""
+
+        # if we have focus (meaning someone is editing field),
+        #   don't update
+        if self.hasFocus(): return
+
+        try: self.setText(str(self.tc.get_tint()*1000))
+        except: self.setText("---")
+    
+    def focusOutEvent(self, *args, **kwargs):
+        """A method to send new tint on focus loss"""
+
+        # try to set tint
+        try: self.tc.set_tint(float(self.text()) / 1000)
+        except: pass
+
+        super().focusOutEvent(*args, **kwargs)
+
+        self.update()
+
+class NDR(QLineEdit):
+    """A class to control the NDRs of the tracking camera
+        (meant to be used in lab view only)
+    """
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self, refresh_rate = 1000):
+        """A method to setup this widget"""
+
+        self.tc = self.parent().proc.tc
+
+        self.setValidator(QIntValidator())
+
+        # run update once
+        self.update()
+
+        # setup repeating timer to update value
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+    def update(self):
+        """A method to keep field value correct"""
+
+        # if we have focus (meaning someone is editing field),
+        #   don't update
+        if self.hasFocus(): return
+
+        try: self.setText(str(self.tc.get_ndr()))
+        except: self.setText("---")
+
+    def focusOutEvent(self, *args, **kwargs):
+        """A method to send new NDR on focus loss"""
+
+        # try to set tint
+        try: self.tc.set_ndr(int(self.text()))
+        except: pass
+
+        super().focusOutEvent(*args, **kwargs)
+
+        self.update()
+
+class Save_raw(QPushButton):
+    """A class to save a raw frame"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        self.proc = self.parent().proc
+
+        self.clicked.connect(self.on_click)
+
+    def on_click(self):
+        """A method to run when this button is clicked"""
+
+        # try to get an image
+        try:
+            img = self.proc.grab_n(1, "raw")
+        except:
+            dlg = QMessageBox()
+            dlg.setWindowTitle("Uh oh!")
+            dlg.setText("No image found. Please check that the camera is on.")
+            dlg.exec_()
+            return
+
+        try:
+            fileName, _ = QFileDialog.getSaveFileName(self,"Save raw frame","/nfiudata","All Files (*);;Python Files (*.py)")
+            if fileName:
+               img.writeto(fileName, overwrite=True)
+        except:
+            dlg = QMessageBox()
+            dlg.setWindowTitle("Uh oh!")
+            dlg.setText("There was a problem saving the image.")
+            dlg.exec_()
+            return
+
+class Save_proc(QPushButton):
+    """A class to save a processed frame"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        self.proc = self.parent().proc
+
+        self.clicked.connect(self.on_click)
+
+    def on_click(self):
+        """A method to run when this button is clicked"""
+
+        # try to get an image
+        try:
+            img = self.proc.grab_n(1, "vis")
+        except:
+            dlg = QMessageBox()
+            dlg.setWindowTitle("Uh oh!")
+            dlg.setText("No image found. Please check that the camera is on and that the processing script is processing.")
+            dlg.exec_()
+            return
+
+        try:
+            fileName, _ = QFileDialog.getSaveFileName(self,"Save raw frame","/nfiudata","All Files (*);;Python Files (*.py)")
+            if fileName:
+               img.writeto(fileName, overwrite=True)
+        except:
+            dlg = QMessageBox()
+            dlg.setWindowTitle("Uh oh!")
+            dlg.setText("There was a problem saving the image.")
+            dlg.exec_()
+            return
+
+class Save_block(QPushButton):
+    """A class to save a raw frame"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        self.proc = self.parent().proc
+
+        self.clicked.connect(self.on_click)
+
+    def on_click(self):
+        """A method to run when this button is clicked"""
+
+        settings = Save_block.Save_block_popup()
+        values = settings.getResults()
+
+        # if settings didn't return None, continue to save location
+        if values is not None:
+            try:
+                fileName, _ = QFileDialog.getSaveFileName(self,"Save raw frame","/nfiudata","All Files (*);;Python Files (*.py)")
+                # if fileName isn't empty, grab images
+                if fileName:
+                    try:
+                        img = self.proc.grab_n(values[2], values[0], end_header = values[1] == 0,
+                            header_per = values[1])
+                    except:
+                        dlg = QMessageBox()
+                        dlg.setWindowTitle("Uh oh!")
+                        if values[0] == "raw":
+                            dlg.setText("No image found. Please check that the camera is on.")
+                        else:
+                            dlg.setText("No image found. Please check that the camera is on and that the processing script is processing.")
+                        dlg.exec_()
+                        return 
+
+                    # try writing fits to file
+                    img.writeto(fileName, overwrite=True)
+            except:
+                dlg = QMessageBox()
+                dlg.setWindowTitle("Uh oh!")
+                dlg.setText("There was a problem saving the image.")
+                dlg.exec_()
+                return
+
+    class Save_block_popup(QDialog):
+        """A class to give a pop-up with options for saving a
+            fits block
+        """
+
+        def __init__(self, *args, **kwargs):
+
+            # run super constructor
+            super().__init__(*args, **kwargs)
+
+            # make a one-off timer to setup widget
+            self.timer = QTimer()
+            self.timer.setSingleShot(True)
+            self.timer.timeout.connect(self.setup)
+            self.timer.start(10)
+
+        def setup(self):
+            """A method to setup this window"""
+
+            uic.loadUi("{}/block_save.ui".format(resource_path), self)
+
+            self.proc_im.setChecked(True)
+
+            # make raw and processed images mutually exclusive
+            self.proc_im.toggled.connect(lambda on : self.act_on_toggle(on, self.proc_im, self.raw_im))
+            self.raw_im.toggled.connect(lambda on : self.act_on_toggle(on, self.raw_im, self.proc_im))
+
+            # have selecting header at end/at start collapse count fields
+            self.header_dropdown.currentIndexChanged.connect(self.act_dropdown)
+
+            # hide fields at start
+            self.header_cnt.hide()
+            self.header_cnt_lbl.hide() 
+
+            # set title
+            self.setWindowTitle("Save block")
+
+            self.resize(self.minimumSizeHint())
+
+        def act_on_toggle(self, on:bool, this:QCheckBox, other:QCheckBox):
+            """A method to act on toggle for raw/processed choice"""
+
+            # if toggled on, turn other checkbox off
+            if on: other.setChecked(False)
+            # only allow toggle off if other checkbox is on
+            else:
+                if not other.isChecked(): this.setChecked(True)
+
+        def act_dropdown(self):
+            """A method to hide/show header cnt field for relevant dropdown
+                selection
+            """
+
+            # if on save every x images, show fields
+            if self.header_dropdown.currentIndex() == 1:
+                self.header_cnt.show()
+                self.header_cnt_lbl.show()
+            else:
+                self.header_cnt.hide()
+                self.header_cnt_lbl.hide()
+                self.resize(self.minimumSizeHint())
+
+        def getResults(self):
+            """Method to get results of the settings"""
+
+            if self.exec_() == QDialog.Accepted:
+                # get all values
+                which = "vis" if self.proc_im.isChecked() else "raw"
+                hdr_cnt = 0 if self.header_dropdown.currentIndex() == 0 else self.header_cnt.value()
+                img_cnt = self.img_cnt.value()
+                return which, hdr_cnt, img_cnt
+            else:
+                return None

@@ -22,14 +22,13 @@ class TC_process:
         is_processing
         is_log_scale
         is_sqrt_scale
-        get_range
+        is_medfilt
         get_avg_cnt
         is_using_base
         is_minus_bias
         is_minus_bkgrd
         is_minus_ref
         is_minus_calib
-        is_med_filt
         get_error
     Command:
         grab_n
@@ -38,6 +37,7 @@ class TC_process:
         clear_scale
         use_log_scale
         use_sqrt_scale
+        use_medfilt
         use_base
         set_rolling_avg
         use_minus_bias
@@ -70,7 +70,6 @@ class TC_process:
 
         # get file paths for shms
         self.Vis_Scale = config.get("Shm Info", "Scale").split(",")[0]
-        self.Vis_DRng = config.get("Shm Info", "DRng").split(",")[0]
         self.Vis_Avg_cnt = config.get("Shm Info", "Scale").split(",")[0]
         self.Vis_Stat = config.get("Shm Info", "Stat").split(",")[0]
         self.Vis_Ref = config.get("Shm Info", "Ref").split(",")[0]
@@ -171,16 +170,28 @@ class TC_process:
 
         return self.Vis_Scale.get_data()[0] == 2
 
-    def get_range(self):
-        """A method to get the min and max values in the processed image
+    def is_medfilt(self, vis=True):
+        """Checks whether a median filter is being applied
 
-        Returns:
-            (float, float) = (min, max)
+        Args:
+            vis = if True, checks for median filter in visualizer processing,
+                if False, checks in base processing
+        Return:
+            bool = True if a median filter is being applied, False otherwise
         """
 
-        self._check_alive_and_processing(vis = True)
+        self._check_alive_and_processing(vis = vis, base = True)
 
-        return tuple(self.Vis_DRng.get_data())
+        if not vis:
+            return bool(self.Base_Stat.get_data()[0] & 4)
+        else:
+            # option 1: visualizer processing is using base processing
+            if self.Vis_Stat.get_data()[0] & 2:
+                return bool(self.Vis_Stat.get_data()[0] & 4) or bool(self.Base_Stat.get_data()[0] & 4)
+            # option 2: visualizer processing is using a raw image
+            else:
+                return bool(self.Vis_Stat.get_data()[0] & 4)
+
 
     def get_avg_cnt(self, vis:bool = True):
         """Return the number of frames being averaged
@@ -253,28 +264,6 @@ class TC_process:
 
         return bool(self.Base_Stat.get_data()[0] & 2)
 
-    def is_med_filt(self, vis = True):
-        """Checks whether a median filter is being applied
-
-        Args:
-            vis = if True, checks for median filter in visualizer processing,
-                if False, checks in base processing
-        Return:
-            bool = True if a median filter is being applied, False otherwise
-        """
-
-        self._check_alive_and_processing(vis = vis, base = True)
-
-        if not vis:
-            return bool(self.Base_Stat.get_data()[0] & 4)
-        else:
-            # option 1: visualizer processing is using base processing
-            if self.Vis_Stat.get_data()[0] & 2:
-                return bool(self.Vis_Stat.get_data()[0] & 4) or bool(self.Base_Stat.get_data()[0] & 4)
-            # option 2: visualizer processing is using a raw image
-            else:
-                return bool(self.Vis_Stat.get_data()[0] & 4)
-
     def get_error(self):
         """A method to return the current error.
 
@@ -291,16 +280,22 @@ class TC_process:
         try: return self.Base_Error.get_data()[0], self.Vis_Error.get_data()[0]
         except: raise ShmError("Error shm for one of the processing scripts is missing.")
 
-    def grab_n(self, n:int, which:str, path:str=None):
+    def grab_n(self, n:int, which:str, path:str=None, end_header:bool=True, header_per:int=0):
         """A mathod to grab a cube of frames and save them as a fits
 
         Args:
-            n     = the number of frames to capture
-            which = what kind of images to pull (should be one of 'raw', 'base', 'vis', 'visualizer')
-            path  = if not None, the filename to save the data at
+            n          = the number of frames to capture
+            which      = what kind of images to pull (should be one of 'raw', 'base', 'vis', 'visualizer')
+            path       = if not None, the filename to save the data at
+            end_header = if True, puts a header on the last slice as well as the first,
+                            if False, only puts a header on the first slice
+            header_per = will put in a header every header_per frame. If header_per
+                            is 0, will only put in starting and ending headers
         Returns:
             fits.HDUList    = the fits cube
         """
+
+        if n <= 0: return
 
         if which.lower() not in ["raw", "base", "vis", "visualizer"]:
             raise ValueError("'which' must be one of: 'raw', 'base', 'vis', 'visualizer")
@@ -317,17 +312,20 @@ class TC_process:
             img_shm = self.Vis_Proc
 
         # grab N images with a header on either side
-        head_start = self._get_header(which)
-        images = [img_shm.get_data(True, reform=True) for x in range(0, n)]
-        if n > 1: head_end  = self._get_header(which)
         
         # format numpy arrays as fits
         block = fits.HDUList()
-        block.append(fits.PrimaryHDU(images[0], head_start))
+        # grab first image with header
+        block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True), self._get_header(which)))
         if n > 1:
-            for im in images[1:-1]:
-                block.append(fits.PrimaryHDU(im))
-            block.append(fits.PrimaryHDU(images[-1], head_end))
+            for idx in range(1, n-1):
+                if header_per != 0 and idx % header_per == 0:
+                    block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True), self._get_header(which)))
+                else:
+                    block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True)))
+            # check whether to include header with last frame
+            if end_header or (header_per != 0 and n-1 % header_per == 0): block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True), self._get_header(which)))
+            else: block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True)))
 
         if path is not None: block.writeto(path)
 
@@ -396,6 +394,25 @@ class TC_process:
         if use: self.Vis_Scale.set_data(np.array([2], self.Vis_Scale.npdtype))
         elif self.Vis_Scale.get_data()[0] == 2:
             self.Vis_Scale.set_data(np.array([0], self.Vis_Scale.npdtype))
+
+    def use_medfilt(self, use:bool=True):
+        """A method to set scripts to use a median filter
+
+        Args:
+            use = if True, sets a median filter, if False sets to not 
+                use a median filter, otherwise does nothing
+        """
+
+        self._check_alive_and_processing(vis = True)
+
+        stat = self.Vis_Stat.get_data()
+        
+        if use:
+            stat[0] = stat[0] | 4
+        else:
+            stat[0] = stat[0] & ~4
+
+        self.Vis_Stat.set_data(stat)
 
     def use_base(self, use:bool=True):
         """A method to set whether to use the base processed image
@@ -622,7 +639,6 @@ class TC_process:
         if type(self.Vis_Scale) is str:
             if os.path.isfile(self.Vis_Scale):
                 self.Vis_Scale = Shm(self.Vis_Scale)
-                self.Vis_DRng = Shm(self.Vis_DRng)
                 self.Vis_Avg_cnt = Shm(self.Vis_Avg_cnt)
                 self.Vis_Ref = Shm(self.Vis_Ref)
                 self.Vis_Bkgrd = Shm(self.Vis_Bkgrd)
@@ -630,7 +646,6 @@ class TC_process:
                 self.Vis_Error = Shm(self.Vis_Error)
         elif not os.path.isfile(self.Vis_Scale.fname):
             self.Vis_Scale = self.Vis_Scale.fname
-            self.Vis_DRng = self.Vis_DRng.fname
             self.Vis_Avg_cnt = self.Vis_Avg_cnt.fname
             self.Vis_Ref = self.Vis_Ref.fname
             self.Vis_Bkgrd = self.Vis_Bkgrd.fname
@@ -664,32 +679,71 @@ class TC_process:
         elif not os.path.isfile(self.Base_Stat.fname):
             self.Base_Stat = self.Base_Stat.fname
 
-    def _get_header(self):
+    def _get_header(self, which:str):
         """A method to get a header of an image.
 
-        This header will include all the information from Track_Cam_cmds header plus
-            basestat = content of the base_process stat shm (see Track_Cam_base_process.ini)
-            visstat  = content of the vis_process stat shm (see Track_Cam_vis_process.ini)
-            scale    = what kind of scale, if any, was used (None, log, sqrt)
-            baseavg  = the number of images averaged for one frame in base process
+        This header will include all the information from Track_Cam_cmds header plus (if which is not raw)
+            medfilt  = whether a median filter is applied
+
+            baseproc = whether visualizer processor is using base processing
+            vissubt  = logical for whether a frame is subtracted 
             visavg   = the number of images averaged for one frame in vis process
-                        (NOTE: these are rolling averages and only used if starting from the raw image)
+                    (NOTE: these are rolling averages and only used if starting from the raw image)
+            scale    = what kind of scale, if any, was used (None, log, sqrt)
+  
+            baseavg  = the number of images averaged for one frame in base process
+            basesubt = whether a calibration image is being subtracted in base processing
+        Args:
+            which = which kind of frame to make a header for (one of 'raw', 'base', 'vis', or 'visualizer)
         Returns:
             fits.Header = a fits header representing the current system parameters
         """ 
 
+        if which.lower() not in ['raw', 'base', 'vis', 'visualizer']:
+            raise ValueError("which can be one of: 'raw', 'base', 'vis', 'visualizer'.")
+
+        if which == "raw":
+            return self.tc._get_header()
+
         self._check_alive(vis=True, base=True)
 
-        vis_stat  = self.Vis_Stat.get_data()[0]
-        base_stat = self.Base_Stat.get_data()[0]
-        scl       = self.Vis_Scale.get_data()[0]
-        base_avg  = self.Base_Avg_cnt.get_data()[0]
-        vis_avg   = self.Vis_Avg_cnt.get_data()[0]
+        medfilt = "N/A"
+        baseproc = "N/A"
+        vissubt = "N/A"
+        visavg = "N/A"
+        scl = "N/A"
+        basesubt = "N/A"
+        baseavg = "N/A"
 
-        proc_info = fits.Header({"basestat":base_stat, "visstat":vis_stat, "scale":scale,
-            "baseavg":base_avg, "vis_avg":vis_avg})
+        if which.lower() in ["vis", "visualizer"]:
+            vis_stat     = self.Vis_Stat.get_data()[0]
+            baseproc = bool(vis_stat & 2)
+            medfilt  = bool(vis_stat & 4)
+            if vis_stat & 56:
+                vissubt = True
+            else:
+                vissubt = False 
+            visavg       = self.Vis_Avg_cnt.get_data()[0]
+            scl          = self.Vis_Scale.get_data()[0]
+            # convert scale to readable value
+            if scl == 0:
+                scl = "None"
+            elif scl == 1:
+                scl = "Log"
+            elif scl == 2:
+                scl = "Sqrt"
+
+        if which.lower() == "base" or (which.lower() in ["vis", "visualizer"] and vis_stat & 1):
+            base_stat = self.Base_Stat.get_data()[0]
+            medfilt  = base_stat & 4
+            basesubt = base_stat & 2
+            baseavg  = self.Base_Avg_cnt.get_data()[0]
+
+        proc_info = fits.Header({"medfilt":medfilt, "baseproc":baseproc, "vissubt":vissubt,
+            "visavg":visavg, "scale":scl, "basesubt":basesubt, "baseavg":baseavg})
 
         return self.tc._get_header() + proc_info
+
 
     def _check_header(self, header:fits.Header):
         """A method to check that the values in the header match current camera parameters

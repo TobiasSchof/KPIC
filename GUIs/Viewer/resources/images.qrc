@@ -1,0 +1,11 @@
+<RCC>
+  <qresource prefix="placeholder">
+    <file>no_img.jpg</file>
+  </qresource>
+  <qresource prefix="single_save">
+    <file>single_save_icon.png</file>
+  </qresource>
+  <qresource prefix="multi_save">
+    <file>multi_save_icon.png</file>
+  </qresource> 
+</RCC>

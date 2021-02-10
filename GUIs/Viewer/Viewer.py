@@ -1,6 +1,8 @@
 #!/usr/bin/env kpython3
 
 # inherent python libraries
+from argparse import ArgumentParser
+from time import sleep
 import sys
 
 # installs
@@ -53,6 +55,12 @@ class Stack(QWidget):
         # setup minimize interface button
         self.minimize_btn.clicked.connect(self.btn_click)
 
+        # connect medfilt checkbox
+        self.med_filt.toggled.connect(self.proc.use_medfilt)
+        try:
+            self.med_filt.setChecked(self.proc.is_medfilt())
+        except: pass
+
         # set subtraction checkboxes to proper positions
         try:
             self.bias_sub.setChecked(self.proc.is_minus_bias())
@@ -67,14 +75,38 @@ class Stack(QWidget):
         save_bias = lambda : self.proc.tc.save_dark(num = min(self.proc.tc.get_fps() * 60, 50))
         self.bias_save.clicked.connect(save_bias)
         # connect 'take' buttons
-        take_bkgrd = lambda : self.proc.Bkgrd.set_data(self.proc.tc.Img.get_data(reform = True))
+        take_bkgrd = lambda : self.proc.Vis_Bkgrd.set_data(self.proc.tc.Img.get_data(reform = True))
         self.bkgrd_take.clicked.connect(take_bkgrd)
-        take_ref = lambda : self.proc.Ref.set_data(self.proc.tc.Img.get_data(reform = True))
+        take_ref = lambda : self.proc.Vis_Ref.set_data(self.proc.tc.Img.get_data(reform = True))
         self.ref_take.clicked.connect(take_ref)
 
+        # hide config settings if not in lab
+        if not is_lab:
+            cam_conf_layout = self.view_opt_layout.itemAtPosition(1,0)
+            # delete all widgets in layout
+            while self.cam_config_layout.count():
+                item = self.cam_config_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.setParent(None)
+
+            # delete layout
+            self.cam_config_layout.setParent(None)
+        # if in lab disable hmag field
+        else:
+            self.view_opt_layout.itemAtPosition(0,1).widget().setEnabled(False)
+
         # connect raw img checkbox
+        raw_img_chk = self.view_opt_layout.itemAtPosition(0,3).widget()
+        raw_img_chk.toggled.connect(self.proc.use_base)
+        try: raw_img_chk.setChecked(self.proc.is_using_base())
+        except: pass
 
         self.show()
+
+        while not self.proc.is_active(vis=True):
+            sleep(.1)
+        self.proc.is_processing(vis = True)
 
         self.setWindowTitle("KPIC Display")
         self.base_img_chk.toggled.connect(self.proc.use_base)
@@ -95,6 +127,21 @@ class Stack(QWidget):
         app.processEvents()
         self.resize(width, self.geometry().height())
 
-app = QApplication(sys.argv)
-widge = Stack()
-sys.exit(app.exec_())
+if __name__ == "__main__":
+
+    # parse for tags
+
+    # create argument parser
+    parser = ArgumentParser(add_help=False)
+
+    parser.add_argument("-lab", action="store_true")
+
+    # parse args
+    args = parser.parse_args()
+
+    # check for config flag
+    is_lab = (args.lab)
+
+    app = QApplication(sys.argv)
+    widge = Stack()
+    sys.exit(app.exec_())
