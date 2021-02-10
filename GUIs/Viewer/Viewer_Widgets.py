@@ -161,8 +161,7 @@ class Img(pg.GraphicsView):
         # get image coordinates from view coordinates
         mousePoint = self.vb.mapFromViewToItem(self.img, mousePoint)
         x = int(mousePoint.x())
-        # y coordinate gets inverted
-        y = int(self.img.image.shape[1] - mousePoint.y())
+        y = int(mousePoint.y())
         # if coordinates are within bounds, set tool tip
         if 0 <= x < self.img.image.shape[0] and 0 <= y < self.img.image.shape[1]:
             self.mousePos = (x, y)
@@ -193,12 +192,16 @@ class Img(pg.GraphicsView):
         # deal with current position text label
         if not self.mousePos is None:
             intensity = self.img.image[self.mousePos[0]][self.mousePos[1]]
-            self.cur_pix.setHtml("({x:d}, {y:d}): <b>{intensity:d}</b>".format(x = self.mousePos[0], 
+            # placeholder image has RGB values
+            if type(intensity) is np.ndarray: intensity = "---"
+            self.cur_pix.setHtml("({x:d}, {y:d}): <b>{intensity}</b>".format(x = self.mousePos[0], 
                y = self.mousePos[1], intensity = intensity))
             if not self.cur_pix.isVisible(): self.cur_pix.show() 
         elif self.cur_pix.isVisible(): self.cur_pix.hide()
 
-        self.stats.setHtml("min: <b>{:d}</b> max: <b>{:d}</b>".format(*self.parent().proc.get_range()))
+        # deal with min/max label
+        try: self.stats.setHtml("min: <b>{:d}</b> max: <b>{:d}</b>".format(*self.parent().proc.get_range()))
+        except: self.stats.setHtml("min: <b>---</b> max: <b>---</b>")
 
 class Scale_chk_box(QCheckBox):
     """A widget to toggle a scale on the image"""
@@ -391,10 +394,14 @@ class Gradient(QWidget):
         # setup checkboxes
         self.min_chk.setup(lambda b : self.top_lv.proc.set_range(min=0 if b else None))
         self.max_chk.setup(lambda b : self.top_lv.proc.set_range(max=65536 if b else None))
-        if self.top_lv.proc.PRng.get_data()[0]: self.min_chk.setChecked(True)
-        else: self.min_chk.setChecked(False)
-        if self.top_lv.proc.PRng.get_data()[2]: self.max_chk.setChecked(True)
-        else: self.max_chk.setChecked(False)
+        try:
+            if self.top_lv.proc.PRng.get_data()[0]: self.min_chk.setChecked(True)
+            else: self.min_chk.setChecked(False)
+        except: self.min_chk.setChecked(False)
+        try:
+            if self.top_lv.proc.PRng.get_data()[2]: self.max_chk.setChecked(True)
+            else: self.max_chk.setChecked(False)
+        except: self.max_chk.setChecked(False)
 
         # setup inputs
         self.min_val.setup(self.top_lv.proc, "min")

@@ -57,24 +57,35 @@ class TC_cmds:
         if RELDIR == "": raise Exception("$RELDIR not found")
         if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
-        self.config = ConfigParser()
-        self.config.read(RELDIR + "/data/Track_Cam.ini")
+        config = ConfigParser()
+        config.read(RELDIR + "/data/Track_Cam.ini")
 
         # get file paths for shms
-        self.Stat_D = self.config.get("Shm Info", "Stat_D").split(",")[0]
-        self.Stat_P = self.config.get("Shm Info", "Stat_P").split(",")[0]
-        self.Error  = self.config.get("Shm Info", "Error").split(",")[0]
-        self.Img    = self.config.get("Shm Info", "IMG").split(",")[0]
-        self.Crop_D = self.config.get("Shm Info", "Crop_D").split(",")[0]
-        self.Crop_P = self.config.get("Shm Info", "Crop_P").split(",")[0]
-        self.NDR_D  = self.config.get("Shm Info", "NDR_D").split(",")[0]
-        self.NDR_P  = self.config.get("Shm Info", "NDR_P").split(",")[0]
-        self.FPS_D  = self.config.get("Shm Info", "FPS_D").split(",")[0]
-        self.FPS_P  = self.config.get("Shm Info", "FPS_P").split(",")[0]
-        self.Exp_D  = self.config.get("Shm Info", "Exp_D").split(",")[0]
-        self.Exp_P  = self.config.get("Shm Info", "Exp_P").split(",")[0]
-        self.Temp_D = self.config.get("Shm Info", "Temp_D").split(",")[0]
-        self.Temp_P = self.config.get("Shm Info", "Temp_P").split(",")[0]
+        self.Stat_D = config.get("Shm Info", "Stat_D").split(",")[0]
+        self.Stat_P = config.get("Shm Info", "Stat_P").split(",")[0]
+        self.Error  = config.get("Shm Info", "Error").split(",")[0]
+        self.Img    = config.get("Shm Info", "IMG").split(",")[0]
+        self.Crop_D = config.get("Shm Info", "Crop_D").split(",")[0]
+        self.Crop_P = config.get("Shm Info", "Crop_P").split(",")[0]
+        self.NDR_D  = config.get("Shm Info", "NDR_D").split(",")[0]
+        self.NDR_P  = config.get("Shm Info", "NDR_P").split(",")[0]
+        self.FPS_D  = config.get("Shm Info", "FPS_D").split(",")[0]
+        self.FPS_P  = config.get("Shm Info", "FPS_P").split(",")[0]
+        self.Exp_D  = config.get("Shm Info", "Exp_D").split(",")[0]
+        self.Exp_P  = config.get("Shm Info", "Exp_P").split(",")[0]
+        self.Temp_D = config.get("Shm Info", "Temp_D").split(",")[0]
+        self.Temp_P = config.get("Shm Info", "Temp_P").split(",")[0]
+
+        # get bias directory
+        self.b_dir = config.get("Data", "bias_dir")
+        if self.b_dir[-1] != "/": self.b_dir += "/"
+        # bias file name
+        self.b_fname = "bias_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
+            +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}.fits"
+
+        # get start and stop commands
+        self.start_cmd = config.get("Environment", "start_command").split("|")
+        self.end_cmd = config.get("Environment", "end_command").split("|")
         
     def is_active(self):
         """Method to tell if control script is active or not
@@ -285,8 +296,14 @@ class TC_cmds:
             os.mkdir("/nfiudata/{}/TCReferences".format(date))
 
         crop = self.get_crop()
-        block_path = "/nfiudata/{date}/TCReferences/bias_{time}_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
-            +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}_block.fits"
+        # format black name based of saved bias filename format
+        block_fname = self.b_fname.split("_")
+        # add time acquired
+        block_fname.insert(1, "{time}")
+        # append block
+        block_fname[-1] = "block.fits"
+        block_fname = "_".join(block_fname)
+        block_path = "/nfiudata/{date}/TCReferences/" + block_fname
         block_path = block_path.format(date=date, time=time, fps = self.get_fps(), tint = self.get_tint(), 
             ndr = self.get_ndr(), temp = self.Temp_P.get_data()[0], lb = crop[0], rb = crop[1], 
             ub = crop[2], bb = crop[3])
@@ -314,14 +331,12 @@ class TC_cmds:
         combined.writeto(combined_path)
 
         # make filename for bias to be saved in bias folder
-        b_dir = self.config.get("Data", "bias_dir")
-        if b_dir[-1] != "/": b_dir += "/"
         # get the file name of the combined file already saved
         fname = combined_path[combined_path.rfind("/")+1:]
         # delete HHMMSS from fname
         fname = fname[:5] + fname[12:]
         # save file in darks directory
-        combined.writeto(b_dir + fname, overwrite = True)
+        combined.writeto(self.b_dir + fname, overwrite = True)
 
     def set_fan(self, on:bool):
         """Method to set the on status of the fan
@@ -625,9 +640,9 @@ class TC_cmds:
         """A method to start the control script for the Tracking Camera"""
 
         if self.is_active():
-            raise ScriptAlreadActive("Tracking camera control script already alive.")
+            raise ScriptAlreadyActive("Tracking camera control script already alive.")
 
-        command = self.config.get("Environment", "start_command").split("|")
+        command = self.start_cmd
         for cmd in command:
             # an array to hold the processed command
             proc_cmd = []

@@ -1,0 +1,383 @@
+#!/usr/bin/env kpython3
+
+# standard library
+import os
+from atexit import register, unregister
+from signal import signal, SIGHUP, SIGTERM
+from configparser import ConfigParser
+from time import sleep
+
+# installs
+import numpy as np
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+from Track_Cam_cmds import TC_cmds
+
+def main():
+    """Method to process an image"""
+
+    # get the current counter for error so we know if we've set one
+    err_cnt = Error.get_counter()
+
+    stat = Stat.get_data()[0]
+    if stat & 2:
+        # get status of base processing script
+        try: b_stat = Base_stat.get_data()[0]
+        except:
+            try:
+                load_base_shms()
+                b_stat = Base_stat.get_data()[0]
+            except:
+                Error.set_data(np.array([4], Error.npdtype))
+                sleep(.1)
+                return 
+
+    # if processing isn't set, wait for update
+    if not stat & 1:
+        Stat.get_data(True)
+        return 
+
+    # next check whether we should work off raw frames or base
+    #   process image
+    if stat & 2:
+        # try to pull image (try because we may not be connected
+        #   to the shm yet)
+        try: im = Base_img.get_data(reform = True)
+        except: 
+            try:
+                Base_img = Shm(Base_img)
+                im = Base_img.get_data(reform = True)
+            except:
+                Error.set_data(np.array([4], Error.npdtype))
+    else:
+        global avg, raw
+        avg, raw = roll_avg(avg, raw)
+
+        im = avg
+    global _bpm    
+    # do frame subtraction, respecting larger bits first
+    if stat & 32:
+        # if reference frame has been updated recently, load it
+        if Ref.mtdata["cnt0"] != Ref.get_counter():
+            global _ref
+            _ref = Ref.get_data(reform = True)
+            # copy first four pixels (tags)
+            _ref[0][:4] = _ref[0][4]
+
+        # if using base proc and medfilt is on, medfilt ref
+        #   before subtracting it
+        if stat & 2 and b_stat & 4:
+            im -= medfilt(_bpm * _ref)
+        else:
+            im -= _ref
+    elif stat & 16 and not (stat & 2 and b_stat & 2):
+        # if background frame has been updated recently, load it
+        if Bkgrd.mtdata["cnt0"] != Bkgrd.get_counter():
+            global _bkgrd
+            _bkgrd = Bkgrd.get_data(reform = True)
+            # copy over first four pixels (tags)
+            _bkgrd[0][:4] = _bkgrd[0][4]
+
+            # calculate bad pixel map 
+            _bpm = np.ones_like(_bkgrd)
+            std = np.std(_bkgrd)
+            mu = np.median(_bkgrd)
+            _bpm[_bkgrd > mu + BPM_FILT*std] = 0
+            _bpm[_bkgrd < mu - BPM_FILT*std] = 0
+
+        # if using base proc and medfilt is on, medfilt bkgrd
+        #   before subtracting it
+        if stat & 2 and b_stat & 4:
+            im -= medfilt(_bkgrd)
+        else:
+            im -= _bkgrd
+    elif stat & 8 and not stat & 2:
+        # if camera parameters have changed since the last bias
+        #   load, try to load a new bias
+        global head
+        if head != tc._get_header():
+            header = tc._get_header()
+            global _bias
+
+            # format bias file name based on camera parameters from header
+            fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+                ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
+                ub = header["crop_UB"], bb = header["crop_BB"])
+
+            crop = False
+            # if bias file doesn't exist, check for bias file with full crop
+            if not os.path.isfile(fname):
+                fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+                    ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
+                    ub = 0, bb = 0) 
+                crop = True
+                # if bias file still doesn't exist, throw an error
+                if not os.path.isfile(fname): raise BiasError("No bias file found")
+
+            # load bias from file
+            with fits.open(fname) as f:
+                _bias = f[0].data
+
+            # crop bias if we changed cropping
+            if crop:
+                _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
+
+            # if first 4 image bits are in bias, copy over them in case of tags
+            if header["UB"] == 0 and header["crop_LB"] < 4:
+                _bias[0][:4] = _bias[0][4] 
+
+            # calculate bad pixel map
+            _bpm = np.ones_like(_bias)
+            std = np.std(_bias)
+            mu = np.median(_bias)
+            _bpm[_bias > mu + BPM_FILT*std] = 0
+            _bpm[_bias < mu - BPM_FILT*std] = 0
+
+            head = header
+
+        im -= _bias 
+
+    # multiply by bad pixel map
+    try: im *= _bpm
+    except: Error.set_data(np.array([5], Error.npdtype))
+
+    # medfilt if requested
+    if stat & 4 and not stat & 2:
+        im = medfilt(im)
+
+    # apply any scale that was requested
+    scl = Scale.get_data()[0]
+    if scl == 1:
+        # form a mask so image doesn't have to be clipped
+        mask = np.ma.masked_greater(im, 0).mask
+        im = np.log10(im, where=mask)
+    elif scl == 2:
+        # form a mask so image doesn't have to be clipped
+        mask = np.ma.masked_greater_equal(im, 0).mask
+        im = np.sqrt(im, where=mask)
+
+    # set image in shm
+    Proc.set_data(im)
+
+    # if we haven't set any errors this round and there is an error
+    #   stored, clear it
+    if err_cnt == Error.get_counter() and Error.get_data()[0] != 0:
+        Error.set_data(np.array([0], Error.npdtype))
+
+def load_base_shms():
+    """Method to attempt to connect to base processing shms"""
+
+    global Base_stat, Base_img
+
+    if type(Base_stat) is str:
+        try: Base_stat = Shm(Base_stat)
+        except: pass
+
+    if type(Base_img) is str:
+        try: Base_img = Shm(Base_img)
+        except: pass
+
+def load_bias(header):
+    """Method to load a bias file and compute the badpixelmap
+
+    Args:
+        header = a fits header formatted like TC_cmds._get_header
+    Returns:
+        None
+    """
+
+    global _bias, _bpm
+
+    # format bias file name based on camera parameters from header
+    fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+        ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
+        ub = header["crop_UB"], bb = header["crop_BB"])
+
+    crop = False
+    # if bias file doesn't exist, check for bias file with full crop
+    if not os.path.isfile(fname):
+        fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+            ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
+            ub = 0, bb = 0) 
+        crop = True
+        # if bias file still doesn't exist, throw an error
+        if not os.path.isfile(fname): raise BiasError("No bias file found")
+    
+    # load bias from file
+    with fits.open(fname) as f:
+        _bias = f[0].data
+
+    # crop bias if we changed cropping
+    if crop:
+        _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
+
+    # if first 4 image bits are in bias, copy over them in case of tags
+    if header["UB"] == 0 and header["crop_LB"] < 4:
+        _bias[0][:4] = _bias[0][4]
+
+def roll_avg(avg:np.array, raw:list):
+    """A method that refreshes the average
+
+    Pulls a new image, appends it to raw, removes the first element in raw,
+        then checks to make sure that raw is long enough
+
+    If the new frame pulled is a of a different size, a whole new avg will be created
+
+    Args:
+        avg = the current rolling average
+            (if None, a new one will be created from scratch)
+        raw = a list of raw frames corresponding to the given average
+    Returns:
+        (np.array, [np.array]) = the averaged frames, a list of raw frames
+    """
+
+    old_frames = []
+    old_len = len(raw)
+    # pop at least one frame
+    if len(raw) >= 1:
+        old_frames = [raw.pop(0) for _ in range(0, len(raw) - Avg_cnt.get_data()[0] + 1)]
+
+    # fill out avg buffer
+    new_frames = [tc.Img.get_data(True, reform=True) for _ in range(0, Avg_cnt.get_data()[0] - len(raw))]
+    raw += new_frames
+
+    # make sure that all our frames are the same size
+    while(raw[0].shape != raw[-1].shape):
+        old_frames.append(raw.pop(0))
+        new_frames.append(tc.Img.get_data(True, reform=True))
+        raw.append(new_frames[-1])
+
+    # case 1: we have all new frames, throw out avg and remake
+    if len(new_frames) >= len(raw):
+        return np.mean(raw, 0), raw
+    # case 2: the more likely one, we can use avg to cut down the calculations needed
+    else:
+        avg = (avg*old_len - np.sum(old_frames, 0) + np.sum(new_frames, 0)) / len(raw)
+        return avg, raw
+
+def close(*args, **kwargs):
+    """Method to perform a clean close"""
+
+    # delete Set shm to indicate that control script is off
+    try: os.remove(Stat.fname)
+    except Exception as ouch: print("Exception on close {}".format(ouch))
+
+    unregister(close)
+
+def signal_handler(*args, **kwargs):
+    """A method to end execution when a signal is recieved"""
+
+    global alive
+    alive = False
+
+    # try to wake up main if it's waiting for processing to start
+    try: Stat.sem.release()
+    except: pass
+
+# get RELDIR location which has all kroot made files
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+# read config file in the data subdirectory of RELDIR
+config = ConfigParser()
+config.read(RELDIR+"/data/Track_Cam_vis_process.ini")
+
+# make folder for shared memories if it doesn't exist
+if not os.path.isdir("/tmp/Vis_Process"): os.mkdir("/tmp/Vis_Process")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# check if there's another control script running by checking
+#   for the existence of some shms that get deleted when control
+#   script ends
+
+Stat = config.get("Shm Info", "Stat").split(",")
+if os.path.isfile(Stat[0]):
+    print("Active control script exists.")
+    msg = "Stat shm exists, meaning another control script is running."
+    raise AlreadyAlive(msg)
+else:
+    Stat = Shm(Stat[0], data=np.array([2], dtype=type_[Stat[1]]),
+        mmap = (Stat[2] == "1"))
+
+Scale   = config.get("Shm Info", "Scale").split(",")
+Avg_cnt = config.get("Shm Info", "Avg_cnt").split(",")
+Ref     = config.get("Shm Info", "Ref").split(",")
+Proc    = config.get("Shm Info", "Proc").split(",")
+Bkgrd   = config.get("Shm Info", "Bkgrd").split(",")
+Error   = config.get("Shm Info", "Error").split(",")
+DRng    = config.get("Shm Info", "DRng").split(",")
+
+if os.path.isfile(Scale[0]): Scale = Shm(Scale[0])
+else: Scale = Shm(Scale[0], data = np.array([0], dtype = type_[Scale[1]]),
+        mmap = (Scale[2] == "1"))
+
+if os.path.isfile(Avg_cnt[0]): Avg_cnt = Shm(Avg_cnt[0])
+else: Avg_cnt = Shm(Avg_cnt[0], data = np.array([5], dtype = type_[Avg_cnt[1]]),
+        mmap = (Avg_cnt[2] == "1"))
+
+if os.path.isfile(Proc[0]): Proc = Shm(Proc[0])
+else: Proc = Shm(Proc[0], data = np.zeros([640, 512], dtype = type_[Proc[1]]),
+        mmap = (Proc[2] == "1"), croppable = True)
+
+if os.path.isfile(Ref[0]): Ref = Shm(Ref[0])
+else: Ref = Shm(Ref[0], data = np.zeros([640, 512], dtype = type_[Ref[1]]),
+        mmap = (Ref[2] == "1"), croppable = True)
+
+if os.path.isfile(Bkgrd[0]): Bkgrd = Shm(Bkgrd[0])
+else: Bkgrd = Shm(Bkgrd[0], data = np.zeros([640, 512], dtype = type_[Bkgrd[1]]),
+        mmap = (Bkgrd[2] == "1"), croppable = True)
+
+if os.path.isfile(Error[0]): Error = Shm(Error[0])
+else: Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),
+        mmap = (Error[2] == "1"))
+
+if os.path.isfile(DRng[0]): DRng = Shm(DRng[0])
+else: DRng = Shm(DRng[0], data = np.array([0, 0], dtype = type_[DRng[1]]),
+        mmap = (DRng[2] == "1"))
+
+# register cleanup after shm initialization so that they
+#   get cleaned up before being deleted
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+# get base proc shms 
+base_conf = ConfigParser()
+base_conf.read(RELDIR+"/data/Track_Cam_base_process.ini")
+
+# connect to img
+Base_img = base_conf.get("Shm Info", "Base_proc").split(",")[0]
+if os.path.isfile(Base_img[0]): Base_img = Shm(Base_img, sem = True)
+
+# connect to stat
+Base_stat = base_conf.get("Shm Info", "Stat").split(",")[0]
+if os.path.isfile(Base_stat[0]): Base_stat = Shm(Base_stat, sem = True)
+
+# instantiate TC_cmds
+tc = TC_cmds()
+
+# make variables to hold bad pixel map and the various frames
+_bpm = None
+_bias = None
+_bkgrd = None
+_ref = None
+
+# make variables for roll_avg
+avg = None
+raw = []
+
+# make variable to store camera parameters
+head = None
+
+# variable to store whether control script is running
+alive = True
+
+# start main method
+while alive: main()

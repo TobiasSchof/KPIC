@@ -1,0 +1,259 @@
+#!/usr/bin/env kpython3
+
+# standard library
+from configparser import ConfigParser
+from atexit import register, unregister
+from signal import signal, SIGHUP, SIGTERM
+import sys, os
+
+# installs
+from astropy.io import fits
+from scipy.signal import medfilt
+import numpy as np
+
+# nfiuserver libraries
+from KPIC_shmlib import Shm
+from Track_Cam_cmds import TC_cmds
+
+""""
+
+THIS IS A CONTROL SCRIPT FOR BASIC IMAGE PROCESSING FOR THE
+FIBER INJECTION UNIT's TRACKING SCRIPT AND NOT FOR USE BY USER
+
+See Track_Cam_process.py for the user-end library
+
+"""
+
+# variable to track whether this script should be alive
+alive = True
+
+# coefficient for bad pixel filter
+BPM_FILT = 3.5
+
+class AlreadyAlive(Exception):
+    """An exception to be thrown if control code is initialized twice"""
+    pass
+
+class BiasError(Exception):
+    """An exception to be thrown when there's an issue setting the bias"""
+
+def main():
+    """Main method to process images"""
+
+    # get status
+    stat = Stat.get_data()[0]
+
+    err_cnt = Err.mtdata["cnt0"]
+
+    # if processing is set to off, wait for stat update and continue
+    if not stat & 1:
+        Stat.get_data(True)
+        return
+
+    # grab camera parameters
+    head = cam._get_header()
+    # median images
+    im = []
+    for x in range(0, Avg_cnt.get_data()[0]):
+        im.append(cam.Img.get_data(True, reform = True))
+        # copy over first four pixels (tag pixels)
+        im[-1][0][:4] = im[-1][0][4]
+        if not alive: return
+
+    # median images
+    im = np.median(im, 0)
+
+    global cur_head
+    # check the header to make sure that no camera parameters have changed
+    if head != cur_head:
+        # if anything has changed, load a new bias and compute new bpm
+        try: 
+            load_bias(head)
+            cur_head = head
+        # if no bias was found, set error and try to continue
+        except BiasError:
+            Err.set_data(np.array([1], Err.npdtype))
+
+    # if subtracting calibration image, subtract
+    if stat & 2:
+        # check if a new calibration image should be loaded
+        if cal.mtdata["cnt0"] != cal.get_counter():
+            # pull new calibration image
+            global _cal_im
+            _cal_im = cal.get_data(reform = True)
+            # extract if includes bias
+            global _cal_raw
+            _cal_raw = _cal_im[0][0] == 0 
+            # copy over tag pixels
+            _cal_im[0][:4] = _cal_im[0][4]
+
+            # if calibration frame shape is right and there was an issue with loading
+            #   the bias, calculate bad pixel map from calibration frame
+            if head != cur_head and im.shape == _cal_im.shape:
+                _bpm = np.ones_like(_cal_im)
+                std = np.std(_cal_im)
+                mu = np.median(_cal_im)
+                _bpm[_cal_im > mu + BPM_FILT*std] = 0
+                _bpm[_cal_im < mu - BPM_FILT*std] = 0  
+
+        # if calibration frame shape doesn't match, post error
+        if im.shape != _cal_im.shape:
+            Err.set_data(np.array([2], Err.npdtype))
+
+        try: im -= _cal_im
+        except: Err.set_data(np.array([2], Err.npdtype))
+
+    # if bias wasn't included in calibration image, or if calibration
+    #   image isn't being subtracted, subtract bias
+    if not _cal_raw or not stat & 2:
+        try: im -= _bias 
+        except: Err.set_data(np.array([1], Err.npdtype))
+
+    # apply bad pixel map
+    try: im *= _bpm
+    except: Err.set_data(np.array([3], Err.npdtype))
+
+    # if median filter was requested, do it
+    if stat & 4:
+        im = medfilt(im)
+
+    # set image
+    Base_proc.set_data(im)
+
+    # if no errors were raise, and previously an error was posted,
+    #   post no error to error shm
+    if err_cnt == Err.mtdata["cnt0"] and Err.get_data()[0] != 0:
+        Err.set_data(np.array([0], Err.npdtype))
+
+def load_bias(header):
+    """Method to load a bias file and compute the badpixelmap
+
+    Args:
+        header = a fits header formatted like TC_cmds._get_header
+    Returns:
+        None
+    """
+
+    global _bias, _bpm
+    
+    # format bias file name based on camera parameters from header
+    fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+        ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
+        ub = header["crop_UB"], bb = header["crop_BB"])
+
+    crop = False
+    # if bias file doesn't exist, check for bias file with full crop
+    if not os.path.isfile(fname):
+        fname = cam.b_dir + cam.b_fname.format(fps = header["fps"], tint = header["tint"],
+            ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
+            ub = 0, bb = 0) 
+        crop = True
+        # if bias file still doesn't exist, throw an error
+        if not os.path.isfile(fname): raise BiasError("No bias file found")
+    
+    # load bias from file
+    with fits.open(fname) as f:
+        _bias = f[0].data
+
+    # crop bias if we changed cropping
+    if crop:
+        _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
+
+    # if first 4 image bits are in bias, copy over them in case of tags
+    if header["UB"] == 0 and header["crop_LB"] < 4:
+        _bias[0][:4] = _bias[0][4]
+
+    # calculate bad pixel map 
+    _bpm = np.ones_like(_bias)
+    std = np.std(_bias)
+    mu = np.median(_bias)
+    _bpm[_bias > mu + BPM_FILT*std] = 0
+    _bpm[_bias < mu - BPM_FILT*std] = 0
+
+def close(*args, **kwargs):
+    """Method to perform a clean close"""
+
+    # delete Stat shm to indicate that control script is off
+    try: os.remove(Stat.fname)
+    except Exception as ouch: print("Exception on close {}".format(ouch))
+
+    unregister(close)
+
+def signal_handler(*args, **kwargs):
+    """A method to end execution when a signal is recieved"""
+
+    global alive
+    alive = False
+
+    # try to wake up main if it's waiting for processing to start
+    try: Stat.sem.release()
+    except: pass
+
+    try: tc.Img.sem.release()
+    except: pass
+
+# get RELDIR location which has all kroot made files
+RELDIR = os.environ.get("RELDIR")
+if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
+
+# read config file in the data subdirectory of RELDIR
+config = ConfigParser()
+config.read(RELDIR+"/data/Track_Cam_base_process.ini")
+
+# make folder for shared memories if it doesn't exist
+if not os.path.isdir("/tmp/Base_Process"): os.mkdir("/tmp/Base_Process")
+
+# create a dictionary to translate strings into numpy data types
+type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
+    "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
+    "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
+    "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
+    "complex128":np.complex128}
+
+# check if there's another control script running by checking
+#   for the existence of some shms that get deleted when control
+#   script ends
+
+Stat = config.get("Shm Info", "Stat").split(",")
+if os.path.isfile(Stat[0]):
+    print("Active control script exists.")
+    msg = "Stat shm exists, meaning another control script is running."
+    raise AlreadyAlive(msg)
+else:
+    Stat = Shm(Stat[0], data=np.array([2], dtype=type_[Stat[1]]),
+        mmap = (Stat[2] == "1"))
+
+Avg_cnt   = config.get("Shm Info", "Avg_cnt").split(",")
+Calib     = config.get("Shm Info", "Calib").split(",")
+Base_proc = config.get("Shm Info", "Base_proc").split(",")
+Err       = config.get("Shm Info", "Error").split(",")
+
+if os.path.isfile(Avg_cnt[0]): Avg_cnt = Shm(Avg_cnt[0])
+else: Avg_cnt = Shm(Avg_cnt[0], data = np.array([5], dtype = type_[Avg_cnt[1]]),
+        mmap = (Avg_cnt[2] == "1"))
+
+if os.path.isfile(Calib[0]): Calib = Shm(Calib[0])
+else: Calib = Shm(Calib[0], data = np.zeros([640, 512], dtype = type_[Calib[1]]),
+        mmap = (Calib[2] == "1"), croppable = True)
+
+if os.path.isfile(Base_proc[0]): Base_proc = Shm(Base_proc[0])
+else: Base_proc = Shm(Base_proc[0], data = np.zeros([640, 512], dtype = type_[Base_proc[1]]),
+        mmap = (Base_proc[2] == "1"), croppable = True)
+
+if os.path.isfile(Err[0]): Err = Shm(Err[0])
+else: Err = Shm(Err[0], data = np.array([0], dtype = type_[Err[1]]),
+        mmap = (Err[2] == "1"))
+
+# register cleanup after shm initialization so that they
+#   get cleaned up before being deleted
+register(close)
+signal(SIGHUP, signal_handler)
+signal(SIGTERM, signal_handler)
+
+# instantiate TC_cmds
+cam = TC_cmds()
+
+cur_head = fits.Header()
+
+# loop main method
+while alive: main()
