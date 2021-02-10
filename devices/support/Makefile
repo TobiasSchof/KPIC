@@ -8,6 +8,9 @@ RELINC = KPIC_shmlib.hpp
 RELLIB = libKPIC_shmlib.so
 RELBIN = linksem
 
+# add subdirectory
+DIRS = Python
+
 ################################################################################
 # KROOT boilerplate:
 # Include general make rules, using default values for the key environment
