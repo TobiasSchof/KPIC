@@ -114,10 +114,9 @@ def main():
     elif stat & 8 and not stat & 2:
         # if camera parameters have changed since the last bias
         #   load, try to load a new bias
-        global head
-        if head != tc._get_header():
+        global head, _bias
+        if head != tc._get_header() or _bias is None or _bias.max() == 0:
             header = tc._get_header()
-            global _bias
 
             # format bias file name based on camera parameters from header
             fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
@@ -403,6 +402,45 @@ head = None
 
 # variable to store whether control script is running
 alive = True
+
+# try to find bias to set bpm
+header = tc._get_header()
+
+# format bias file name based on camera parameters from header
+fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
+    ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
+    ub = header["crop_UB"], bb = header["crop_BB"])
+
+crop = False
+# if bias file doesn't exist, check for bias file with full crop
+if not os.path.isfile(fname):
+    fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
+        ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
+        ub = 0, bb = 0) 
+    crop = True
+
+# if bias doesn't exist, can't do anthing
+if os.path.isfile(fname):
+    # load bias from file
+    with fits.open(fname) as f:
+        _bias = f[0].data
+
+    # crop bias if we changed cropping
+    if crop:
+        _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
+
+    # if first 4 image bits are in bias, copy over them in case of tags
+    if header["UB"] == 0 and header["crop_LB"] < 4:
+        _bias[0][:4] = _bias[0][4] 
+
+    # calculate bad pixel map
+    _bpm = np.ones_like(_bias)
+    std = np.std(_bias)
+    mu = np.median(_bias)
+    _bpm[_bias > mu + BPM_FILT*std] = 0
+    _bpm[_bias < mu - BPM_FILT*std] = 0
+
+    head = header
 
 # start main method
 while alive: main()

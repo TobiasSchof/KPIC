@@ -743,7 +743,7 @@ class TC_cmds:
         tint    = self.get_tint()
         ndr     = self.get_ndr()
         temps   = self.get_temp(True)
-        temp_sp = self.Temp_P.get_data()[1]
+        temp_sp = self.Temp_P.get_data()[0]
         crop    = self.get_crop()
 
         return fits.Header({"fps":fps, "tint":tint, "ndr":ndr, "temp_MB":temps[0], "temp_FE":temps[1],
