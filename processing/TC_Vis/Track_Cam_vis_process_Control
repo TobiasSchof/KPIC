@@ -40,6 +40,7 @@ def main():
 
     # next check whether we should work off raw frames or base
     #   process image
+    global avg, raw
     if stat & 2:
         # try to pull image (try because we may not be connected
         #   to the shm yet)
@@ -50,8 +51,17 @@ def main():
                 im = Base_img.get_data(reform = True)
             except:
                 Error.set_data(np.array([4], Error.npdtype))
+
+                # try to continue without base processing
+                if not tc.is_connected(): return
+
+                avg, raw = roll_avg(avg, raw)
+
+                im = avg
     else:
-        global avg, raw
+        if not tc.is_connected():
+            Error.set_data(np.array([6], Error.npdtype))
+
         avg, raw = roll_avg(avg, raw)
 
         im = avg
@@ -158,7 +168,7 @@ def main():
         im = np.sqrt(im, where=mask)
 
     # set image in shm
-    Proc.set_data(im)
+    Proc.set_data(im.astype(np.int16))
 
     # if we haven't set any errors this round and there is an error
     #   stored, clear it

@@ -106,7 +106,7 @@ class Img(pg.GraphicsView):
         self.grad_widg = None
 
         # connect to shm
-        self.Img_shm = "/tmp/Track_Cam/PROCIMG.im.shm"
+        self.Img_shm = "/tmp/Vis_Process/PROCIMG.im.shm"
 
         # create Label to display current coordinates
         self.cur_pix = pg.TextItem(color = "w", fill = pg.mkBrush(color="k"))

@@ -446,7 +446,7 @@ class TC_process:
         self._check_alive_and_processing(vis = True)
 
         # set minus bias bit
-        _ = self.Set.get_data()
+        _ = self.Vis_Stat.get_data()
         if use:
             _[0] = _[0] | 8
             _[0] = _[0] & ~(48)
@@ -475,14 +475,14 @@ class TC_process:
             self.load_bkgrd(fname)
 
         # set minus bias bit
-        _ = self.Set.get_data()
+        _ = self.Vis_Stat.get_data()
         if use:
             _[0] = _[0] | 16
             _[0] = _[0] & ~40
         else:
             _[0] = _[0] & ~16
 
-        self.Set.set_data(_)
+        self.Vis_Stat.set_data(_)
 
     def load_bkgrd(self, fname:str=None):
         """Loads the background at the destination into the shm
@@ -528,14 +528,14 @@ class TC_process:
             self.load_ref(fname)
 
         # set minus bias bit
-        _ = self.Set.get_data()
+        _ = self.Vis_Stat.get_data()
         if use:
             _[0] = _[0] | 32
             _[0] = _[0] & ~24
         else:
             _[0] = _[0] & ~32
 
-        self.Set.set_data(_)
+        self.Vis_Stat.set_data(_)
 
     def load_ref(self, fname:str=None):
         """Loads the reference image at the destination into the shm
@@ -598,7 +598,7 @@ class TC_process:
     def _check_alive(self, base:bool=False, vis:bool=False):
         """A method to raise an error if the control script is not active"""
 
-        if not base or vis:
+        if not (base or vis):
             raise ValueError("Base or vis should be True.")
         if not self.is_active(base=base, vis=vis):
             raise ScriptOff("No active control script. Use activate_control_script().")
@@ -606,7 +606,7 @@ class TC_process:
     def _check_alive_and_processing(self, base:bool=False, vis:bool=False):
         """A method to raise an error if the control script is not processing images"""
 
-        if not base or vis:
+        if not (base or vis):
             raise ValueError("Base or vis should be True.")
 
         self._check_alive(base=base, vis=vis)

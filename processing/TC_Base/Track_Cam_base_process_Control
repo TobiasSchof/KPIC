@@ -118,7 +118,7 @@ def main():
         im = medfilt(im)
 
     # set image
-    Base_proc.set_data(im)
+    Base_proc.set_data(im.astype(np.int16))
 
     # if no errors were raise, and previously an error was posted,
     #   post no error to error shm

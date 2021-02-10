@@ -64,13 +64,13 @@ class Stack(QWidget):
         self.bkgrd_sub.toggled.connect(self.proc.use_minus_bkgrd)
         self.ref_sub.toggled.connect(self.proc.use_minus_ref)
         # connect 'save dark' button
-        #save_bias = lambda : self.proc.tc.save_dark(num = min(self.proc.tc.get_fps() * 60, 50))
-        #self.bias_save.clicked.connect(save_bias)
+        save_bias = lambda : self.proc.tc.save_dark(num = min(self.proc.tc.get_fps() * 60, 50))
+        self.bias_save.clicked.connect(save_bias)
         # connect 'take' buttons
-        #take_bkgrd = lambda : self.proc.Bkgrd.set_data(self.proc.Proc.get_data(reform = True))
-        #self.bkgrd_take.clicked.connect(take_bkgrd)
-        #take_ref = lambda : self.proc.Ref.set_data(self.proc.Proc.get_data(reform = True))
-        #self.ref_take.clicked.connect(take_ref)
+        take_bkgrd = lambda : self.proc.Bkgrd.set_data(self.proc.tc.Img.get_data(reform = True))
+        self.bkgrd_take.clicked.connect(take_bkgrd)
+        take_ref = lambda : self.proc.Ref.set_data(self.proc.tc.Img.get_data(reform = True))
+        self.ref_take.clicked.connect(take_ref)
 
         # connect raw img checkbox
 
