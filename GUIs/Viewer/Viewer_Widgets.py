@@ -108,8 +108,17 @@ class Img(pg.GraphicsView):
         # a variable to store the currently active gradient widget
         self.grad_widg = None
 
+        # variable to store the different image shms
+        #   (can be switched by changing the value of self.Img_Shm)
+        self.raw_im  = "/tmp/Track_Cam/RAWIMG.im.shm"
+        try: self.raw_im = Shm(self.raw_im)
+        except: pass
+        self.proc_im = "/tmp/Vis_Process/PROCIMG.im.shm"
+        try: self.proc_im = Shm(self.proc_im)
+        except: pass
+
         # connect to shm
-        self.Img_shm = "/tmp/Vis_Process/PROCIMG.im.shm"
+        self.Img_shm = self.proc_im
 
         # create Label to display current coordinates
         self.cur_pix = pg.TextItem(color = "w", fill = pg.mkBrush(color="k"))
@@ -182,6 +191,11 @@ class Img(pg.GraphicsView):
         # set new image
         try:
             if type(self.Img_shm) is str:
+                try: self.raw_im = Shm(self.raw_im)
+                except: pass
+                try: self.proc_im = Shm(self.proc_im)
+                except: pass
+
                 self.Img_shm = Shm(self.Img_shm)
 
             self.Img_shm.read_meta_data()
@@ -552,8 +566,6 @@ class FPS(QLineEdit):
 
         super().focusOutEvent(*args, **kwargs)
 
-        self.update() 
-
 class Tint(QLineEdit):
     """A class to control the Tint of the tracking camera
         (meant to be used in lab view only)
@@ -604,8 +616,6 @@ class Tint(QLineEdit):
 
         super().focusOutEvent(*args, **kwargs)
 
-        self.update()
-
 class NDR(QLineEdit):
     """A class to control the NDRs of the tracking camera
         (meant to be used in lab view only)
@@ -655,8 +665,6 @@ class NDR(QLineEdit):
         except: pass
 
         super().focusOutEvent(*args, **kwargs)
-
-        self.update()
 
 class Save_raw(QPushButton):
     """A class to save a raw frame"""
@@ -876,3 +884,139 @@ class Save_block(QPushButton):
                 return which, hdr_cnt, img_cnt
             else:
                 return None
+
+class Raw_im_chk(QCheckBox):
+    """A class to control the raw image view checkbox"""
+
+    def __init__(self, *args, **kwargs):
+        
+        # run super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self, refresh_rate:int=500):
+        """Method to setup this checkbox"""
+
+        self.refresh_rate = refresh_rate
+
+        self.imv = self.parent().image
+
+        self.subtr_frame = self.parent().interfaces.findChild(QFrame, "subtraction_frame")
+        self.scl_frame = self.parent().interfaces.findChild(QFrame, "scl_frame")
+        self.smooth_frame = self.parent().interfaces.findChild(QFrame, "smooth_frame")
+
+        self.toggled.connect(self.toggle_raw)
+
+    def toggle_raw(self, toggled):
+        """Method to act on checkbox toggle"""
+
+        if toggled:
+            self.parent().base_img_chk.setEnabled(False)
+            self.subtr_frame.setEnabled(False)
+            self.scl_frame.setEnabled(False)
+            self.smooth_frame.setEnabled(False)
+            self.imv.Img_shm = self.imv.raw_im
+        else:
+            self.parent().base_img_chk.setEnabled(True)
+            self.subtr_frame.setEnabled(True)
+            self.scl_frame.setEnabled(True)
+            self.smooth_frame.setEnabled(True) 
+            self.imv.Img_shm = self.imv.proc_im
+
+class Base_use_chk(QCheckBox):
+    """A class to monitor the use tracking checkbox"""
+
+    def __init__(self, *args, **kwargs):
+
+       # run super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+ 
+    def setup(self, refresh_rate:int=500):
+        """Method to setup this check box
+        
+        Args:
+            refresh_rate = the polling rate in ms to update this widget
+        """
+
+        self.refresh_rate = refresh_rate
+
+        f_subt = self.parent().interfaces.findChild(QFrame, "subtraction_frame") 
+        self.bias_subt = f_subt.findChild(QCheckBox, "bias_sub")
+        self.bkgrd = [f_subt.findChild(QCheckBox, "bkgrd_sub"), 
+                      f_subt.findChild(QPushButton, "bkgrd_take"),
+                      f_subt.findChild(QPushButton, "bkgrd_load"),
+                      f_subt.findChild(QPushButton, "bkgrd_save")]
+
+        self.medfilt = self.parent().interfaces.findChild(QFrame, "smooth_frame").findChild(QCheckBox, "med_filt")
+
+        self.proc = self.parent().proc
+
+        self.toggled.connect(self.act)
+
+        self.setChecked(self.proc.is_using_base())
+        if self.isChecked():
+            self.bias_subt.setEnabled(False)
+        else:
+            self.bias_subt.setEnabled(True)
+
+        # make a repeating timeout
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.refresh_rate)
+
+    def update(self):
+        """A method to update this check box to make sure that it stays up to date"""
+
+        checked = self.proc.is_using_base()
+
+        if not (checked == self.isChecked()):
+            self.toggle(checked)
+        # if using base processing, check if anything has changed
+        elif checked:
+            base_mf = self.proc.is_medfilt(vis = False)
+
+            # if base processing is already med filtering, but checkbox is enabled, disable
+            if base_mf and self.medfilt.isEnabled():
+                self.medfilt.setEnabled(False)
+            # if base processing isn't using med filtering, but checkbox is disabled, enable
+            elif not base_mf and not self.medfilt.isEnabled():
+                self.medfilt.setEnabled(True)
+
+            # if base processing is subtracting calib image, disable bkgrd subtraction
+            calib_sub = self.proc.is_minus_calib()
+
+            if calib_sub:
+                for widg in self.bkgrd:
+                    if widg.isEnabled(): widg.setEnabled(False)
+            else:
+                for widg in self.bkgrd:
+                    if not widg.isEnabled(): widg.setEnabled(True)
+
+    def act(self, toggled):
+        """A method to act when this checkbox is toggled"""
+
+        # base processing on so disable bias subtraction,
+        #   disable bkgrd subtraction if calib being used
+        if toggled:
+            self.proc.use_base(True)
+            if self.bias_subt.isEnabled(): self.bias_subt.setEnabled(False)
+            if self.bkgrd[0].isEnabled() and self.proc.is_minus_calib(): 
+                for widg in self.bkgrd:
+                    widg.setEnabled(False)
+        # enable anything that's disabled
+        else:
+            self.proc.use_base(False)
+            for widg in [self.bias_subt, self.medfilt]+self.bkgrd:
+                if not widg.isEnabled(): widg.setEnabled(True)
+

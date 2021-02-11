@@ -260,7 +260,7 @@ class TC_process:
             bool = True if a calibration image is being subtracted, False otherwise
         """
 
-        self._cehck_alive_and_processing(base = True)
+        self._check_alive_and_processing(base = True)
 
         return bool(self.Base_Stat.get_data()[0] & 2)
 

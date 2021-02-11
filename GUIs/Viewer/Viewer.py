@@ -96,12 +96,6 @@ class Stack(QWidget):
         else:
             self.view_opt_layout.itemAtPosition(0,1).widget().setEnabled(False)
 
-        # connect raw img checkbox
-        raw_img_chk = self.view_opt_layout.itemAtPosition(0,3).widget()
-        raw_img_chk.toggled.connect(self.proc.use_base)
-        try: raw_img_chk.setChecked(self.proc.is_using_base())
-        except: pass
-
         self.show()
 
         while not self.proc.is_active(vis=True):
@@ -109,8 +103,7 @@ class Stack(QWidget):
         self.proc.is_processing(vis = True)
 
         self.setWindowTitle("KPIC Display")
-        self.base_img_chk.toggled.connect(self.proc.use_base)
-    
+
     def btn_click(self):
         """method that minimizes or maximizes the control panel"""
 

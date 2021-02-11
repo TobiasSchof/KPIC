@@ -143,7 +143,7 @@ def main():
                     _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
 
                 # if first 4 image bits are in bias, copy over them in case of tags
-                if header["UB"] == 0 and header["crop_LB"] < 4:
+                if header["crop_UB"] == 0 and header["crop_LB"] < 4:
                     _bias[0][:4] = _bias[0][4] 
 
                 # calculate bad pixel map
@@ -237,7 +237,7 @@ def load_bias(header):
         _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
 
     # if first 4 image bits are in bias, copy over them in case of tags
-    if header["UB"] == 0 and header["crop_LB"] < 4:
+    if header["crop_UB"] == 0 and header["crop_LB"] < 4:
         _bias[0][:4] = _bias[0][4]
 
 def roll_avg(avg:np.array, raw:list):
@@ -430,7 +430,7 @@ if os.path.isfile(fname):
         _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
 
     # if first 4 image bits are in bias, copy over them in case of tags
-    if header["UB"] == 0 and header["crop_LB"] < 4:
+    if header["crop_UB"] == 0 and header["crop_LB"] < 4:
         _bias[0][:4] = _bias[0][4] 
 
     # calculate bad pixel map
