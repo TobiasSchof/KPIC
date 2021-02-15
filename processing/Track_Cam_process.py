@@ -447,9 +447,9 @@ class TC_process:
         self._check_alive_and_processing(base = which.lower() == "base", vis = which.lower() in ["vis", "visualizer"])
 
         if which == "base":
-            self.Base_Avg_cnt(np.array([cnt], self.Base_Avg_cnt.npdtype))
+            self.Base_Avg_cnt.set_data(np.array([cnt], self.Base_Avg_cnt.npdtype))
         else:
-            self.Vis_Avg_cnt(np.array([cnt], self.Vis_Avg_cnt.npdtype))
+            self.Vis_Avg_cnt.set_data(np.array([cnt], self.Vis_Avg_cnt.npdtype))
 
     def use_minus_bias(self, use:bool=True):
         """Turns bias subtraction on/off
