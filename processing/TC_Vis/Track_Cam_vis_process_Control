@@ -332,7 +332,7 @@ if os.path.isfile(Stat[0]):
     msg = "Stat shm exists, meaning another control script is running."
     raise AlreadyAlive(msg)
 else:
-    Stat = Shm(Stat[0], data=np.array([2], dtype=type_[Stat[1]]),
+    Stat = Shm(Stat[0], data=np.array([1], dtype=type_[Stat[1]]),
         mmap = (Stat[2] == "1"))
 
 Scale   = config.get("Shm Info", "Scale").split(",")

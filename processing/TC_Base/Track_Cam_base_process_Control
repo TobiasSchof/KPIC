@@ -70,8 +70,9 @@ def main():
     im = np.median(im, 0)
 
     global cur_head
+    global _bpm
     # check the header to make sure that no camera parameters have changed
-    if head != cur_head:
+    if head != cur_head or _bpm is None or _bpm.max() == 0:
         # if anything has changed, load a new bias and compute new bpm
         try: 
             load_bias(head)
@@ -227,7 +228,7 @@ if os.path.isfile(Stat[0]):
     msg = "Stat shm exists, meaning another control script is running."
     raise AlreadyAlive(msg)
 else:
-    Stat = Shm(Stat[0], data=np.array([2], dtype=type_[Stat[1]]),
+    Stat = Shm(Stat[0], data=np.array([1], dtype=type_[Stat[1]]),
         mmap = (Stat[2] == "1"))
 
 Avg_cnt   = config.get("Shm Info", "Avg_cnt").split(",")
