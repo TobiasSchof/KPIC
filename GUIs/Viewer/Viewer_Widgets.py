@@ -4,7 +4,7 @@ import os
 
 # installs
 from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton, QFileDialog, QDialog, QMessageBox
-from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile 
+from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile, QRectF
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QDoubleValidator, QFont 
 from PyQt5 import uic
 from PIL import Image
@@ -149,6 +149,9 @@ class Img(pg.GraphicsView):
         self.img_timer = QTimer()
         self.lbl_timer = QTimer()
 
+        # save starting zoom
+        self.base_zm = self.vb.getState()["viewRange"]
+
         self.img_timer.timeout.connect(self.img_update)
         self.img_timer.start(self.refresh_rate)
 
@@ -203,6 +206,12 @@ class Img(pg.GraphicsView):
             if time() - self.Img_shm.mtdata["atime_sec"] > 120: assert 0 == 1
 
             img = self.Img_shm.get_data(reform = True)
+            # if getting a raw image, overwrite the first four pixels (tags)
+            try:
+                if self.Img_shm.fname == self.raw_im.fname:
+                    img[0,:4] = img[0,4]
+            except: pass
+
             # save auto min/max
             if self.automin:
                 self.min = img.min()
@@ -535,6 +544,9 @@ class FPS(QLineEdit):
     def setup(self, refresh_rate = 1000):
         """A method to setup this widget"""
 
+        # if we're not in lab config
+        if self.parent() is None: return
+
         self.tc = self.parent().proc.tc
 
         self.setValidator(QIntValidator())
@@ -585,6 +597,9 @@ class Tint(QLineEdit):
     def setup(self, refresh_rate = 1000):
         """A method to setup this widget"""
 
+        # if we're not in lab config
+        if self.parent() is None: return
+
         self.tc = self.parent().proc.tc
 
         self.setValidator(QDoubleValidator())
@@ -634,6 +649,9 @@ class NDR(QLineEdit):
 
     def setup(self, refresh_rate = 1000):
         """A method to setup this widget"""
+
+        # if we're not in lab config
+        if self.parent() is None: return
 
         self.tc = self.parent().proc.tc
 

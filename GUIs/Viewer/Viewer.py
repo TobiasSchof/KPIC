@@ -7,6 +7,7 @@ import sys
 
 # installs
 from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtGui import QTransform
 from PyQt5 import uic
 
 # nfiuserver libraries
@@ -82,7 +83,7 @@ class Stack(QWidget):
 
         # hide config settings if not in lab
         if not is_lab:
-            cam_conf_layout = self.view_opt_layout.itemAtPosition(1,0)
+            cam_conf_layout = self.view_opt_layout.itemAtPosition(2,0)
             # delete all widgets in layout
             while self.cam_config_layout.count():
                 item = self.cam_config_layout.takeAt(0)
@@ -96,6 +97,16 @@ class Stack(QWidget):
         else:
             self.view_opt_layout.itemAtPosition(0,1).widget().setEnabled(False)
 
+        # setup zoom buttons
+        zoom_layout = self.view_opt_layout.itemAtPosition(1, 0)
+        # connect zoom reset button
+        self.rst_zoom.clicked.connect(lambda : self.image.vb.setRange(xRange = [0,self.image.img.width()],
+            yRange = [0,self.image.img.height()]))
+        # connect zoom save button
+        self.sv_zoom.clicked.connect(self.do_sv_zoom)
+        # connect zoom load button
+        self.ld_zoom.clicked.connect(lambda : self.image.vb.setRange(xRange = self.sv_zm[0], yRange = self.sv_zm[1]))
+
         self.show()
 
         while not self.proc.is_active(vis=True):
@@ -103,6 +114,14 @@ class Stack(QWidget):
         self.proc.is_processing(vis = True)
 
         self.setWindowTitle("KPIC Display")
+
+    def do_sv_zoom(self):
+        """A method to save the current zoom state of the viewer"""
+
+        self.sv_zm = self.image.vb.getState()["viewRange"]
+
+        if not self.ld_zoom.isEnabled():
+            self.ld_zoom.setEnabled(True)
 
     def btn_click(self):
         """method that minimizes or maximizes the control panel"""
