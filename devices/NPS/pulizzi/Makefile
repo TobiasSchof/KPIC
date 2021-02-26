@@ -1,6 +1,6 @@
-# NIRSPEC fiber injection unit. Build Network Power Strip
+# NIRSPEC fiber injection unit. Build Pulizzi Network Power Strip
 
-override SYSNAM = kss/nirspec/nsfiu/devices/NPS
+override SYSNAM = kss/nirspec/nsfiu/devices/NPS/pulizzi
 override VERNUM = 1.0
 
 override ENABLE_PYTHON2 = False

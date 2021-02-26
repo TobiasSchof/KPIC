@@ -1,6 +1,6 @@
 # NIRSPEC fiber injection unit. Build Network Power Strip
 
-override SYSNAM = kss/nirspec/nsfiu/devices/NPS/Phase_II
+override SYSNAM = kss/nirspec/nsfiu/devices/NPS/Eaton
 override VERNUM = 1.0
 
 override ENABLE_PYTHON2 = False
