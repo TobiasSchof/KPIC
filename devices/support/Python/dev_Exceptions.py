@@ -25,7 +25,7 @@ class ScriptOff(Exception):
     """An exception to be thrown when a command is sent but the script is off"""
     pass
 
-class ScriptAlreadActive(Exception):
+class ScriptAlreadyActive(Exception):
     """An exception to be thrown if control script activation is attempted when
     there's already an active script."""
     pass
@@ -42,3 +42,6 @@ class ShmError(Exception):
 class MissingPreset(Exception):
     """An exception to be thrown if an undefined preset is used."""
     pass
+
+class TMUXError(Exception):
+    """An exception to be thrown if a tmux error is encountered."""
