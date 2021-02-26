@@ -1037,4 +1037,3 @@ class Base_use_chk(QCheckBox):
             self.proc.use_base(False)
             for widg in [self.bias_subt, self.medfilt]+self.bkgrd:
                 if not widg.isEnabled(): widg.setEnabled(True)
-

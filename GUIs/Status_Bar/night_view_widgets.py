@@ -54,12 +54,24 @@ except NameError:
 except AssertionError:
     Exception("dcs2 is already defined, but is not a ktl Service. Please free this variable.")
 
-if not dcs2['targname']._getMonitored(): dcs2['targname'].subscribe()
-if not dcs2['el']._getMonitored(): dcs2['el'].subscribe()
-if not dcs2['airmass']._getMonitored(): dcs2['airmass'].subscribe()
-if not dcs2['rotmode']._getMonitored(): dcs2['rotmode'].subscribe()
-if not dcs2['rotposn']._getMonitored(): dcs2['rotposn'].subscribe()
-if not dcs2['instangl']._getMonitored(): dcs2['instangl'].subscribe()
+try:
+    if not dcs2['targname']._getMonitored(): dcs2['targname'].subscribe()
+except: pass
+try:
+    if not dcs2['el']._getMonitored(): dcs2['el'].subscribe()
+except: pass
+try:
+    if not dcs2['airmass']._getMonitored(): dcs2['airmass'].subscribe()
+except: pass
+try:
+    if not dcs2['rotmode']._getMonitored(): dcs2['rotmode'].subscribe()
+except: pass
+try:
+    if not dcs2['rotposn']._getMonitored(): dcs2['rotposn'].subscribe()
+except: pass
+try:
+    if not dcs2['instangl']._getMonitored(): dcs2['instangl'].subscribe()
+except: pass
 
 try:
     assert type(ao2) is Service
@@ -68,10 +80,24 @@ except NameError:
 except AssertionError:
     Exception("ao2 is already defined, but is not a ktl Service. Please free this variable.")
 
-if not ao2["obimname"]._getMonitored(): ao2["obimname"].subscribe()
-if not ao2["obsfname"]._getMonitored(): ao2["obsfname"].subscribe()
-if not ao2["obdb"]._getMonitored(): ao2["obdb"].subscribe()
-if not ao2["obswsta"]._getMonitored(): ao2["obswsta"].subscribe()
+try:
+    if not ao2["obimname"]._getMonitored(): ao2["obimname"].subscribe()
+except: pass
+try:
+    if not ao2["obsfname"]._getMonitored(): ao2["obsfname"].subscribe()
+except: pass
+try:
+    if not ao2["obdb"]._getMonitored(): ao2["obdb"].subscribe()
+except: pass
+try:
+    if not ao2["obswsta"]._getMonitored(): ao2["obswsta"].subscribe()
+except: pass
+try:
+    if not ao2["dmlp"]._getMonitored(): ao2["dmlp"].subscribe()
+except: pass
+try:
+    if not ao2["dtlp"]._getMonitored(): ao2["dtlp"].subscribe()
+except: pass
 
 ########## Connect to necessary epics channels ##########
 try:
@@ -133,15 +159,18 @@ class Target_name(QLabel):
             refresh_rate = number of milliseconds to wait before refreshing value
         """
 
-        super(Target_name, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -150,8 +179,6 @@ class Target_name(QLabel):
         self.setText(str(dcs2["targname"]))
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Elevation(QLabel):
     """A widget to get the elevation of the current target"""
@@ -165,13 +192,16 @@ class Elevation(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -191,8 +221,6 @@ class Elevation(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Airmass(QLabel):
     """A widget to get the airmass of the current target"""
@@ -206,13 +234,16 @@ class Airmass(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -226,8 +257,6 @@ class Airmass(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class RT(QLabel):
     """A widget to get the time to telescope limit"""
@@ -241,13 +270,16 @@ class RT(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -268,8 +300,6 @@ class RT(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 """
 class Hmag(QLabel):
@@ -288,13 +318,16 @@ class Track_stat(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -312,8 +345,6 @@ class Track_stat(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_gain(QPushButton):
     """A widget to get the gain of the tracking script"""
@@ -327,19 +358,22 @@ class Track_gain(QPushButton):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
         # set button so checked state is green, unchecked state is red
         self.setStyleSheet("QPushButton:checked { background-color: #c1ffba } QPushButton { background-color: #ffbaba }")
 
         # connect set gain method to when the button is pushed
         self.clicked.connect(self.set_gain)
 
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def set_gain(self):
         """Sets the gain on the tracking loop"""
@@ -368,8 +402,6 @@ class Track_gain(QPushButton):
                 self.toggle()
         # run super's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_valid(QLabel):
     """A widget to get the validity of the tracking script"""
@@ -383,13 +415,16 @@ class Track_valid(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -408,8 +443,6 @@ class Track_valid(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_goal(QComboBox):
     """A widget to get the current goal of the tracking script"""
@@ -422,9 +455,6 @@ class Track_goal(QComboBox):
         """
 
         super().__init__(*args, **kwargs)
-
-        # store refresh rate
-        self.refresh_rate = refresh_rate
 
         # create a dictionary to translate from index to what goal should be sent
         self.sel_goal = {0:"scf1", 1:"scf2", 2:"scf3", 3:"scf4", 4:"scf5", 5:"center",
@@ -440,13 +470,19 @@ class Track_goal(QComboBox):
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setPlaceholderText("Custom")
 
-        # create a timer to call update
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update)
-        self.timer.start(10)
-
         # connect option selection to goal selection
         self.activated.connect(self.change_goal)
+
+        # create a repeating timer to call update
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -464,8 +500,6 @@ class Track_goal(QComboBox):
                 pass
             # run QLabel's update method
             super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
     def change_goal(self):
         """Changes the current goal of the tracking script"""
@@ -491,13 +525,16 @@ class Goal_pos_x(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -522,8 +559,6 @@ class Goal_pos_x(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Goal_pos_y(QLabel):
     """A widget to get the current y position of the goal of the tracking script"""
@@ -537,13 +572,16 @@ class Goal_pos_y(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -568,8 +606,6 @@ class Goal_pos_y(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_avg(QLabel):
     """A widget to get the number of images in an average for the tracking script"""
@@ -583,13 +619,16 @@ class Track_avg(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -604,8 +643,6 @@ class Track_avg(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Usr_offset_x(QLabel):
     """A widget to get the x scan offset of the tracking script"""
@@ -619,13 +656,16 @@ class Usr_offset_x(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -643,8 +683,6 @@ class Usr_offset_x(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Usr_offset_y(QLabel):
     """A widget to get the y scan offset of the tracking script"""
@@ -658,13 +696,16 @@ class Usr_offset_y(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -682,8 +723,6 @@ class Usr_offset_y(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class SEP_PA_validator():
     """A validator for a QLineEdit that will validate input on focus loss
@@ -732,16 +771,19 @@ class Astro_raw_pa(QLineEdit):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update)
-        self.timer.start(10)
-
         # make a validator for value
         self.validator = SEP_PA_validator(self, set_pa)
+
+        # create a repeating timer to call update
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def set_pa(self):
         """Sets raw PA when a valid argument is provided"""
@@ -762,8 +804,6 @@ class Astro_raw_pa(QLineEdit):
                 self.setStyleSheet(red)
             # run QLabel's update method
             super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
     def setText(self, text):
         """An extension of setText that sets the validator's old text field"""
@@ -783,16 +823,19 @@ class Astro_raw_sep(QLineEdit):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update)
-        self.timer.start(10)
-
         # make a validator for value
         self.validator = SEP_PA_validator(self, set_sep)
+
+        # create a repeating timer to call update
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -810,8 +853,6 @@ class Astro_raw_sep(QLineEdit):
                 self.setStyleSheet(red)
             # run QLabel's update method
             super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
     def setText(self, text):
         """An extension of setText that sets the validator's old text field"""
@@ -831,13 +872,16 @@ class Astro_dist_pa(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -854,8 +898,6 @@ class Astro_dist_pa(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Astro_dist_sep(QLabel):
     """A widget to get the distorted Sep value"""
@@ -869,13 +911,16 @@ class Astro_dist_sep(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -892,8 +937,6 @@ class Astro_dist_sep(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class DAR(QLabel):
     """A widget to get the DAR value"""
@@ -907,13 +950,17 @@ class DAR(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
+
 
     def update(self):
         """updates the size and text in the widget"""
@@ -930,8 +977,6 @@ class DAR(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class WL_tc(QLabel):
     """A widget to get the tracking camera wavelength for the tracking script"""
@@ -945,13 +990,16 @@ class WL_tc(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -966,8 +1014,6 @@ class WL_tc(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class WL_ScF(QLabel):
     """A widget to get the science fiber wavelength for the tracking script"""
@@ -981,13 +1027,16 @@ class WL_ScF(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1002,8 +1051,6 @@ class WL_ScF(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 ########## Tracking Camera ##########
 """
@@ -1023,13 +1070,16 @@ class Track_cam_temp(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1050,8 +1100,6 @@ class Track_cam_temp(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_cam_tint(QLabel):
     """A widget to get the exposure time for the tracking camera"""
@@ -1065,13 +1113,16 @@ class Track_cam_tint(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1086,8 +1137,6 @@ class Track_cam_tint(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_cam_fps(QLabel):
     """A widget to get the fps for the tracking camera"""
@@ -1101,13 +1150,16 @@ class Track_cam_fps(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1122,8 +1174,6 @@ class Track_cam_fps(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_cam_ndr(QLabel):
     """A widget to get the ndr for the tracking camera"""
@@ -1137,13 +1187,16 @@ class Track_cam_ndr(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1158,8 +1211,6 @@ class Track_cam_ndr(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_cam_crop(QLabel):
     """A widget to get the crop for the tracking camera"""
@@ -1173,13 +1224,16 @@ class Track_cam_crop(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1222,13 +1276,16 @@ class Track_cam_crop_x(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1266,13 +1323,16 @@ class Track_cam_crop_y(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1310,13 +1370,16 @@ class Track_cam_inst_ang(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1331,8 +1394,6 @@ class Track_cam_inst_ang(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Track_cam_ps(QLabel):
     """A widget to get the platescale for the tracking camera"""
@@ -1346,13 +1407,16 @@ class Track_cam_ps(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1367,8 +1431,6 @@ class Track_cam_ps(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 """
 class Track_cam_dist_map:
@@ -1377,15 +1439,96 @@ class Track_cam_dist_map:
 ########## Error Bar ##########
 
 class Errors:
-
 ########## Adaptive Optics ##########
 
 class WFS:
+    
+"""
 
-class TTM_loop:
+class TTM_loop(QLabel):
+    """A widget to get which whether the (ao2) TTM loop is open"""
 
-class DM_loop:
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for TTM_loop widget
 
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # create a repeating timer to call update
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update airmass
+        try:
+            val = str(ao2["DMLP"])
+            self.setText(val)
+            if val.lower() == "open":
+                self.setStyleSheet(red)
+            elif val.lower() == "closed":
+                self.setStyleSheet(green)
+            else:
+                self.setStyleSheet(grey)
+        except ValueError:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+
+class DM_loop(QLabel):
+    """A widget to get which whether the (ao2) DM loop is open"""
+
+    def __init__(self, *args, refresh_rate:int = refresh, **kwargs):
+        """Constructor for TTM_loop widget
+
+        Args:
+            refresh_rate = number of milliseconds to wait before refreshing value
+        """
+
+        super().__init__(*args, **kwargs)
+
+        # create a repeating timer to call update
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
+
+    def update(self):
+        """updates the size and text in the widget"""
+
+        # update airmass
+        try:
+            val = str(ao2["DTLP"])
+            self.setText(val)
+            if val.lower() == "open":
+                self.setStyleSheet(red)
+            elif val.lower() == "closed":
+                self.setStyleSheet(green)
+            else:
+                self.setStyleSheet(grey)
+        except ValueError:
+            self.setText("?")
+            self.setStyleSheet(red)
+        # run QLabel's update method
+        super().update()
+"""
 class Extinction:
 """
 
@@ -1401,13 +1544,16 @@ class Rot_mode(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1416,8 +1562,6 @@ class Rot_mode(QLabel):
         self.setText(str(dcs2["rotmode"]))
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Rot_pos_val(QLabel):
     """A widget to get the rotator offset value"""
@@ -1431,13 +1575,16 @@ class Rot_pos_val(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1451,8 +1598,6 @@ class Rot_pos_val(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 """
 ########## FIU setup ##########
@@ -1469,13 +1614,16 @@ class NIRSPEC_po(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1489,8 +1637,6 @@ class NIRSPEC_po(QLabel):
         self.setText(val)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class KPIC_po(QLabel):
 
@@ -1505,13 +1651,16 @@ class KPIC_po(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1533,8 +1682,6 @@ class KPIC_po(QLabel):
         self.setText(val)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 """
 class PYWFS_po:
@@ -1556,13 +1703,16 @@ class Keck_src(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1576,8 +1726,6 @@ class Keck_src(QLabel):
         self.setText(val)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class SFP(QLabel):
     """A widget to get the SFP"""
@@ -1591,13 +1739,16 @@ class SFP(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1611,8 +1762,6 @@ class SFP(QLabel):
         self.setText(val)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 """
 class Kilo_DM:
@@ -1639,13 +1788,16 @@ class FIU_TTM_stat(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1667,8 +1819,6 @@ class FIU_TTM_stat(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
     """
     def update(self):
         updates the size and text in the widget
@@ -1705,13 +1855,16 @@ class FIU_TTM_x(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1729,31 +1882,6 @@ class FIU_TTM_x(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
-    """
-    def update(self):
-        updates the size and text in the widget
-
-        # set text and color based on current FIU_TTM x value
-        try:
-            cur_x = fiu_ttm.get_pos()[0]
-            self.setText("{:05d}".format(cur_x))
-            if cur_x < 100 or cur_x > 9900:
-                self.setStyleSheet(orange)
-            else:
-                self.setStyleSheet(green)
-        except StageOff:
-            self.setText("D/C")
-            self.setStyleSheet(red)
-        except ScriptOff:
-            self.setText("?")
-            self.setStyleSheet(red)
-        # run QLabel's update method
-        super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
-    """
 
 class FIU_TTM_y(QLabel):
     """A widget to get the y value of the FIU TTM"""
@@ -1767,13 +1895,16 @@ class FIU_TTM_y(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1791,32 +1922,7 @@ class FIU_TTM_y(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
-    """
-    def update(self):
-        updates the size and text in the widget
-
-        # set text and color based on current FIU_TTM x value
-        try:
-            cur_y = fiu_ttm.get_pos()[1]
-            self.setText("{:05d}".format(cur_y))
-            if cur_y < 100 or cur_y > 9900:
-                self.setStyleSheet(orange)
-            else:
-                self.setStyleSheet(green)
-        except StageOff:
-            self.setText("D/C")
-            self.setStyleSheet(red)
-        except ScriptOff:
-            self.setText("?")
-            self.setStyleSheet(red)
-        # run QLabel's update method
-        super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
-    """
-
+    
 """
 class TC_filter:
 
@@ -1838,13 +1944,16 @@ class Calib_in(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
+        # create a repeating timer to call update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1868,8 +1977,6 @@ class Calib_in(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 
 class Calib_out(QLabel):
     """A widget to get the MIR sources"""
@@ -1882,13 +1989,16 @@ class Calib_out(QLabel):
 
         super().__init__(*args, **kwargs)
 
-        # store refresh rate
-        self.refresh_rate = refresh_rate
-
-        # create a timer to call update
-        self.timer = QTimer(self)
+        # create a repeating timer to call update
+        self.timer =QTimer(self)
         self.timer.timeout.connect(self.update)
-        self.timer.start(10)
+        self.timer.start(refresh_rate)
+
+        # create a one time timer to update initially
+        setup_timer = QTimer(self)
+        setup_timer.setSingleShot(True)
+        setup_timer.timeout.connect(self.update)
+        setup_timer.start(10)
 
     def update(self):
         """updates the size and text in the widget"""
@@ -1903,8 +2013,6 @@ class Calib_out(QLabel):
             self.setStyleSheet(red)
         # run QLabel's update method
         super().update()
-        # start timer again
-        self.timer.start(self.refresh_rate)
 """
 ########## FEU setup ##########
 

@@ -2032,7 +2032,7 @@
       </widget>
      </item>
      <item row="4" column="3" colspan="3">
-      <widget class="QLabel" name="dm_loop_val">
+      <widget class="DM_loop" name="dm_loop_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c1ffba</string>
        </property>
@@ -2381,7 +2381,7 @@
       </widget>
      </item>
      <item row="3" column="9" colspan="3">
-      <widget class="QLabel" name="ttm_loop_val">
+      <widget class="TTM_loop" name="ttm_loop_val">
        <property name="styleSheet">
         <string notr="true">background-color: #c1ffba</string>
        </property>
@@ -2642,6 +2642,16 @@
   <customwidget>
    <class>Astro_raw_sep</class>
    <extends>QLineEdit</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>TTM_loop</class>
+   <extends>QLabel</extends>
+   <header>night_view_widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>DM_loop</class>
+   <extends>QLabel</extends>
    <header>night_view_widgets.h</header>
   </customwidget>
  </customwidgets>
