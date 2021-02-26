@@ -1,5 +1,5 @@
 
-# NIRSPEC fiber injection unit. Build tracking camera base processing
+# NIRSPEC fiber injection unit. Build tracking camera visualizer processing
 
 override SYSNAM = kss/nirspec/nsfiu/processing/TC_Vis
 override VERNUM = 1.0

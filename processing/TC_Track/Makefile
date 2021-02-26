@@ -1,13 +1,13 @@
 
-# NIRSPEC fiber injection unit. Build tracking camera base processing
+# NIRSPEC fiber injection unit. Build tracking camera tracking processing
 
-override SYSNAM = kss/nirspec/nsfiu/processing/TC_Base
+override SYSNAM = kss/nirspec/nsfiu/processing/TC_Track
 override VERNUM = 1.0
 
 override ENABLE_PYTHON2 = False
 
-RELBIN = Track_Cam_base_process_Control
-RELDAT = Track_Cam_base_process.ini 
+RELBIN = Track_Cam_tracking_process_Control
+RELDAT = Track_Cam_tracking_process.ini 
 
 ################################################################################
 # KROOT boilerplate:

@@ -10,7 +10,7 @@ RELLIB = Track_Cam_process.py
 LIBSUB = python
 
 # include sub directories
-DIRS = TC_Base TC_Vis
+DIRS = TC_Track TC_Vis
 
 ################################################################################
 # KROOT boilerplate:

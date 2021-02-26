@@ -6,6 +6,7 @@ from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
 from configparser import ConfigParser
 from time import sleep
+from subprocess import Popen
 
 # installs
 import numpy as np
@@ -27,12 +28,12 @@ def main():
 
     stat = Stat.get_data()[0]
     if stat & 2:
-        # get status of base processing script
-        try: b_stat = Base_stat.get_data()[0]
+        # get status of tracking processing script
+        try: b_stat = Track_stat.get_data()[0]
         except:
             try:
-                load_base_shms()
-                b_stat = Base_stat.get_data()[0]
+                load_track_shms()
+                b_stat = Track_stat.get_data()[0]
             except:
                 Error.set_data(np.array([4], Error.npdtype))
                 sleep(.1)
@@ -43,21 +44,21 @@ def main():
         Stat.get_data(True)
         return 
 
-    # next check whether we should work off raw frames or base
+    # next check whether we should work off raw frames or track processing
     #   process image
     global avg, raw
     if stat & 2:
         # try to pull image (try because we may not be connected
         #   to the shm yet)
-        try: im = Base_img.get_data(reform = True)
+        try: im = Track_img.get_data(reform = True)
         except: 
             try:
-                Base_img = Shm(Base_img)
-                im = Base_img.get_data(reform = True)
+                Track_img = Shm(Track_img)
+                im = Track_img.get_data(reform = True)
             except:
                 Error.set_data(np.array([4], Error.npdtype))
 
-                # try to continue without base processing
+                # try to continue without track processing
                 if not tc.is_connected(): return
 
                 avg, raw = roll_avg(avg, raw)
@@ -80,7 +81,7 @@ def main():
             # copy first four pixels (tags)
             _ref[0][:4] = _ref[0][4]
 
-        # if using base proc and medfilt is on, medfilt ref
+        # if using track proc and medfilt is on, medfilt ref
         #   before subtracting it
         if _ref is None:
             _ref = np.zeros_like(im)
@@ -103,7 +104,7 @@ def main():
             _bpm[_bkgrd > mu + BPM_FILT*std] = 0
             _bpm[_bkgrd < mu - BPM_FILT*std] = 0
 
-        # if using base proc and medfilt is on, medfilt bkgrd
+        # if using track proc and medfilt is on, medfilt bkgrd
         #   before subtracting it
         if _bkgrd is None:
             _bkgrd = np.zeros_like(im)
@@ -189,17 +190,17 @@ def main():
     if err_cnt == Error.get_counter() and Error.get_data()[0] != 0:
         Error.set_data(np.array([0], Error.npdtype))
 
-def load_base_shms():
-    """Method to attempt to connect to base processing shms"""
+def load_track_shms():
+    """Method to attempt to connect to tracking processing shms"""
 
-    global Base_stat, Base_img
+    global Track_stat, Track_img
 
-    if type(Base_stat) is str:
-        try: Base_stat = Shm(Base_stat)
+    if type(Track_stat) is str:
+        try: Track_stat = Shm(Track_stat)
         except: pass
 
-    if type(Base_img) is str:
-        try: Base_img = Shm(Base_img)
+    if type(Track_img) is str:
+        try: Track_img = Shm(Track_img)
         except: pass
 
 def load_bias(header):
@@ -294,6 +295,12 @@ def close(*args, **kwargs):
 
     unregister(close)
 
+    # kill tmux session
+    ses = config.read("Environment", "session")
+    win = config.read("Environment", "window")
+
+    Popen(["tmux", "kill-window", "-t" "{}:{}".format(ses, win)])
+
 def signal_handler(*args, **kwargs):
     """A method to end execution when a signal is recieved"""
 
@@ -372,17 +379,17 @@ register(close)
 signal(SIGHUP, signal_handler)
 signal(SIGTERM, signal_handler)
 
-# get base proc shms 
-base_conf = ConfigParser()
-base_conf.read(RELDIR+"/data/Track_Cam_base_process.ini")
+# get tracking proc shms 
+track_conf = ConfigParser()
+track_conf.read(RELDIR+"/data/Track_Cam_tracking_process.ini")
 
 # connect to img
-Base_img = base_conf.get("Shm Info", "Base_proc").split(",")[0]
-if os.path.isfile(Base_img[0]): Base_img = Shm(Base_img, sem = True)
+Track_img = track_conf.get("Shm Info", "Track_proc").split(",")[0]
+if os.path.isfile(Track_img[0]): Track_img = Shm(Track_img, sem = True)
 
 # connect to stat
-Base_stat = base_conf.get("Shm Info", "Stat").split(",")[0]
-if os.path.isfile(Base_stat[0]): Base_stat = Shm(Base_stat, sem = True)
+Track_stat = track_conf.get("Shm Info", "Stat").split(",")[0]
+if os.path.isfile(Track_stat[0]): Track_stat = Shm(Track_stat, sem = True)
 
 # instantiate TC_cmds
 tc = TC_cmds()

@@ -4,6 +4,7 @@
 from configparser import ConfigParser
 from atexit import register, unregister
 from signal import signal, SIGHUP, SIGTERM
+from subprocess import Popen
 import sys, os
 
 # installs
@@ -126,7 +127,7 @@ def main():
         im = medfilt(im)
 
     # set image
-    Base_proc.set_data(im.astype(np.int16))
+    Track_proc.set_data(im.astype(np.int16))
 
     # if no errors were raise, and previously an error was posted,
     #   post no error to error shm
@@ -187,6 +188,12 @@ def close(*args, **kwargs):
 
     unregister(close)
 
+    # kill tmux session
+    ses = config.read("Environment", "session")
+    win = config.read("Environment", "window")
+
+    Popen(["tmux", "kill-window", "-t" "{}:{}".format(ses, win)])
+
 def signal_handler(*args, **kwargs):
     """A method to end execution when a signal is recieved"""
 
@@ -206,10 +213,10 @@ if RELDIR[-1] == "/": RELDIR = RELDIR[:-1]
 
 # read config file in the data subdirectory of RELDIR
 config = ConfigParser()
-config.read(RELDIR+"/data/Track_Cam_base_process.ini")
+config.read(RELDIR+"/data/Track_Cam_tracking_process.ini")
 
 # make folder for shared memories if it doesn't exist
-if not os.path.isdir("/tmp/Base_Process"): os.mkdir("/tmp/Base_Process")
+if not os.path.isdir("/tmp/Track_Process"): os.mkdir("/tmp/Track_Process")
 
 # create a dictionary to translate strings into numpy data types
 type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
@@ -231,10 +238,10 @@ else:
     Stat = Shm(Stat[0], data=np.array([1], dtype=type_[Stat[1]]),
         mmap = (Stat[2] == "1"))
 
-Avg_cnt   = config.get("Shm Info", "Avg_cnt").split(",")
-Calib     = config.get("Shm Info", "Calib").split(",")
-Base_proc = config.get("Shm Info", "Base_proc").split(",")
-Err       = config.get("Shm Info", "Error").split(",")
+Avg_cnt    = config.get("Shm Info", "Avg_cnt").split(",")
+Calib      = config.get("Shm Info", "Calib").split(",")
+Track_proc = config.get("Shm Info", "Track_proc").split(",")
+Err        = config.get("Shm Info", "Error").split(",")
 
 if os.path.isfile(Avg_cnt[0]): Avg_cnt = Shm(Avg_cnt[0])
 else: Avg_cnt = Shm(Avg_cnt[0], data = np.array([5], dtype = type_[Avg_cnt[1]]),
@@ -244,9 +251,9 @@ if os.path.isfile(Calib[0]): Calib = Shm(Calib[0])
 else: Calib = Shm(Calib[0], data = np.zeros([640, 512], dtype = type_[Calib[1]]),
         mmap = (Calib[2] == "1"), croppable = True)
 
-if os.path.isfile(Base_proc[0]): Base_proc = Shm(Base_proc[0])
-else: Base_proc = Shm(Base_proc[0], data = np.zeros([640, 512], dtype = type_[Base_proc[1]]),
-        mmap = (Base_proc[2] == "1"), croppable = True)
+if os.path.isfile(Track_proc[0]): Track_proc = Shm(Track_proc[0])
+else: Track_proc = Shm(Track_proc[0], data = np.zeros([640, 512], dtype = type_[Track_proc[1]]),
+        mmap = (Track_proc[2] == "1"), croppable = True)
 
 if os.path.isfile(Err[0]): Err = Shm(Err[0])
 else: Err = Shm(Err[0], data = np.array([0], dtype = type_[Err[1]]),
