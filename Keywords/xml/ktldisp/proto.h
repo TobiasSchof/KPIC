@@ -27,4 +27,21 @@ extern FIORD_BROAD_INFO inst_float_array_bcast_kval_info;
 
 extern FIORD_BROAD_INFO inst_double_array_resp2_kval_info;
 extern FIORD_BROAD_INFO inst_double_array_bcast_kval_info;
+extern int input_disperr  ();
+/* DISPERR is a read-only keyword (no output function) */
+extern int input_dispmem  ();
+/* DISPMEM is a read-only keyword (no output function) */
+extern int input_dispmsg  ();
+/* DISPMSG is a read-only keyword (no output function) */
+extern int input_dispsta  ();
+/* DISPSTA is a read-only keyword (no output function) */
+extern int input_dispstop  ();
+extern int output_dispstop ();
+extern int input_test  ();
+extern int output_test ();
 extern int input_ttmposx  ();
+extern int output_ttmposx ();
+extern int input_uptime  ();
+/* UPTIME is a read-only keyword (no output function) */
+extern int input_version  ();
+/* VERSION is a read-only keyword (no output function) */

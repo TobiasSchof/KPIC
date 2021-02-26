@@ -5,6 +5,7 @@ dispmem      int             1    1     0     1      0 +service+_dispatch_1 Maxi
 dispmsg      string          1    1     0     1      0 +service+_dispatch_1 nsfiu-message
 dispsta      enum            1    1     0     1      0 +service+_dispatch_1 nsfiu-dispatcher-status
 dispstop     bool            1    1     1     1      1 +service+_dispatch_1 nsfiu-dispatcher-shutdown
+test         int             1    1     1     1      1 +service+_dispatch_1 test-KW
 ttmposx      double          1    1     1     1      1 +service+_dispatch_1 X-position-of-FIU-TTM
 uptime       int             1    1     0     1      0 +service+_dispatch_1 nsfiu-dispatcher-uptime-clock
 version      string          1    1     0     1      0 +service+_dispatch_1 nsfiu-dispatcher-version

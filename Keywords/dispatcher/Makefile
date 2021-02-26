@@ -1,28 +1,15 @@
-# KTLXML definition of the keywords associated with this service.
-#
+# KTL dispatcher for the nsfiu service.
 
 include ../Mk.service
 #include ../../Mk.instrument
-override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)/xml
+override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)/dispatcher
 override VERNUM = 1.1
+
 
 SUBST_STRICT = True
 
-
-KTLXML_FAMILY_SERVICE = $(KTLSERVICE)
-KTLXML_DEPS = Makefile ../Mk.service
-
-XML_SIN_IN  = $(wildcard *.xml.sin)
-XML_SIN_OUT = $(XML_SIN_IN:%.sin=%)
-
-RELDAT  = messages.xml keyword_ids.xml $(XML_SIN_OUT)
-DATSUB  = $(KTLSERVICE)/xml
-
-FILES = $(RELDAT)
-PREFILES = $(FILES)
-PREINSTALL = $(PREFILES)
-
-DIRS = dtune ktldisp
+RELSBIN = $(KTLSERVICE)d
+FILES = $(RELSBIN)
 
 
 ################################################################################

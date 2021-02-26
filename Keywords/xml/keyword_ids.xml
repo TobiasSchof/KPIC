@@ -1,7 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<identifiers service="nsmores" xmlns:xsi="http://www.w3.org/2001/XML-Schema-instance">
+<identifiers service="nsfiu" xmlns:xsi="http://www.w3.org/2001/XML-Schema-instance">
 	<keyword>
-		<name>FIUPOSX</name>
-		<number>278827356</number>
+		<name>DISPERR</name>
+		<number>996728414</number>
+	</keyword>
+	<keyword>
+		<name>DISPMEM</name>
+		<number>1018099485</number>
+	</keyword>
+	<keyword>
+		<name>DISPMSG</name>
+		<number>1036910683</number>
+	</keyword>
+	<keyword>
+		<name>DISPSTA</name>
+		<number>948609760</number>
+	</keyword>
+	<keyword>
+		<name>DISPSTOP</name>
+		<number>985215749</number>
+	</keyword>
+	<keyword>
+		<name>TTMPOSX</name>
+		<number>1029125732</number>
+	</keyword>
+	<keyword>
+		<name>UPTIME</name>
+		<number>990390771</number>
+	</keyword>
+	<keyword>
+		<name>VERSION</name>
+		<number>955712249</number>
 	</keyword>
 </identifiers>

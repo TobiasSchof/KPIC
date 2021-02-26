@@ -1,18 +1,17 @@
-# KTL client library installation.
+# KTL dispatcher and client libraries for the NIRSPEC "more" service (nsmores).
+# This is a catch-all service that provides pure software keywords to fill in
+# the gaps not covered by other, more hardware-focused services in NIRSPEC.
 
-include ../../Mk.service
-#include ../../../Mk.instrument
 
-override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)/clientlib
+include ./Mk.service
+#include ../Mk.instrument
+override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)
 override VERNUM = 1.1
 
 
-DTUNE_SYMLINK = $(KTLSERVICE)
+SUBST_STRICT = True
 
-RELDAT = $(KTLSERVICE).attr
-DATSUB = $(KTLSERVICE)
-
-FILES = $(RELDAT)
+DIRS = xml config dispatcher
 
 
 ################################################################################
@@ -34,9 +33,3 @@ endif
 
 include $(KROOT)/etc/config.mk
 ################################################################################
-
-# Build a .attr file. The first dependency is satisfied by automatic
-# rules triggered by setting DTUNE_SYMLINK.
-
-$(KTLSERVICE).attr: lib$(KTLSERVICE)_keyword$(SHLIB_SUFFIX) ../*.xml
-	$(RELDIR)/bin/kattr -t -l . -x .. -f $(KTLSERVICE)

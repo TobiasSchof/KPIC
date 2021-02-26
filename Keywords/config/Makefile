@@ -1,18 +1,17 @@
-# KTL client library installation.
+# Config files for the KTL dispatcher.
 
-include ../../Mk.service
-#include ../../../Mk.instrument
-
-override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)/clientlib
+include ../Mk.service
+#include ../../Mk.instrument
+override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)/config
 override VERNUM = 1.1
 
 
-DTUNE_SYMLINK = $(KTLSERVICE)
+SUBST_STRICT = True
 
-RELDAT = $(KTLSERVICE).attr
+RELDAT = $(KTLSERVICE).conf stdiosvc.conf
 DATSUB = $(KTLSERVICE)
 
-FILES = $(RELDAT)
+FILES = $(KTLSERVICE).conf
 
 
 ################################################################################
@@ -34,9 +33,3 @@ endif
 
 include $(KROOT)/etc/config.mk
 ################################################################################
-
-# Build a .attr file. The first dependency is satisfied by automatic
-# rules triggered by setting DTUNE_SYMLINK.
-
-$(KTLSERVICE).attr: lib$(KTLSERVICE)_keyword$(SHLIB_SUFFIX) ../*.xml
-	$(RELDIR)/bin/kattr -t -l . -x .. -f $(KTLSERVICE)

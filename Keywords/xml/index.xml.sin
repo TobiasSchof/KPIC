@@ -4,9 +4,24 @@
 	</directories>
 	<files>
 		<file>
-			<name>DEVICES</name>
+			<name>FIU</name>
 			<location>devices.xml</location>
-			<comment>Keywords for FIU hardware.</comment>
+			<comment>FIU KW keywords.</comment>
+		</file>
+		<file>
+			<name>Dispatcher</name>
+			<location>dispatcher.xml</location>
+			<comment>Keywords relating to the dispatcher itself.</comment>
+		</file>
+		<file>
+			<name>messages</name>
+			<location>messages.xml</location>
+			<comment>Music message numbers</comment>
+		</file>
+		<file>
+			<name>keyword_ids</name>
+			<location>keyword_ids.xml</location>
+			<comment>Keyword-keyid mapping</comment>
 		</file>
 	</files>
 </index>

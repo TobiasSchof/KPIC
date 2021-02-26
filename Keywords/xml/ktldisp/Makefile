@@ -2,6 +2,7 @@
 # stdiosvc KTL front-end.
 
 include ../../Mk.service
+#include ../../../Mk.instrument
 override SYSNAM = kss/$(INSTRUMENT)/$(KTLSERVICE)/xml/ktldisp
 override VERNUM = 1.1
 

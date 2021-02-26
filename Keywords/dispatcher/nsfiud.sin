@@ -1,0 +1,280 @@
+#! @KPYTHON3@
+#
+# kpython safely sets RELDIR, KROOT, LROOT, and PYTHONPATH before invoking
+# the actual Python interpreter.
+
+# KTL dispatcher to provide NIRSPEC keywords that don't otherwise fit with
+# other more hardware-centric dispatchers.
+
+#
+# #
+# Required libraries.
+# #
+#
+
+
+import os
+import atexit
+import configparser
+import DFW                  # provided by kroot/util/dfw
+import galildisp            # provided by kroot/kss/optical/galildisp/python
+import getopt
+import ktl                  # provided by kroot/ktl/keyword/python
+import math
+import resource
+import signal
+import sys
+import threading
+import time
+from FIU_TTM_cmds import FIU_TTM_cmds
+
+#
+# #
+# Main execution, invoked by a check at the tail end of this file.
+# #
+#
+
+def main():
+
+    parseCommandLine()      # Need to know where the config file is.
+    parseConfigFile()
+    parseCommandLine()      # Parse the command line again, so that it
+                            # overwrites options set by the config file.
+                            # This feature is not currently used.
+
+    checkSanity()
+
+
+    # Set handlers to shut down cleanly in all situations.
+
+    atexit.register(shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+
+    # Start up our KTL backend.
+
+    main.Service = DFW.Service(main.config.get('main', 'service'),
+                main.config.get('main', 'stdiosvc'),
+                setupKeywords)
+
+    # Everything is now running.
+
+    main.Service['DISPSTA'].set('ready')
+
+
+    while main.shutdown.isSet() == False:
+        try:
+            main.shutdown.wait(300)
+
+        except(KeyboardInterrupt, SystemExit):
+            break
+
+    # End of execution.
+
+
+main.config = configparser.ConfigParser()
+main.config_file = None
+main.Service = None
+main.shutdown = threading.Event()
+main.version = '$Revision: 91165 $'.split()[1]
+
+
+def shutdown(*ignored):
+
+    main.shutdown.set()
+
+    if main.Service != None:
+        main.Service['DISPSTA'].set('shutting down')
+        main.Service.shutdown()
+        main.Service = None
+
+#
+# #
+# All Keyword values, with the exception of those that are handled
+# purely by the stdiosvc backend, are instantiated in the following
+# function, which gets called when our DFW.Service instance is
+# initialized in main().
+# #
+#
+
+def setupKeywords(service):
+
+    DFW.Keyword.Enumerated('DISPSTA', service, 'initializing')
+    StopKeyword('DISPSTOP', service, False)
+
+    DFW.Keyword.String('VERSION', service, main.version)
+
+    FIU_TTM_POS_X_KTL("TTMPOSX", service)
+
+#
+# #
+# Implementation of keywords.
+# #
+#
+class FIU_TTM_POS_X_KTL(DFW.Keyword.Double):
+    """A class to handle the FIU TTM X Position keyword"""
+    
+    def __init__(self, *args, **kwargs):
+        """Constructor"""
+
+        # update keyword every .5 seconds
+        kwargs['period'] = .5
+
+        super().__init__(*args, **kwargs)
+
+        self.TTM = FIU_TTM_cmds()
+
+        # if TTM control script is not active, activate it
+        if not self.TTM.is_Active():
+            self.TTM.activate_Control_Script()
+
+    def read(self):
+        """The method that is called on the given period"""
+
+        # try to get the current position
+        try:
+            pos = self.TTM.get_pos()
+            pos = "{}".format(pos[0])
+        # if stage is off, just post -1, -1 (default value)
+        except StageOff:
+            pos = '-1'
+        # if control script is off, try to start it and return
+        except ScriptOff:
+            self.TTM.activate_Control_Script()
+            return -2
+
+        # set keyword
+        return pos
+
+class StopKeyword (DFW.Keyword.Boolean):
+
+    def write (self, value):
+
+        if value == '1':
+            main.shutdown.set ()
+
+#
+# #
+# Helper functions.
+# #
+#
+
+def usage(verbose=False):
+    ''' How to invoke this program.
+    '''
+
+    output = "Usage: %s -c config_file [options]" % (sys.argv[0])
+
+    if verbose == False:
+        print(output)
+        return
+
+    output = output + '''
+
+Required flags:
+
+    -c filename         Overall configuration file location
+    --config=filename       Default: None
+
+Optional flags:
+
+    -h,-?            Print verbose help (this output)
+    --help
+'''
+
+    print(output)
+
+
+
+def parseCommandLine():
+
+    executable = sys.argv[0]
+    arguments = sys.argv[1:]
+
+    if len(arguments) == 0:
+        help = True
+    else:
+        help = False
+
+    flags = '?c:h'
+    long_options = ('config=', 'help')
+
+    options, arguments = getopt.gnu_getopt(arguments, flags, long_options)
+
+
+    for option, value in options:
+
+        if option == '-?' or option == '-h' or option == '--help':
+            help = True
+
+        elif option == '-c' or option == '--config':
+            main.config_file = validateFile(value)
+
+
+    if help == True:
+        usage(verbose=True)
+        sys.exit(0)
+
+
+
+def parseConfigFile():
+
+    if main.config_file is None:
+        return
+
+    main.config.read(main.config_file)
+
+
+
+def checkSanity():
+    ''' Raise exceptions if something is wrong with the runtime
+        configuration, as specified by the configuration file and
+        on the command line.
+    '''
+
+    if main.config_file is None:
+        raise ValueError('no configuration file specified')
+
+    sections = ('main',)
+
+    for section in sections:
+
+        if main.config.has_section(section):
+            pass
+        else:
+            raise configparser.NoSectionError("[%s]" % (section))
+
+
+    main.config.get('main', 'service')
+    main.config.get('main', 'stdiosvc')
+
+
+
+def validateFile(filename):
+
+    if os.path.isabs(filename):
+        pass
+    else:
+        filename = os.path.abspath(filename)
+
+    if os.path.isfile(filename):
+        pass
+    else:
+        raise ValueError("file does not exist: '%s'" % (filename))
+
+    return filename
+
+
+
+#
+# #
+# Execute the main() function defined at the head of the file.
+# #
+#
+
+if __name__ == '__main__':
+    main()
+
+
+# vim: set expandtab tabstop=8 softtabstop=4 shiftwidth=4 autoindent:
