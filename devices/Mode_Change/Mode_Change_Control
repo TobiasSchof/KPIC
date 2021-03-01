@@ -161,7 +161,9 @@ def close():
     unregister(close)
 
     info("Closing tmux session.")
-    Popen(config.get("Environment", "end_command").split(" "))
+    ses = config.read("Environment", "session")
+    win = config.read("Environment", "window")
+    Popen(["tmux", "kill-window", "-t", "{}:{}".format(ses, win)])
 
 def signal_handler(signum, stack):
     """A function to handle when a SIGHUP or a SIGTERM is called"""
