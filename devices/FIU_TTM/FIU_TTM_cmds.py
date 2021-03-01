@@ -16,8 +16,8 @@ class FIU_TTM_cmds:
     
     method list:
     Queries:
-        is_Active
-        is_Connected
+        is_active
+        is_connected
         is_loop_closed
         get_error
         get_pos
@@ -28,7 +28,7 @@ class FIU_TTM_cmds:
         close_loop
         open_loop
         set_pos
-        activate_Control_Script
+        activate_control_script
         load_presets
     Internal methods:
         _checkAlive
