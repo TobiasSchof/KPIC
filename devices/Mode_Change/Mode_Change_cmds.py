@@ -14,125 +14,168 @@ from dev_Exceptions import *
 RELDIR = os.environ.get("RELDIR")
 if RELDIR[-1] == "/": RELDIR=RELDIR[:-1]
 
-config = ConfigParser()
-config.read(RELDIR+"/data/Mode_Change.ini")
+class Mode_Change_cmds:
+    """Class for controlling the linear conex stage that switches
+        between viewing modes
 
-
-Pos_D = Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-Stat  = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
-
-def activate_Control_Script():
-    """Activates the control script"""
-
-    cmd = config.get("Environment", "start_command").split("|")
-
-    Popen(cmd[0].split(" ")+cmd[1])
-
-def zern(isBlocking:bool=False):
-    """Changes to Zernike viewing mode
-    
-    Input:
-        isBlocking = whether this method will block execution until move is
-            complete
-    """
-    
-    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-    except: raise ScriptOff("Please start control script")
-
-    Error = None
-    cnt = None
-    if isBlocking:
-        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-        cnt = Error.get_counter()
-
-    Pos_P.set_data(np.array([-3], Pos_P.npdtype))
-
-    if isBlocking:
-        while cnt == Error.get_counter(): sleep(.5)
-
-def focal(isBlocking:bool=False):
-    """Changes to focal viewing mode
-    
-    Input:
-        isBlocking = whether this method will block execution until move is
-            complete
-    """
-    
-    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-    except: raise ScriptOff("Please start control script")
-
-    Error = None
-    cnt = None
-    if isBlocking:
-        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-        cnt = Error.get_counter()
-
-    Pos_P.set_data(np.array([-2], Pos_P.npdtype))
-
-    if isBlocking:
-        while cnt == Error.get_counter(): sleep(.5)
-
-def pupil(isBlocking:bool=False):
-    """Changes to pupil viewing mode
-    
-    Input:
-        isBlocking = whether this method will block execution until move is
-            complete
-    """
-    
-    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-    except: raise ScriptOff("Please start control script")
-
-    Error = None
-    cnt = None
-    if isBlocking:
-        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-        cnt = Error.get_counter()
-
-    Pos_P.set_data(np.array([-1], Pos_P.npdtype))
-
-    if isBlocking:
-        while cnt == Error.get_counter(): sleep(.5)
-
-def set_pos(pos:float, isBlocking:bool=False):
-    """Set the position of the Conex stage to the given position
-    
-    Blocks the program until movement is complete
-    Input:
-        pos = the position (in mm) to move to.
-        isBlocking = whether this method will block execution until move is
-            complete
-    """
-    
-    try: assert type(pos) is float
-    except AssertionError: raise ValueError("Position must be a float.")
-
-    try: Pos_P = Shm(config.get("Shm_Info", "Pos_P").split(",")[0])
-    except: raise ScriptOff("Please start control script")
-
-    Error = None
-    cnt = None
-    if isBlocking:
-        Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
-        cnt = Error.get_counter()
-
-    Pos_P.set_data(np.array([pos], np.float16))
-
-    if isBlocking:
-        while cnt == Error.get_counter(): sleep(.5)
-
-def get_pos(time:bool=False):
-    """Returns the current position of the Conex stage in the shm
-
-    Inputs:
-        time = whether or not to include the time in the output
-    Outputs:
-        float, float = the position and the time (if time is True)
+    method list:
+    Queries:
+        is_active
+        get_pos
+        get_named_pos
+    Commands:
+        set_pos
+        load_presets
+        activate_control_script
+    Internal methods:
+        _checkAlive
+        _handleShms
     """
 
-    try: Pos_D = Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
-    except: raise ShmError("No Pos_D shm. Please restart control script.")
+    def __init__(self):
+        """Constructor for Mode_Change_cmds"""
 
-    if time: return Pos_D.get_data(), Pos_D.get_time()
-    else: return Pos_D.get_data()
+        config = ConfigParser()
+        config.read(RELDIR+"/data/Mode_Change.ini")
+
+        # load shm info
+        self.Pos_D = Shm(config.get("Shm_Info", "Pos_D").split(",")[0])
+        self.Error = Shm(config.get("Shm_Info", "Error").split(",")[0])
+        self.Stat  = Shm(config.get("Shm_Info", "Stat_D").split(",")[0])
+
+        # load info for tmux session
+        self.tmux_ses  = config.get("Environment", "session")
+        self.tmux_win  = config.get("Environment", "window")
+        self.tmux_ctrl = config.get("Environment", "ctrl_s")
+
+        # load preset positions
+        self.presets = {}
+        self.load_presets()
+
+        self._handleShms()
+
+    def is_active(self):
+        """Checks whether a control script is active
+
+        Returns:
+            bool = True if control script is active, False otherwise
+        """
+
+        # If stat isn't loaded, load shms
+        if type(self.Stat) is str: self._handleShms
+
+        # if shm still isn't loaded, control script is off
+        if type(self.Stat) is str: return False
+        else: return bool(self.Stat.get_data()[0] & 1)
+
+    def get_pos(self):
+        """Returns the current position of the stage
+        
+        Returns:
+            int = position of stage (negative for preset)
+        """
+
+        self._checkAlive()
+
+        return self.Pos_D.get_data()[0]
+
+    def get_named_pos(self):
+        """Returns the named position of the stage, or 'custom'
+
+        Returns:
+            str = one of 'pupil', 'focal', 'zernike', or 'custom'
+        """
+
+        pos = self.get_pos()
+
+        if abs(pos - self.presets["pupil"]) < .1:
+            return "pupil"
+        elif abs(pos - self.presets["focal"]) < .1:
+            return "focal"
+        elif abs(pos - self.presets["zernike"]) < .1:
+            return "zernike"
+        else:
+            return "custom"
+
+    def set_pos(self, pos):
+        """Commands the stage to the given position
+
+        Args:
+            pos = a float for a custom position or one of the keys
+                of self.presets
+        """
+
+        self._checkAlive()
+
+        # validate input
+        try: pos = float(pos)
+        except:
+            try: pos = self.presets[pos.lower()]
+            except:
+                raise ValueError("pos must be a float or defined preset.")
+
+    def load_presets(self):
+        """Loads the presets that are currently written into the config file"""
+
+        config = ConfigParser()
+        config.read(RELDIR+"/data/Mode_Change.ini")
+
+        for name in config.options("Presets"):
+            self.presets[name.lower()] = config.getfloat("Presets", name) 
+
+    def activate_control_script(self):
+        """Starts control script"""
+
+        if self.is_active():
+            raise ScriptAlreadyActive("Visualizer Processing script already active.")
+
+        # check if sessions already exists
+        out = Popen(["tmux", "ls", "-F", "'#S'"], stdout=PIPE, stderr=PIPE).communicate()
+        # if not, make it
+        if str(out[0]).find("'{}'".format(self.tmux_ses)) == -1:
+            out = Popen(["tmux", "new", "-d", "-s", self.tmux_ses, "-n", self.tmux_win],
+                stdout=PIPE, stderr=PIPE).communicate()
+            if out[1] != b'':
+                msg = "TMUX error: {}".format(str(out[1]))
+                raise TMUXError(msg)
+
+        # check if window already exists
+        out = Popen(["tmux", "lsw", "-t", self.tmux_ses, "-F", "'#W'"], stdout=PIPE,
+            stderr=PIPE).communicate()
+        # if not, make it
+        if str(out[0]).find("'{}'".format(self.tmux_win)) == -1:
+            out = Popen(["tmux", "new-window", "-t", self.tmux_ses, "-n", self.tmux_win],
+                stdout=PIPE, stderr=PIPE).communicate()
+            if out[1] != b'':
+                msg = "TMUX error: {}".format(str(out[1]))
+                raise TMUXError(msg)
+
+        # Start Control script
+        out = Popen(["tmux", "send-keys", "-t", "{}:{}".format(self.tmux_ses, self.tmux_win),
+            "'{}'".format(self.tmux_ctrl), "Enter"], stdout=PIPE, stderr=PIPE).communicate()
+        # check if there was an error
+        if out[1] != b'':
+            msg = "TMUX error: {}".format(str(out[1]))
+            raise TMUXError(msg)
+
+    def _check_alive(self):
+        """A method to raise an error if the control script is not active"""
+
+        if not self.is_active():
+            raise ScriptOff("No active control script. Use activate_control_script().")
+
+    def _handle_shms(self): 
+        """A method to connect to shms where appropriate"""
+
+        if type(self.Pos_D) is str:
+            if os.path.isfile(self.Pos_D): self.Pos_D = Shm(self.Pos_D)
+        elif not os.path.isfile(self.Pos_D.fname):
+            self.Pos_D = self.Pos_D.fname
+        if type(self.Error) is str:
+            if os.path.isfile(self.Error): self.Error = Shm(self.Error)
+        elif not os.path.isfile(self.Error.fname):
+            self.Error = self.Error.fname
+        if type(self.Stat) is str:
+            if os.path.isfile(self.Stat): self.Stat = Shm(self.Stat)
+        elif not os.path.isfile(self.Stat.fname):
+            self.Stat = self.Stat.fname
