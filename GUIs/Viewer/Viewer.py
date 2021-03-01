@@ -14,7 +14,7 @@ from PyQt5 import uic
 from Viewer_Widgets import *
 from Track_Cam_process import TC_process
 
-resource_path = "/Transfer/Viewer/resources"
+resource_path = "/home/nfiudev/dev/Viewer/resources"
 
 class Stack(QWidget):
 
@@ -29,8 +29,8 @@ class Stack(QWidget):
         # activate any inactive control scripts
         if not self.proc.tc.is_active():
             self.proc.tc.activate_control_script()
-        if not self.proc.is_active(base=True, vis=True):
-            self.proc.activate_control_script(base=True, vis=True)
+        if not self.proc.is_active():
+            self.proc.activate_control_script()
 
         uic.loadUi("{}/Viewer.ui".format(resource_path), self)
 
@@ -109,9 +109,9 @@ class Stack(QWidget):
 
         self.show()
 
-        while not self.proc.is_active(vis=True):
+        while not self.proc.is_active():
             sleep(.1)
-        self.proc.is_processing(vis = True)
+        self.proc.is_processing()
 
         self.setWindowTitle("KPIC Display")
 

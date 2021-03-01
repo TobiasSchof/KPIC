@@ -17,7 +17,7 @@ import numpy as np
 from KPIC_shmlib import Shm
 import resources.images
 
-resource_path = "/Transfer/Viewer/resources"
+resource_path = "/home/nfiudev/dev/Viewer/resources"
 
 class Loc_Selection(QFrame):
     """A class to represent the QFrame holding PSF location information in the KPIC GUI"""
