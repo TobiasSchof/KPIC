@@ -129,10 +129,6 @@ def loop():
 
         if not alive: return
 
-        if req_pos == -1: req_pos = PUPIL
-        elif req_pos == -2: req_pos = FOCAL
-        elif req_pos == -3: req_pos = ZERN
-
         error = 0
         # connects to device and homes on start of with, closes connection on exit
         with devManager() as wrap:
@@ -176,10 +172,6 @@ def signal_handler(signum, stack):
 # load the config information
 config = ConfigParser()
 config.read(RELDIR + "/data/Mode_Change.ini")
-
-PUPIL = config.getfloat("Presets", "Pupil")
-FOCAL = config.getfloat("Presets", "Focal")
-ZERN  = config.getfloat("Presets", "Zernike")
 
 MN = config.getfloat("Limits", "min")
 MX = config.getfloat("Limits", "max")
