@@ -164,7 +164,7 @@ if args.command == "disconnect":
 # next check home
 if args.command == "home":
     # if device is already homed, do nothing
-    if dev.is_Homed():
+    if dev.is_homed():
         print("Device already homed.")
         sys.exit()
     # home device
@@ -173,7 +173,7 @@ if args.command == "home":
         # wait for device to report that it's homed
         cnt = 0
         print()
-        while not dev.is_Homed():
+        while not dev.is_homed():
             print("\033[F\033[KWaiting for device to home{}".format("."*((cnt%3)+1)))
             sleep(.5)
         # report success

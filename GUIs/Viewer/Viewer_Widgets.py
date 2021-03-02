@@ -533,7 +533,11 @@ class FPS(QLineEdit):
         """A method to send new NDR on focus loss"""
 
         # try to set field
-        try: self.tc.set_fps(float(self.text()))
+        try:
+            if self.text() != "": 
+                self.tc.set_fps(float(self.text()))
+            else:
+                self.setText(str(self.tc.get_fps()))
         except: pass
 
         super().focusOutEvent(*args, **kwargs)
@@ -594,7 +598,11 @@ class Tint(QLineEdit):
         """A method to send new NDR on focus loss"""
 
         # try to set tint
-        try: self.tc.set_tint(float(self.text())/1000)
+        try: 
+            if self.text() != "":
+                self.tc.set_tint(float(self.text())/1000)
+            else:
+                self.setText(str(self.tc.get_tint()*1000))
         except: pass
 
         super().focusOutEvent(*args, **kwargs)
@@ -655,7 +663,11 @@ class NDR(QLineEdit):
         """A method to send new NDR on focus loss"""
 
         # try to set field
-        try: self.tc.set_ndr(float(self.text()))
+        try:
+            if self.text() != "":
+                self.tc.set_ndr(float(self.text()))
+            else:
+                self.setText(str(self.tc.get_ndr()))
         except: pass
 
         super().focusOutEvent(*args, **kwargs)
@@ -1281,11 +1293,11 @@ class View_Selection(QFrame):
         else: nm = self.mc.Pos_D.fname
         # try to connect to existing shm watcher
         try: self.p.watch_widgs[nm].do_update.connect(self.update_pos)
-         if none exists yet, make a new one
-        #except KeyError:
+        # if none exists yet, make a new one
+        except KeyError:
             self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
             self.p.watch_widgs[nm].setup(nm)
-            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+            self.p.watch_widgs[nm].do_update.connect(self.update_pos)
 
         # variable to store which index is the custom option
         self.custom_idx = 2
@@ -1300,20 +1312,47 @@ class View_Selection(QFrame):
         if self.drop.currentIndex() != self.custom_idx:
             self.input_frame.hide()
 
+        # connect button to submitting new position
+        self.submit.clicked.connect(self.set_pos)
+
+        # update current selection
+        try: self.update_pos(self.mc.Pos_D.get_data())
+        except: self.update_pos(["---"])
+
         # connect method to monitor goal change
         self.drop.currentIndexChanged.connect(self.sel_chng)
         
     def sel_chng(self):
         """A method to handle when the goal selection drop down is changed"""
 
+        # if option selected is "pupil", go to pupil plane
+        if self.drop.currentIndex() == 0:
+            try: self.mc.set_pos("pupil")
+            except:
+                try: self.update_pos(self.mc.Pos_D.get_data())
+                except: self.update_pos("---")
+        # if option selected is "focal", go to focal plane
+        elif self.drop.currentIndex() == 1:
+            try: self.mc.set_pos("focal")
+            except:
+                try: self.update_pos(self.mc.Pos_D.get_data())
+                except: self.update_pos("---")
         # if option selected is "custom", show input fields
-        if self.drop.currentIndex() == self.custom_idx:
+        elif self.drop.currentIndex() == self.custom_idx:
             self.input_frame.show()
         # otherwise hide input fields
         else:
             self.input_frame.hide()
 
-    def update_drop(self, data):
+    def set_pos(self, *ignored):
+        """A method to set a custom position"""
+
+        try: self.mc.set_pos(float(self.val.text()))
+        except:
+            try: self.update_pos(self.mc.Pos_D.get_data())
+            except: self.update_pos("---")
+
+    def update_pos(self, data):
         """A method to update dropdown selection when stage is moved"""
 
         # get the current position by name
@@ -1329,5 +1368,13 @@ class View_Selection(QFrame):
         # set new index if not the current one
         if self.drop.currentIndex() != idx:
             self.drop.setCurrentIndex(idx)
+
+        # update text field
+        try: self.val.setText(str(data[0]))
+        except: self.val.setText("---")
+
+        # if text field should be hidden, hide it
+        if self.drop.currentIndex() != self.custom_idx:
+            self.input_frame.hide()
 
 ##############################

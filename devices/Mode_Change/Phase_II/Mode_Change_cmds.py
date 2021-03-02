@@ -238,7 +238,7 @@ class Mode_Change_cmds:
 
         self._checkConnectedAndAlive()
 
-        if not self.is_Homed(): raise LoopOpen("Please home device.")
+        if not self.is_homed(): raise LoopOpen("Please home device.")
 
         preset = False
         # if a preset was given, translate it to a position
