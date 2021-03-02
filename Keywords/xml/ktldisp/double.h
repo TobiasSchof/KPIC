@@ -27,6 +27,12 @@ FIORD_BROAD_INFO inst_double_bcast_kval_info = {
 KW_MAP_TYPE KW_MAP_NAME[]=
 {
 	{ TTMPOSX, "TTMPOSX" },
+    { TTMPOSY, "TTMPOSY" },
+    { MCPOS, "MCPOS" },
+    { BDRIFTX, "BDRIFTX" },
+    { BDRIFTY, "BDRIFTY" },
+    { TCMASPX, "TCMASPX" },
+    { TCINSTA, "TCINSTA" }
 };
 
 #define KW_MAP_SIZE ( sizeof KW_MAP_NAME / sizeof (KW_MAP_TYPE) )

@@ -32,6 +32,8 @@ KW_MAP_TYPE KW_MAP_NAME[]=
 	{ DISPSTOP, "DISPSTOP" },
 	{ TEST, "TEST" },
 	{ UPTIME, "UPTIME" },
+    { TTMERR, "TTMERR" },
+    { MCERR, "MCERR" }
 };
 
 #define KW_MAP_SIZE ( sizeof KW_MAP_NAME / sizeof (KW_MAP_TYPE) )
@@ -57,3 +59,5 @@ make_disp2_int_input_func  (input_uptime,  UPTIME)
 /* UPTIME is a read-only keyword (no output function) */
 make_disp2_int_input_func  (input_ttmerr,  TTMERR)
 make_disp2_int_output_func (output_ttmerr, TTMERR)
+make_disp2_int_input_func  (input_ttmerr,  MCERR)
+make_disp2_int_output_func (output_ttmerr, MCERR)
