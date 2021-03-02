@@ -26,7 +26,16 @@ import signal
 import sys
 import threading
 import time
+from configparser import ConfigParser
+
+# nsfiu libraries
 from FIU_TTM_cmds import FIU_TTM_cmds
+from Mode_Change_cmds import Mode_Change_cmds
+from dev_Exceptions import *
+
+class ScriptOff(Exception):
+    """Exception for when control script is off"""
+    pass
 
 #
 # #
@@ -105,47 +114,210 @@ def setupKeywords(service):
 
     DFW.Keyword.String('VERSION', service, main.version)
 
-    FIU_TTM_POS_X_KTL("TTMPOSX", service)
+    ttm = FIU_TTM_cmds()
+    mc = Mode_Change_cmds()
 
+    # set up keywords for FIU TTM
+    FIU_TTM_POS_KTL("x", "TTMPOSX", service)
+    FIU_TTM_POS_KTL("y", "TTMPOSY", service)
+    FIU_ERROR_KTL(ttm, "TTMERR", service)
+    #FIU_STAT_KTL(ttm, "TTMSTAT", service)
+
+    # set up keywords for Mode Change stage
+    FIU_MC_POS_KTL("MCPOS", service)
+    FIU_ERROR_KTL(mc, "MCERR", service)
+
+    # set up keywords not associated with any shms
+    DFW.Keyword.Double("BDRIFTX", service)
+    DFW.Keyword.Double("BDRIFTY", service)
+    DFW.Keyword.Double("TCMASPX", service)
+    DFW.Keyword.Double("TCINSTA", service)
+    
 #
 # #
 # Implementation of keywords.
 # #
 #
-class FIU_TTM_POS_X_KTL(DFW.Keyword.Double):
-    """A class to handle the FIU TTM X Position keyword"""
+class FIU_TTM_POS_KTL(DFW.Keyword.Double):
+    """A class to handle the FIU TTM Position keyword (one axis)"""
     
-    def __init__(self, *args, **kwargs):
-        """Constructor"""
+    def __init__(self, axis, *args, **kwargs):
+        """Constructor
+        
+        Args:
+            axis = one of 'x' or 'y'
+        """
 
-        # update keyword every .5 seconds
-        kwargs['period'] = .5
+        # if axis is invalid, fail
+        if axis.lower() not in ['x', 'y']:
+            raise ValueError("Axis must be one of 'x' or 'y'")
+
+        # update keyword every 1 second
+        kwargs['period'] = 1 
 
         super().__init__(*args, **kwargs)
 
         self.TTM = FIU_TTM_cmds()
 
         # if TTM control script is not active, activate it
-        if not self.TTM.is_Active():
-            self.TTM.activate_Control_Script()
+        if not self.TTM.is_active():
+            self.TTM.activate_control_script()
+
+        # keep track of which index is relevant
+        if axis.lower() == "x":
+            self.idx = 0
+        else:
+            self.idx = 1
 
     def read(self):
-        """The method that is called on the given period"""
+        """Method to get a new value for the keyword"""
 
         # try to get the current position
         try:
             pos = self.TTM.get_pos()
-            pos = "{}".format(pos[0])
-        # if stage is off, just post -1, -1 (default value)
+            pos = "{}".format(pos[self.idx])
+        # if stage is off, just post -2 (default value)
         except StageOff:
-            pos = '-1'
+            pos = '-2'
         # if control script is off, try to start it and return
         except ScriptOff:
-            self.TTM.activate_Control_Script()
-            return -2
+            self.TTM.activate_control_script()
+            return '-2'
+        except: return '-2'
 
         # set keyword
         return pos
+
+    def write(self, value):
+        """Method to write a new value to the keyword"""
+        
+        super().write(value)
+
+        # here we want to use Pos_P so the non-modified index doesn't change
+        #   we also do assignment and querying in same line to minimize race
+        #   conditions.
+        #
+        #   (NOTE: Pos_P is the last commanded position so should be accurate)
+       
+        if self.idx == 0:
+            try:
+                self.TTM.set_pos([value, self.TTM.Pos_P.get_data()[1]])
+            except:
+                self.TTM.set_pos([-2, self.TTM.Pos_P.get_data()[1]])
+        else:
+            try:
+                self.TTM.set_pos([self.TTM.Pos_P.get_data()[0], value])
+            except:
+                self.TTM.set_pos([self.TTM.Pos_P.get_data()[0], -2]) 
+
+class FIU_MC_POS_KTL(DFW.Keyword.Double):
+    """A class to handle the FIU mode change Position keyword (one axis)"""
+    
+    def __init__(self, *args, **kwargs):
+        """Constructor"""
+
+        # update keyword every 5 seconds
+        kwargs['period'] = 5
+
+        super().__init__(*args, **kwargs)
+
+        self.MC = Mode_Change_cmds()
+
+        # if control script is not active, activate it
+        if not self.MC.is_active():
+            self.MC.activate_control_script()
+
+    def read(self):
+        """Method to get a new value for the keyword"""
+
+        # try to get the current position
+        try:
+            pos = "{}".format(self.MC.get_pos())
+        # if control script is off, try to start it and return
+        except ScriptOff:
+            self.MC.activate_control_script()
+            return '-2'
+        except: return '-2'
+
+        # set keyword
+        return pos
+
+    def write(self, value):
+        """Method to write a new value to the keyword"""
+        
+        super().write(value)
+
+        self.MC.set_pos(value)
+
+class FIU_ERROR_KTL(DFW.Keyword.Integer):
+    """A class to handle the FIU Error keywords"""
+    
+    def __init__(self, module, *args, **kwargs):
+        """Constructor"""
+
+        super().__init__(*args, **kwargs)
+
+        self.mod = module
+
+        # if module control script is not active, activate it
+        if not self.mod.is_active():
+            self.mod.activate_control_script()
+
+    def read(self):
+        """Method to get a new value for the keyword"""
+
+        # try to get the current error
+        try:
+            err = self.mod.Error.get_data()[0]
+            err = "{}".format(pos[self.idx])
+        # if control script is off, try to start it and return
+        except ScriptOff:
+            self.mod.activate_control_script()
+            return '-2'
+
+        # set keyword
+        return err
+
+class FIU_STAT_KTL(DFW.Keyword.Boolean):
+    """A class to handle the FIU Status keywords"""
+
+    def __init__(self, module, *args, **kwargs):
+        """Contructor"""
+
+        super().__init__(*args, **kwargs)
+
+        self.mod = module
+
+        # if module control script is not active, activate it
+        if not self.mod.is_active():
+            self.mod.activate_control_script()
+
+    def read(self):
+        """Method to get a new value for the keyword"""
+
+        # try to get the current connected status
+        try:
+            stat = self.mod.is_connected()
+        # if control script is off, try to start it and return
+        except ScriptOff:
+            self.mod.activate_control_script()
+            return '0'
+        # any other errors, return False
+        except:
+            return '0'
+
+        # set keyword
+        return str(int(stat))
+
+    def write(self, value):
+        """Method to write a new value to the keyword"""
+        
+        super().write(value)
+
+        if self.value == "1":
+            self.mod.connect()
+        else:
+            self.mod.disconnect()
 
 class StopKeyword (DFW.Keyword.Boolean):
 

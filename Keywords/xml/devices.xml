@@ -16,4 +16,100 @@
 			</initialize>
 		</serverside>
 	</keyword>
+	<keyword>
+		<name>TTMPOSY</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">Y position of FIU TTM</help>
+		<help level="verbose">Y position of FIU TTM (0 - 10000).</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>TTMERR</name>
+		<type>integer</type>
+		<help level="brief">Error reported by FIU TTM</help>
+		<serverside>
+			<initialize>
+				<value>0</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>MCPOS</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">position of Mode Change stage</help>
+		<help level="verbose">position of Mode Change stage (0 - 27).</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>MCERR</name>
+		<type>integer</type>
+		<help level="brief">Error reported by Mode Change stage</help>
+		<serverside>
+			<initialize>
+				<value>0</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>BDRIFTX</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">X component of Bundle Drift</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>BDRIFTY</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">Y component of Bundle Drift</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>TCMASPX</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">Mas to pixel conversion for tracking camera</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
+	<keyword>
+		<name>TCINSTA</name>
+		<type>double</type>
+		<format>%.3f</format>
+		<help level="brief">Inst. angle for tracking camera</help>
+		<serverside>
+			<initialize>
+				<value>0.000</value>
+				<use_cache>True</use_cache>
+			</initialize>
+		</serverside>
+	</keyword>
 </bundle>

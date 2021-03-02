@@ -30,10 +30,8 @@ from configparser import ConfigParser
 
 # nsfiu libraries
 from FIU_TTM_cmds import FIU_TTM_cmds
-from Mode_Change_cmds import zern, focal, pupil
-from Mode_Change_cmds import set_pos as MC_set
-from Mode_Change_cmds import get_pos as MC_get
-from Mode_Change_cmds import activate_Control_Script as MC_activate 
+from Mode_Change_cmds import Mode_Change_cmds
+from dev_Exceptions import *
 
 class ScriptOff(Exception):
     """Exception for when control script is off"""
@@ -116,8 +114,24 @@ def setupKeywords(service):
 
     DFW.Keyword.String('VERSION', service, main.version)
 
+    ttm = FIU_TTM_cmds()
+    mc = Mode_Change_cmds()
+
+    # set up keywords for FIU TTM
     FIU_TTM_POS_KTL("x", "TTMPOSX", service)
     FIU_TTM_POS_KTL("y", "TTMPOSY", service)
+    FIU_ERROR_KTL(ttm, "TTMERR", service)
+    #FIU_STAT_KTL(ttm, "TTMSTAT", service)
+
+    # set up keywords for Mode Change stage
+    FIU_MC_POS_KTL("MCPOS", service)
+    FIU_ERROR_KTL(mc, "MCERR", service)
+
+    # set up keywords not associated with any shms
+    DFW.Keyword.Double("BDRIFTX", service)
+    DFW.Keyword.Double("BDRIFTY", service)
+    DFW.Keyword.Double("TCMASPX", service)
+    DFW.Keyword.Double("TCINSTA", service)
 
 #
 # #
@@ -146,8 +160,8 @@ class FIU_TTM_POS_KTL(DFW.Keyword.Double):
         self.TTM = FIU_TTM_cmds()
 
         # if TTM control script is not active, activate it
-        if not self.TTM.is_Active():
-            self.TTM.activate_Control_Script()
+        if not self.TTM.is_active():
+            self.TTM.activate_control_script()
 
         # keep track of which index is relevant
         if axis.lower() == "x":
@@ -167,8 +181,9 @@ class FIU_TTM_POS_KTL(DFW.Keyword.Double):
             pos = '-2'
         # if control script is off, try to start it and return
         except ScriptOff:
-            self.TTM.activate_Control_Script()
+            self.TTM.activate_control_script()
             return '-2'
+        except: return '-2'
 
         # set keyword
         return pos
@@ -199,21 +214,7 @@ class FIU_MC_POS_KTL(DFW.Keyword.Double):
     """A class to handle the FIU mode change Position keyword (one axis)"""
     
     def __init__(self, *args, **kwargs):
-        """Constructor
-        
-        Args:
-            axis = one of 'x' or 'y'
-        """
-
-        # get preset posittions from config file
-        RELDIR = os.environ.get("RELDIR")
-        if RELDIR[-1] != "/": RELDIR += "/"
-        config = ConfigParser()
-        config.read(RELDIR + "data/Mode_Change.ini")
-
-        self.pup  = config.getfloat("Environment", "Pupil")
-        self.foc  = config.getfloat("Environment", "Focal")
-        self.zern = config.getfloat("Environment", "Zernike")
+        """Constructor"""
 
         # update keyword every 5 seconds
         kwargs['period'] = 5
@@ -223,29 +224,20 @@ class FIU_MC_POS_KTL(DFW.Keyword.Double):
         self.MC = Mode_Change_cmds()
 
         # if control script is not active, activate it
-        if not os.path.isfile(self.MC.Stat):
-            self.TTM.activate_Control_Script()
-
-        # keep track of which index is relevant
-        if axis.lower() == "x":
-            self.idx = 0
-        else:
-            self.idx = 1
+        if not self.MC.is_active():
+            self.MC.activate_control_script()
 
     def read(self):
         """Method to get a new value for the keyword"""
 
         # try to get the current position
         try:
-            pos = self.TTM.get_pos()
-            pos = "{}".format(pos[self.idx])
-        # if stage is off, just post -2 (default value)
-        except StageOff:
-            pos = '-2'
+            pos = "{}".format(self.MC.get_pos())
         # if control script is off, try to start it and return
         except ScriptOff:
-            self.TTM.activate_Control_Script()
+            self.MC.activate_control_script()
             return '-2'
+        except: return '-2'
 
         # set keyword
         return pos
@@ -255,24 +247,9 @@ class FIU_MC_POS_KTL(DFW.Keyword.Double):
         
         super().write(value)
 
-        # here we want to use Pos_P so the non-modified index doesn't change
-        #   we also do assignment and querying in same line to minimize race
-        #   conditions.
-        #
-        #   (NOTE: Pos_P is the last commanded position so should be accurate)
-       
-        if self.idx == 0:
-            try:
-                self.TTM.set_pos([value, self.TTM.Pos_P.get_data()[1]])
-            except:
-                self.TTM.set_pos([-2, self.TTM.Pos_P.get_data()[1]])
-        else:
-            try:
-                self.TTM.set_pos([self.TTM.Pos_P.get_data()[0], value])
-            except:
-                self.TTM.set_pos([self.TTM.Pos_P.get_data()[0], -2]) 
+        self.MC.set_pos(value)
 
-class FIU_ERROR_KTL(DFW.Keyword.Int):
+class FIU_ERROR_KTL(DFW.Keyword.Integer):
     """A class to handle the FIU Error keywords"""
     
     def __init__(self, module, *args, **kwargs):
@@ -283,8 +260,8 @@ class FIU_ERROR_KTL(DFW.Keyword.Int):
         self.mod = module
 
         # if module control script is not active, activate it
-        if not self.mod.is_Active():
-            self.mod.activate_Control_Script()
+        if not self.mod.is_active():
+            self.mod.activate_control_script()
 
     def read(self):
         """Method to get a new value for the keyword"""
@@ -295,7 +272,7 @@ class FIU_ERROR_KTL(DFW.Keyword.Int):
             err = "{}".format(pos[self.idx])
         # if control script is off, try to start it and return
         except ScriptOff:
-            self.mod.activate_Control_Script()
+            self.mod.activate_control_script()
             return '-2'
 
         # set keyword
@@ -309,21 +286,21 @@ class FIU_STAT_KTL(DFW.Keyword.Boolean):
 
         super().__init__(*args, **kwargs)
 
-         self.mod = module
+        self.mod = module
 
         # if module control script is not active, activate it
-        if not self.mod.is_Active():
-            self.mod.activate_Control_Script()
+        if not self.mod.is_active():
+            self.mod.activate_control_script()
 
     def read(self):
         """Method to get a new value for the keyword"""
 
         # try to get the current connected status
         try:
-            stat = self.mod.is_Connected()
+            stat = self.mod.is_connected()
         # if control script is off, try to start it and return
         except ScriptOff:
-            self.mod.activate_Control_Script()
+            self.mod.activate_control_script()
             return '0'
         # any other errors, return False
         except:

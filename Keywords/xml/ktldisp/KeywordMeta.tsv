@@ -1,3 +1,11 @@
 # Service	Dispatcher	Keyword	Info	Value
 
 nsfiu	1	TTMPOSX	cfmt	%.3f
+nsfiu	1	TTMPOSY	cfmt	%.3f
+nsfiu	1	TTMERR	cfmt	%d
+nsfiu	1	MCPOS	cfmt	%.3f
+nsfiu	1	MCERR	cfmt	%d
+nsfiu	1	BDRIFTX	cfmt	%.3f
+nsfiu	1	BDRIFTY	cfmt	%.3f
+nsfiu	1	TCMASPX	cfmt	%.3f
+nsfiu	1	TCINSTA	cfmt	%.3f

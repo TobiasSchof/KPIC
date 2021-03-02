@@ -55,3 +55,5 @@ make_disp2_int_input_func  (input_test,  TEST)
 make_disp2_int_output_func (output_test, TEST)
 make_disp2_int_input_func  (input_uptime,  UPTIME)
 /* UPTIME is a read-only keyword (no output function) */
+make_disp2_int_input_func  (input_ttmerr,  TTMERR)
+make_disp2_int_output_func (output_ttmerr, TTMERR)

@@ -6,5 +6,13 @@ dispmsg      string          1    1     0     1      0 +service+_dispatch_1 nsfi
 dispsta      enum            1    1     0     1      0 +service+_dispatch_1 nsfiu-dispatcher-status
 dispstop     bool            1    1     1     1      1 +service+_dispatch_1 nsfiu-dispatcher-shutdown
 ttmposx      double          1    1     1     1      1 +service+_dispatch_1 X-position-of-FIU-TTM
+ttmposy      double          1    1     1     1      1 +service+_dispatch_1 Y-position-of-FIU-TTM
+ttmerr       int             1    1     1     1      1 +service+_dispatch_1 FIU-TTM-error
+mcpos        double          1    1     1     1      1 +service+_dispatch_1 viewing-mode
+mcerr        int             1    1     1     1      1 +service+_dispatch_1 viewing-mode-control-error
+bdriftx      double          1    1     1     1      1 +service+_dispatch_1 X-component-of-bundle-drift
+bdrifty      double          1    1     1     1      1 +service+_dispatch_1 Y-component-of-bundle-drift
+tcmaspx      double          1    1     1     1      1 +service+_dispatch_1 track-cam-mas-to-pix-conversion
+tcinsta      double          1    1     1     1      1 +service+_dispatch_1 track-cam-inst-angle
 uptime       int             1    1     0     1      0 +service+_dispatch_1 nsfiu-dispatcher-uptime-clock
 version      string          1    1     0     1      0 +service+_dispatch_1 nsfiu-dispatcher-version
