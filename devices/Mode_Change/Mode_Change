@@ -1,41 +1,48 @@
 #!/usr/bin/env kpython3
 
-#inherent python libraries
-from subprocess import Popen
-from argparse import ArgumentParser, SUPPRESS
-from configparser import ConfigParser
-from time import sleep, ctime
-import sys, io, os
+# inherent python libraries
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from time import sleep, localtime
+import sys
 
-#installed libraries
-import numpy as np
+# nfiuserver libraries
+from Mode_Change_cmds import Mode_Change_cmds
+from dev_Exceptions import *
 
-#nfiuserver libraries
-import Mode_Change_cmds
-
-if __name__ != "__main__": sys.exit()
-
-"""
-
-executable to control the viewing mode controller quickly from the command line
-
-"""
+# instantiate Mode_Change cmds to get presets
+dev = Mode_Change_cmds()
 
 # format help message for no command/invalid command
 main_help = """usage:
 {b:2}Mode_Change [CMD] [-h]
-
+    
 CMD:
-{b:2}pupil  - change to pupil plane viewing mode
-{b:2}zern   - change to zernike viewing mode
-{b:2}focal  - change to focal plane viewing mode
-{b:2}status - check current position
-{b:2}goto   - Move to a custom position
+{b:2}goto       - moves device
+{b:2}status     - returns last recorded position
+{b:2}enable     - turns on control script
 -h:
-{b:2}add "-h" after a command for more info""".format(b="")
+{b:2}add "-h" after a command for more info""".format(b = "")
 
-# change ArgumentParser so it prints help menu if no valid
-#    option is used
+# format presets and examples for goto help message
+goto_addend = ""
+if len(dev.presets) > 0:
+    goto_addend += "presets:"
+    for preset in dev.presets:
+        goto_addend += "\n{b:2}{name:<10}{val}".format(b = "", 
+            name = preset + ":", val = dev.presets[preset])
+    goto_addend += "\n"
+
+goto_addend += """
+examples:
+{b:2}Mode_Change goto 0
+""".format(b = "")
+
+if len(dev.presets) > 0:
+    goto_addend += "{b:2}Mode_Change goto {pres}".format(b = "", 
+        pres = list(dev.presets.keys())[0]) 
+
+# change ArgumnetParser so it prints help menu if no valid
+#   option is used
 class HelpArgumentParser(ArgumentParser):
     def error(self, message):
         if message.startswith("the following arguments are required:"):
@@ -51,52 +58,105 @@ parser = HelpArgumentParser(add_help = False)
 #   NOTE: dest allows us to check which subparser was called
 sub = parser.add_subparsers(dest = "command")
 
-# create subparser to handle pupil command
-pupil = sub.add_parser("pupil")
-
-# create subparser to handle zern command
-zern = sub.add_parser("zern")
-
-# create subparser to handle focal command
-focal = sub.add_parser("focal")
+# create subparser to handle enable command
+enable = sub.add_parser("enable")
+# add -d flag
+enable.add_argument("-d", dest = "log", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in logging mode. \
+    'PATH' can be specified to change log location")
+# add -d! flag
+enable.add_argument("-d!", dest = "debug", metavar = "PATH", nargs="?", 
+    default = -1, help = "starts control script in debug mode. \
+    'PATH' can be specified to change log location")
+# add -draw flag
+enable.add_argument("-draw", action = "store_true",
+    help = "script will draw values in tmux session")
 
 # create subparser to handle status command
 status = sub.add_parser("status")
+status.add_argument("-push", action = "store_true", help = "requests position update")
 
 # create subparser to handle goto command
-goto = sub.add_parser("goto")
-goto.add_argument("target", nargs = "*",
-    help = "position to move to (in mm)")
+goto = sub.add_parser("goto", epilog = goto_addend,
+    formatter_class = RawDescriptionHelpFormatter)
+goto.add_argument("target", help = "position to move to (in mm or a preset)")
 
+# parse arguments and load them into args
+#   NOTE: because we used HelpArgumentParser, if an error is encountered,
+#         the help message will display and program will exit
 args = parser.parse_args()
 
+# if no arguments were specified (or if -h is used, since we disabled help), print help
 if args.command is None:
     print(main_help); sys.exit()
 
-# first check pupil command
-if args.command == "pupil":
-    Mode_Change_cmds.pupil()
+# first check for enable command
+if args.command == "enable":
+    if dev.is_active(): 
+        print("Control script is alread on.")
+        sys.exit()
+    # create append flags if any optional arguments were provided
+    append = ""
+    if args.debug != -1:
+        append += " -d!"
+        if args.debug is not None:
+            append += " {}".format(args.debug)
+    elif args.log != -1:
+        append += " -d"
+        if args.log is not None:
+            append += " {}".format(args.log)
+    if args.draw:
+        append += " -draw"
 
-# next check zern command
-elif args.command == "zern":
-    Mode_Change_cmds.zern()
+    # if we have no flags, make append None
+    if len(append) == 0: append = None
+    
+    # start control script
+    dev.activate_control_script(append = append)
+    sys.exit()
 
-# then check focal
-elif args.command == "focal":
-    Mode_Change_cmds.focal()
+# next check status
+if args.command == "status":
+    # get position
+    try:
+        # see if we're in a named position
+        pos, u_time = dev.get_named_pos(update = args.push, time = True)
+        if pos == "custom":
+            pos = dev.get_pos()
+        # convert UNIX epoch time to local time
+        t = localtime(u_time)
+        print("Position: {} last updated {}/{}/{} {}:{}:{} {}".format(pos, t.tm_year,
+            t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, t.tm_zone))
+    # catch exceptions
+    except StageOff as e:
+        print("Device disconnected. Please use 'Mode_Change connect'")
+    except ScriptOff as e:
+        print("Control script off. Please use 'Mode_Change enable'")
 
-# then status
-elif args.command == "status":
-    pos = Mode_Change_cmds.get_pos()
-    print("Current position: {}".format(pos))
 
-# last goto
-elif args.command == "goto":
-    if len(args.target) != 1:
-        print("goto takes one float (position) as an argument")
+# last check goto
+if args.command == "goto":
+    # if a position was provided, convert it to a float
+    try: args.target = float(args.target)
+    except: pass
+
+    # if target is a float or a preset, try it
+    if type(args.target) is float or args.target in dev.presets:
+        try: dev.set_pos(args.target, block = True)
+        except StageOff as e:
+            print("Device disconnected. Please us 'Mode_Change connect'")
+        except ScriptOff as e:
+            print("Control script off. Please use 'Mode_Change enable'")
+        except MovementTimeout as e:
+            print("Device taking too long to move. Check for blockages")
+        except ShmError as e:
+            if e.args[0] == "Error 1.":
+                print("Target outside of limits.")
+            else:
+                print(e.message)
+        except LoopOpen as e:
+            print("Device in open loop. Please use 'Mode_Change home'.")
+    # otherwise, display help
     else:
-        try: args.target = float(args.target)
-        except: 
-            print("position must be a float")
-            sys.exit()
-        Mode_Change_cmds.set_pos(args.target)
+        print("Invalid target. See below.")
+        goto.print_help()

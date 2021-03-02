@@ -8,7 +8,7 @@ override ENABLE_PYTHON2 = False
 ## DIRS = designer
 
 RELLIB = Mode_Change_cmds.py
-RELBIN = Mode_Change Mode_Change_Control Mode_Change_draw
+RELBIN = Mode_Change Mode_Change_Control Mode_Change_Control_No_Reply Mode_Change_draw
 RELDAT = Mode_Change.ini
 LIBSUB = python
 ##FILES = $(RELBIN)

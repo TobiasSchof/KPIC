@@ -14,7 +14,7 @@ import numpy as np
 import posix_ipc
 
 #nfiuserver libraries
-from KPIC_shmlib import shm
+from KPIC_shmlib import Shm
 from Conex import Conex_Device
 from NPS_cmds import NPS_cmds
 
