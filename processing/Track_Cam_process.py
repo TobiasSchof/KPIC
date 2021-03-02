@@ -242,7 +242,7 @@ class TC_process:
             self.tc._check_alive_and_connected()
             img_shm = self.tc.Img
         else:
-            self._check_alive_and_processing(vis = True)
+            self._check_alive_and_processing()
             img_shm = self.Vis_Proc
 
         # format numpy arrays as fits
@@ -589,7 +589,7 @@ class TC_process:
         if which == "raw":
             return self.tc._get_header()
 
-        self._check_alive(vis=True, base=True)
+        self._check_alive()
 
         medfilt = "N/A"
         baseproc = "N/A"
