@@ -56,7 +56,7 @@ class FIU_TTM_cmds:
 
         self._handleShms()
 
-    def is_Active(self) -> bool:
+    def is_active(self) -> bool:
         """Checks whether control script is active
 
         Returns:
@@ -71,7 +71,7 @@ class FIU_TTM_cmds:
         else:
             return bool(self.Stat_D.get_data()[0] & 1)
 
-    def is_Connected(self) -> bool:
+    def is_connected(self) -> bool:
         """Checks whether device is connected
 
         Returns:
@@ -165,7 +165,7 @@ class FIU_TTM_cmds:
 
         if not block: return
 
-        while not self.is_Connected():
+        while not self.is_connected():
             if self.Error.mtdata["cnt0"] == self.Error.get_counter():
                 sleep(.5)
             elif self.Error.get_data()[0] != 0:
@@ -189,7 +189,7 @@ class FIU_TTM_cmds:
 
         if not block: return
 
-        while not self.is_Connected(): sleep(.5)
+        while not self.is_connected(): sleep(.5)
 
     def open_loop(self):
         """Opens the loop"""
@@ -260,10 +260,10 @@ class FIU_TTM_cmds:
         elif error == 2: raise LoopOpen("Open loop movement not supported.") 
         elif error == 3: raise StageOff("Turn on device and try again.")
 
-    def activate_Control_Script(self, append = None):
+    def activate_control_script(self, append = None):
         """Activates the control script if it's not already active."""
 
-        if self.is_Active(): 
+        if self.is_active(): 
             msg = "Cannot have two control scripts running at once."
             raise ScriptAlreadActive(msg)
 
@@ -300,8 +300,8 @@ class FIU_TTM_cmds:
     def _checkAlive(self):
         """Raises an exception if the control script is not active."""
 
-        #is_Active will handle shm creation if they aren't already created
-        if not self.is_Active():
+        #is_active will handle shm creation if they aren't already created
+        if not self.is_active():
             raise ScriptOff("Control script off. Please turn on.") 
 
         #if one of the P shms is a string, shms probably have to be loaded.
@@ -316,7 +316,7 @@ class FIU_TTM_cmds:
         self._checkAlive()
 
         #then check if device is on
-        if not self.is_Connected():
+        if not self.is_connected():
             raise StageOff("Stage is disconnected. Please connect.")
             
     def _handleShms(self):
@@ -346,7 +346,7 @@ class FIU_TTM_cmds:
                 raise ShmError(msg)
 
         #the following shared memories will only exist if control is active
-        if self.is_Active():
+        if self.is_active():
             if type(self.Pos_P) is str:
                 try: self.Pos_P = Shm(self.Pos_P)
                 except: 
