@@ -104,7 +104,7 @@ if args.command is None:
 
 # first check for enable command
 if args.command == "enable":
-    if dev.is_Active(): 
+    if dev.is_active(): 
         print("Control script is alread on.")
         sys.exit()
     # create append flags if any optional arguments were provided
@@ -124,14 +124,14 @@ if args.command == "enable":
     if len(append) == 0: append = None
     
     # start control script
-    dev.activate_Control_Script(append = append)
+    dev.activate_control_script(append = append)
     sys.exit()
 
 # next check connect
 if args.command == "connect": 
     try:
         # if device is already connected, do nothing
-        if dev.is_Connected():
+        if dev.is_connected():
             print("Device already connected.")
             sys.exit()
         # connect to device
@@ -139,7 +139,7 @@ if args.command == "connect":
         # wait for device to report that it's connected
         cnt = 0
         print()
-        while not dev.is_Connected(): 
+        while not dev.is_connected(): 
             # \033[F moves to the beginning of the previous line
             # \033[K clears the line from cursor position to end
             print("\033[F\033[KWaiting for device to connect{}".format("."*((cnt%3)+1)))
@@ -153,7 +153,7 @@ if args.command == "connect":
 if args.command == "disconnect": 
     try:
         # if device is already disconnected, do nothing
-        if not dev.is_Connected():
+        if not dev.is_connected():
             print("Device already disconnected.")
             sys.exit()
         # disconnect from device

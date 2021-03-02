@@ -16,9 +16,9 @@ class Mode_Change_cmds:
 
     method list:
     Queries:
-        is_Active
-        is_Connected
-        is_Homed
+        is_active
+        is_connected
+        is_homed
         get_error
         get_pos
         get_target
@@ -28,7 +28,7 @@ class Mode_Change_cmds:
         home
         reset
         set_pos
-        activate_Control_Script
+        activate_control_script
         load_presets
     Internal methods:
         _checkAlive
@@ -56,7 +56,7 @@ class Mode_Change_cmds:
 
         self._handleShms()
 
-    def is_Active(self) -> bool:
+    def is_active(self) -> bool:
         """Returns true if control script is active
 
         Returns:
@@ -70,7 +70,7 @@ class Mode_Change_cmds:
         # if Stat_D is a still a string, it means there is not shm file
         except AttributeError: return False
 
-    def is_Connected(self) -> bool:
+    def is_connected(self) -> bool:
         """Returns true if device is active
 
         Returns:
@@ -81,7 +81,7 @@ class Mode_Change_cmds:
 
         return self.Stat_D.get_data()[0] & 2
 
-    def is_Homed(self) -> bool:
+    def is_homed(self) -> bool:
         """Returns true if device is homed
 
         Returns:
@@ -135,6 +135,32 @@ class Mode_Change_cmds:
 
         if time: return self.Pos_D.get_data()[0], self.Pos_D.get_time()
         else: return self.Pos_D.get_data()[0]
+
+    def get_named_pos(self, update=False, time=False):
+        """Returns the named position of the stage, or 'custom'
+
+        Args:
+            update = if True, will request update from control script
+            time = if True, will return the time of the last update
+        Returns:
+            str = one of 'pupil', 'focal', 'zernike', or 'custom'
+                (if time = False)
+            or
+            str, float = the position as above, the (unix epoch) time
+                of last update (if time = True)
+        """
+
+        pos, a_time = self.get_pos(update = update, time = True)
+
+        if abs(pos - self.presets["pupil"]) < .1:
+            if time: return "pupil", a_time
+            else: return "pupil"
+        elif abs(pos - self.presets["focal"]) < .1:
+            if time: return "focal", a_time
+            else: return "focal"
+        else:
+            if time: return "custom", a_time
+            else: return "custom"
 
     def get_target(self) -> float:
         """Returns the target position from the shm
@@ -245,10 +271,10 @@ class Mode_Change_cmds:
             msg = "Error {}.".format(err)
             raise ShmError(msg)
 
-    def activate_Control_Script(self, append = None):
+    def activate_control_script(self, append = None):
         """Activates the control script if it's not already active."""
 
-        if self.is_Active(): 
+        if self.is_active(): 
             msg = "Cannot have two control scripts running at once."
             raise ScriptAlreadActive(msg)
 
@@ -294,13 +320,13 @@ class Mode_Change_cmds:
         config.read(RELDIR+"/data/Mode_Change.ini")
 
         for name in config.options("Presets"):
-            self.presets[name] = config.getfloat("Presets", name)
+            self.presets[name.lower()] = config.getfloat("Presets", name)
 
     def _checkAlive(self):
         """Raises a ScriptOff error if the control script is not alive"""
 
-        if not self.is_Active():
-            raise ScriptOff("Control script off. Please use activate_Control_Script() method.")
+        if not self.is_active():
+            raise ScriptOff("Control script off. Please use activate_control_script() method.")
 
         # if shms haven't been loaded, load them
         if type(self.Pos_P) is str: self._handleShms()
@@ -312,7 +338,7 @@ class Mode_Change_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_Connected():
+        if not self.is_connected():
             raise StageOff("Stage is disconnected. Please use connect() method.")
 
     def _handleShms(self):
@@ -341,7 +367,7 @@ class Mode_Change_cmds:
                 raise ShmMissing(msg)
 
         #the following shared memories will only exist if control is active
-        if self.is_Active():
+        if self.is_active():
             if type(self.Pos_P) is str:
                 try: self.Pos_P = Shm(self.Pos_P)
                 except: 
