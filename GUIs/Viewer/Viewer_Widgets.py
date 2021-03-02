@@ -1,11 +1,12 @@
 # standard libraries
-from time import time
+from time import time, sleep
+import threading
 import os
 
 # installs
 from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton, QFileDialog, QDialog, QMessageBox
-from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile, QRectF
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QDoubleValidator, QFont 
+from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile, QRectF, QThread, QObject, pyqtSignal
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QDoubleValidator, QFont
 from PyQt5 import uic
 from PIL import Image
 from astropy.io import fits
@@ -15,43 +16,12 @@ import numpy as np
 
 # nfiuserver libraries
 from KPIC_shmlib import Shm
+from Viewer import Shm_Watcher
 import resources.images
 
-resource_path = "/home/nfiudev/dev/Viewer/resources"
+resource_path = os.path.dirname(__file__)+"/resources"
 
-class Loc_Selection(QFrame):
-    """A class to represent the QFrame holding PSF location information in the KPIC GUI"""
-
-    def __init__(self, *args, **kwargs):
-
-        super().__init__(*args, **kwargs)
-
-    def setup(self):
-        # variable to store which index is the custom option
-        self.custom_idx = 5
-
-        # get all the parts we will be interacting with
-        self.drop = self.findChild(QComboBox, "psf_loc_dropdown")
-        self.x = self.findChild(QLineEdit, "psf_x_input")
-        self.y = self.findChild(QLineEdit, "psf_y_input")
-        self.submit = self.findChild(QPushButton, "psf_loc_btn")
-        self.input_frame = self.findChild(QFrame, "psf_input_frame")
-
-        if self.drop.currentIndex() != self.custom_idx:
-            self.input_frame.hide()
-
-        # connect method to monitor goal change
-        self.drop.currentIndexChanged.connect(self.sel_chng)
-        
-    def sel_chng(self):
-        """A method to handle when the goal selection drop down is changed"""
-
-        # if option selected is "custom", show input fields
-        if self.drop.currentIndex() == self.custom_idx:
-            self.input_frame.show()
-        # otherwise hide input fields
-        else:
-            self.input_frame.hide()
+####### Thumbnail View #######
 
 class Img(pg.GraphicsView):
     """A widget to display the image and maintain aspect ratio while changing size"""
@@ -246,443 +216,6 @@ class Img(pg.GraphicsView):
         # deal with min/max label
         try: self.stats.setHtml("min: <b>{:d}</b> max: <b>{:d}</b>".format(self.min, self.max))
         except: self.stats.setHtml("min: <b>---</b> max: <b>---</b>")
-
-class Scale_chk_box(QCheckBox):
-    """A widget to toggle a scale on the image"""
-
-    def __init__(self, *args, **kwargs):
-        """Constructor for scale chk box component"""
-
-        # run super constructor
-        super().__init__(*args, **kwargs)
-
-    def setup(self, all_scales:list, my_scale):
-        """A method to set up the scale checkboxes
-        
-        Args:
-            all_scales = a list of all Scale_chk_boxes (including this one)
-            my_scale   = the method to turn the correct scale on/off
-        """
-
-        # get sqrt scale checkbox
-        self.chkboxes = all_scales[:]
-        self.chkboxes.remove(self)
-
-        self.my_scale = my_scale
-        self.toggled.connect(self.act)
-
-    def act(self, toggled:bool):
-        """A method that turns on/off the relevant scale and, if turning
-            on, turns off any other scales"""
-
-        if toggled:
-            for chkbox in self.chkboxes:
-                chkbox.setChecked(False)
-        self.my_scale(toggled)
-
-class Scale_rng_input(QLineEdit):
-    """A QLineEdit that reverts text if focus is lost with intermediate input"""
-
-    def __init__(self, *args, refresh_rate:int = 500, **kwargs):
-
-        super().__init__(*args, **kwargs)
-
-        # field to hold last valid input
-        self.last_valid = ""
-        # field to hold refresh rate
-        self.refresh_rate = refresh_rate
-
-    def setup(self, role:str):
-        """A method to setup the line edit
-        
-        Args:
-            role = 'min' or 'max' depending on which range box this is
-        """
-
-        self.imv = self.parent().parent().top_lv.image
-
-        self.role = role
-        if self.role == "min":
-            # a lambda function to check that value is less than max
-            self.check = lambda x : x <= self.imv.max 
-            # a lambda function to get current min value
-            self.val   = lambda : self.imv.min
-            # function to set a value (None to turn off)
-            self.set   = self.set_min 
-        elif self.role == "max":
-            # a lambda function to check that value is greater than max
-            self.check = lambda x : x >= self.imv.min
-            # a lambda function to get current max value
-            self.val   = lambda : self.imv.max
-            # function to set a value (None to turn off)
-            self.set   = self.set_max
-        else:
-            raise ValueError("Only 'min' and 'max' roles are valid")
-        try: self.last_valid = self.val()
-        except: self.last_valid = "---"
-        
-        self.setValidator(Scale_rng_input.rng_validator(le = self))
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(self.refresh_rate)
-
-    def set_max(self, val):
-        self.imv.max = val
-
-    def set_min(self, val):
-        self.imv.min = val
-
-    def update(self):
-        """A method to update the current min and max value if a custom value
-            isn't requested"""
-
-        # if we have focus, don't update
-        if self.hasFocus(): return
-
-        try:
-            self.setText(str(self.val()))
-            self.last_valid = self.val()        
-        except:
-            self.setText("---")
-
-    def focusOutEvent(self, QFocusEvent):
-        """Override to revert text if it is in 'Intermediate' state"""
-
-        _state, _, _ = self.validator().validate(self.text(), self.pos())
-        if _state == QValidator.Intermediate: self.setText(str(self.last_valid))
-        elif _state == QValidator.Acceptable: self.last_valid = self.text()
-
-        super().focusOutEvent(QFocusEvent)
-
-    class rng_validator(QValidator):
-        """A validator to validate the min value for the log scale"""
-
-        def __init__(self, *args, le, **kwargs):
-            """Stores the QGroubBox this belongs to
-
-            Args:
-                le = the lineedit that this validator is to validate
-            """
-
-            super().__init__(*args, **kwargs)
-
-            self.p_le = le
-
-        def validate(self, text:str, pos:str):
-            """sets the min value in the log_scale parent of this validator"""
-
-            # blank text is not valid, but we want to allow users to clear text box
-            if text == "": return QValidator.Intermediate, text, pos
-
-            # default to invalid
-            _state = QValidator.Invalid
-            try: 
-                # check if text can be cast as an int
-                num = int(text)
-                # intermediate will be rejected on focus loss
-                #   we want intermediate for max so you can clear number and then input
-                #   we don't want it for min so you shouldn't be typing a number that's too large
-                if self.p_le.role == 'max': _state = QValidator.Intermediate
-            except: return _state, text, pos
-
-            if self.p_le.check(num):
-                _state = QValidator.Acceptable
-                if self.p_le.isEnabled(): self.p_le.set(num)
-                self.p_le.last_valid = num
-
-            return _state, text, pos
-
-class Scale_rng_chk_box(QCheckBox):
-    """A class to handle the min/max scale range checkboxes"""
-
-    def __init__(self, *args, **kwargs):
-        """Constructor for scale rng chk box component"""
-
-        # run super constructor
-        super().__init__(*args, **kwargs)
-
-    def setup(self, my_scale):
-        """A method to set up the scale checkboxes
-        
-        Args:
-            my_scale   = the method to turn the currect field on/off
-        """
-
-        self.my_scale = my_scale
-        self.toggled.connect(self.act)
-
-    def act(self, toggled:bool):
-        """A method that turns on/off the relevant scale and, if turning
-            on, turns off any other scales"""
-
-        try: self.my_scale(toggled)
-        except: pass
-
-class Gradient(QWidget):
-    """A class to make a selectable gradient"""
-
-    def __init__(self, *args, **kwargs):
-        """Constructor"""
-
-        # call super constructor
-        super().__init__(*args, **kwargs)
-
-        # start a timer to run setup after 10 ms
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.setup)
-        self.timer.start(10)
-
-    def setup(self):
-        """A method to setup the gradient"""
-
-        self.top_lv = self.parent().parent().parent().parent()
-
-        self.imv = self.top_lv.image
-
-        # load widget ui
-        uic.loadUi("{}/gradient_sel.ui".format(resource_path), self)
-
-        # setup checkboxes
-        self.min_chk.setup(self.min_lamb)
-        self.max_chk.setup(self.max_lamb)
-        try:
-            if self.top_lv.proc.PRng.get_data()[0]: self.min_chk.setChecked(True)
-            else: self.min_chk.setChecked(False)
-        except: self.min_chk.setChecked(False)
-        try:
-            if self.top_lv.proc.PRng.get_data()[2]: self.max_chk.setChecked(True)
-            else: self.max_chk.setChecked(False)
-        except: self.max_chk.setChecked(False)
-
-        # setup inputs
-        self.min_val.setup("min")
-        self.max_val.setup("max")
-
-        # gradient type will be in accessible description
-        grad = self.toolTip()
-
-        grad = Gradients[grad]
-
-        # format stylesheet of gradient (Gradient is upside down, so flip it)
-        bkgrd = "background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2: 1"
-        for tick in grad["ticks"]:
-            bkgrd += ", stop:{} rgba{}".format(1-tick[0], str(tick[1]))
-        bkgrd = bkgrd + ");"
-        bkgrd = """
-        QPushButton{{
-            {0}
-            border-style: none;
-        }}
-        QPushButton:checked {{
-            {0}
-            border-style: none;
-        }}""".format(bkgrd)
-        self.grad_btn.setStyleSheet(self.styleSheet()+bkgrd)
-
-        # format lookup table (flip colormaps so darker colors are 0)
-        self.lup = pg.ColorMap([c[0] for c in grad['ticks']],
-                           [c[1] for c in grad['ticks']],
-                            mode = grad['mode'])
-        self.lup = self.lup.getLookupTable()
-
-        # connect grad_btn to interact with other grad buttons and with image
-        self.grad_btn.toggled.connect(self.act)
-
-        self.grad_btn.setChecked(True)
-        if self.toolTip() == "grey":
-            # if this is greyscale, save it in the image widget
-            self.imv.no_lup = self
-            self.imv.grad_widg = self
-
-    def min_lamb(self, toggled): self.top_lv.image.automin = not toggled
-    def max_lamb(self, toggled): self.top_lv.image.automax = not toggled
-
-    def act(self, toggled_on:bool):
-        """
-        A method to act when a button is toggled
-
-        if button is toggled on, will deactivate any currently active gradient and switch
-            image's gradient to this one
-        if button is toggled off, will set image's gradient to no_gradient
-
-        Args:
-            toggled_on = True if toggled on, False if toggled off
-        """
-
-        if toggled_on:
-            # store old gradient
-            old_grad = self.imv.grad_widg
-            # set image's gradient widget to self
-            self.imv.grad_widg = self
-            # set new lookup table (colormap)
-            self.imv.img.setLookupTable(self.lup)
-
-            if old_grad is not self and old_grad is not None:
-                # disable current gradient
-                old_grad.grad_btn.setChecked(False)
-        elif not self.imv.grad_widg.grad_btn.isChecked():
-            self.grad_btn.setChecked(True)
-
-class FPS(QLineEdit):
-    """A class to control the FPS of the tracking camera
-        (meant to be used in lab view only)
-    """
-
-    def __init__(self, *args, **kwargs):
-
-        # call super constructor
-        super().__init__(*args, **kwargs)
-
-        # make a one-off timer to setup widget
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.setup)
-        self.timer.start(10)
-
-    def setup(self, refresh_rate = 1000):
-        """A method to setup this widget"""
-
-        # if we're not in lab config
-        if self.parent() is None: return
-
-        self.tc = self.parent().proc.tc
-
-        self.setValidator(QIntValidator())
-
-        # run update once
-        self.update()
-
-        # setup repeating timer to update value
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(refresh_rate)
-
-    def update(self):
-        """A method to keep field value correct"""
-
-        # if we have focus (meaning someone is editing field),
-        #   don't update
-        if self.hasFocus(): return
-
-        try: self.setText(str(self.tc.get_fps()))
-        except: self.setText("---")
-
-    def focusOutEvent(self, *args, **kwargs):
-        """A method to send new FPS on focus loss"""
-
-        # try to set tint
-        try: self.tc.set_fps(int(self.text()))
-        except: pass
-
-        super().focusOutEvent(*args, **kwargs)
-
-class Tint(QLineEdit):
-    """A class to control the Tint of the tracking camera
-        (meant to be used in lab view only)
-    """
-
-    def __init__(self, *args, **kwargs):
-
-        # call super constructor
-        super().__init__(*args, **kwargs)
-
-        # make a one-off timer to setup widget
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.setup)
-        self.timer.start(10)
-
-    def setup(self, refresh_rate = 1000):
-        """A method to setup this widget"""
-
-        # if we're not in lab config
-        if self.parent() is None: return
-
-        self.tc = self.parent().proc.tc
-
-        self.setValidator(QDoubleValidator())
-
-        # run update once
-        self.update()
-
-        # setup repeating timer to update value
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(refresh_rate)
-
-    def update(self):
-        """A method to keep field value correct"""
-
-        # if we have focus (meaning someone is editing field),
-        #   don't update
-        if self.hasFocus(): return
-
-        try: self.setText(str(self.tc.get_tint()*1000))
-        except: self.setText("---")
-    
-    def focusOutEvent(self, *args, **kwargs):
-        """A method to send new tint on focus loss"""
-
-        # try to set tint
-        try: self.tc.set_tint(float(self.text()) / 1000)
-        except: pass
-
-        super().focusOutEvent(*args, **kwargs)
-
-class NDR(QLineEdit):
-    """A class to control the NDRs of the tracking camera
-        (meant to be used in lab view only)
-    """
-
-    def __init__(self, *args, **kwargs):
-
-        # call super constructor
-        super().__init__(*args, **kwargs)
-
-        # make a one-off timer to setup widget
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.setup)
-        self.timer.start(10)
-
-    def setup(self, refresh_rate = 1000):
-        """A method to setup this widget"""
-
-        # if we're not in lab config
-        if self.parent() is None: return
-
-        self.tc = self.parent().proc.tc
-
-        self.setValidator(QIntValidator())
-
-        # run update once
-        self.update()
-
-        # setup repeating timer to update value
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(refresh_rate)
-
-    def update(self):
-        """A method to keep field value correct"""
-
-        # if we have focus (meaning someone is editing field),
-        #   don't update
-        if self.hasFocus(): return
-
-        try: self.setText(str(self.tc.get_ndr()))
-        except: self.setText("---")
-
-    def focusOutEvent(self, *args, **kwargs):
-        """A method to send new NDR on focus loss"""
-
-        # try to set tint
-        try: self.tc.set_ndr(int(self.text()))
-        except: pass
-
-        super().focusOutEvent(*args, **kwargs)
 
 class Save_raw(QPushButton):
     """A class to save a raw frame"""
@@ -934,24 +467,24 @@ class Raw_im_chk(QCheckBox):
         """Method to act on checkbox toggle"""
 
         if toggled:
-            self.parent().base_img_chk.setEnabled(False)
             self.subtr_frame.setEnabled(False)
             self.scl_frame.setEnabled(False)
             self.smooth_frame.setEnabled(False)
             self.imv.Img_shm = self.imv.raw_im
         else:
-            self.parent().base_img_chk.setEnabled(True)
             self.subtr_frame.setEnabled(True)
             self.scl_frame.setEnabled(True)
             self.smooth_frame.setEnabled(True) 
             self.imv.Img_shm = self.imv.proc_im
 
-class Base_use_chk(QCheckBox):
-    """A class to monitor the use tracking checkbox"""
+class FPS(QLineEdit):
+    """A class to control the FPS of the tracking camera
+        (meant to be used in lab view only)
+    """
 
     def __init__(self, *args, **kwargs):
 
-       # run super constructor
+        # call super constructor
         super().__init__(*args, **kwargs)
 
         # make a one-off timer to setup widget
@@ -959,81 +492,842 @@ class Base_use_chk(QCheckBox):
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.setup)
         self.timer.start(10)
- 
-    def setup(self, refresh_rate:int=500):
-        """Method to setup this check box
-        
-        Args:
-            refresh_rate = the polling rate in ms to update this widget
-        """
 
+    def setup(self):
+        """A method to setup this widget"""
+
+        # if we're not in lab config
+        if self.parent() is None: return
+
+        # get tracking camera cmds library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.tc = self.p.proc.tc
+
+        # set text validator
+        self.setValidator(QIntValidator())
+
+        # get shm fname    
+        if type(self.tc.FPS_D) is str:
+            nm = self.tc.FPS_D
+        else: nm = self.tc.FPS_D.fname
+        # try to connect to existing shm watcher
+        try: self.parent().watch_widgs[nm].do_update.connect(self.update_txt)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_txt)
+
+        try: self.update_txt(self.tc.FPS_D.get_data())
+        except: pass
+
+    def update_txt(self, data):
+        """A method to write new value to text field"""
+
+        try: self.setText(str(data[0]))
+        except: self.setText("---")
+
+    def focusOutEvent(self, *args, **kwargs):
+        """A method to send new NDR on focus loss"""
+
+        # try to set field
+        try: self.tc.set_fps(float(self.text()))
+        except: pass
+
+        super().focusOutEvent(*args, **kwargs)
+
+class Tint(QLineEdit):
+    """A class to control the Tint of the tracking camera
+        (meant to be used in lab view only)
+    """
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # if we're not in lab config
+        if self.parent() is None: return
+
+        # get tracking camera cmds library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.tc = self.p.proc.tc
+
+        # set text validator
+        self.setValidator(QDoubleValidator())
+
+        # get shm fname    
+        if type(self.tc.Exp_D) is str:
+            nm = self.tc.Exp_D
+        else: nm = self.tc.Exp_D.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_txt)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_txt)
+
+        try: self.update_txt(self.tc.Exp_D.get_data())
+        except: pass
+
+    def update_txt(self, data):
+        """A method to write new value to text field"""
+
+        try: self.setText(str(1000*data[0]))
+        except: self.setText("---")
+
+    def focusOutEvent(self, *args, **kwargs):
+        """A method to send new NDR on focus loss"""
+
+        # try to set tint
+        try: self.tc.set_tint(float(self.text())/1000)
+        except: pass
+
+        super().focusOutEvent(*args, **kwargs)
+
+class NDR(QLineEdit):
+    """A class to control the NDRs of the tracking camera
+        (meant to be used in lab view only)
+    """
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # if we're not in lab config
+        if self.parent() is None: return
+
+        # get tracking camera cmds library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.tc = self.p.proc.tc
+
+        # set text validator
+        self.setValidator(QIntValidator())
+
+        # get shm fname    
+        if type(self.tc.NDR_D) is str:
+            nm = self.tc.NDR_D
+        else: nm = self.tc.NDR_D.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_txt)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_txt)
+
+        try: self.update_txt(self.tc.NDR_D.get_data())
+        except: pass
+
+    def update_txt(self, data):
+        """A method to write new value to text field"""
+
+        try: self.setText(str(data[0]))
+        except: self.setText("---")
+
+    def focusOutEvent(self, *args, **kwargs):
+        """A method to send new NDR on focus loss"""
+
+        # try to set field
+        try: self.tc.set_ndr(float(self.text()))
+        except: pass
+
+        super().focusOutEvent(*args, **kwargs)
+
+##############################
+
+####### Processing Tab #######
+
+class Bias_chk(QCheckBox):
+    """A checkbox to turn on/off bias subtraction"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # get tracking camera process library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.proc = self.p.proc
+
+        # connect self to use_minus_bias function
+        self.toggled.connect(self.proc.use_minus_bias)
+
+        # get shm fname    
+        if type(self.proc.Vis_Stat) is str:
+            nm = self.proc.Vis_Stat
+        else: nm = self.proc.Vis_Stat.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+
+        try: self.update_bx(self.proc.Vis_Stat.get_data())
+        except: pass
+
+    def update_bx(self, data):
+        """A method to write new value to text field"""
+
+        try: 
+            # only check checked state if it needs to be
+            check = bool(data[0] & 8)
+            if not check == self.isChecked(): self.setChecked(check)
+        except: pass
+
+class Bkgrd_chk(QCheckBox):
+    """A checkbox to turn on/off background subtraction"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # get tracking camera process library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.proc = self.p.proc
+
+        # connect self to use_minus_bias function
+        self.toggled.connect(self.proc.use_minus_bkgrd)
+
+        # get shm fname    
+        if type(self.proc.Vis_Stat) is str:
+            nm = self.proc.Vis_Stat
+        else: nm = self.proc.Vis_Stat.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+
+        try: self.update_bx(self.proc.Vis_Stat.get_data())
+        except: pass
+
+    def update_bx(self, data):
+        """A method to write new value to text field"""
+
+        try: 
+            # only check checked state if it needs to be
+            check = bool(data[0] & 16)
+            if not check == self.isChecked(): self.setChecked(check)
+        except: pass
+
+class Ref_chk(QCheckBox):
+    """A checkbox to turn on/off reference subtraction"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # get tracking camera process library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.proc = self.p.proc
+
+        # connect self to use_minus_bias function
+        self.toggled.connect(self.proc.use_minus_ref)
+
+        # get shm fname    
+        if type(self.proc.Vis_Stat) is str:
+            nm = self.proc.Vis_Stat
+        else: nm = self.proc.Vis_Stat.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+
+        try: self.update_bx(self.proc.Vis_Stat.get_data())
+        except: pass
+
+    def update_bx(self, data):
+        """A method to write new value to text field"""
+
+        try: 
+            # only check checked state if it needs to be
+            check = bool(data[0] & 32)
+            if not check == self.isChecked(): self.setChecked(check)
+        except: pass
+
+class Med_filt_chk(QCheckBox):
+    """A checkbox to turn on/off median filter"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # get tracking camera process library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.proc = self.p.proc
+
+        # connect self to use_minus_bias function
+        self.toggled.connect(self.proc.use_medfilt)
+
+        # get shm fname    
+        if type(self.proc.Vis_Stat) is str:
+            nm = self.proc.Vis_Stat
+        else: nm = self.proc.Vis_Stat.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+
+        try: self.update_bx(self.proc.Vis_Stat.get_data())
+        except: pass
+
+    def update_bx(self, data):
+        """A method to write new value to text field"""
+
+        try: 
+            # only check checked state if it needs to be
+            check = bool(data[0] & 4)
+            if not check == self.isChecked(): self.setChecked(check)
+        except: pass
+
+class Log_chk(QCheckBox):
+    """A checkbox to turn on/off log scale"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # get tracking camera process library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.proc = self.p.proc
+
+        # connect self to use_minus_bias function
+        self.toggled.connect(self.proc.use_log_scale)
+
+        # get shm fname    
+        if type(self.proc.Vis_Scale) is str:
+            nm = self.proc.Vis_Scale
+        else: nm = self.proc.Vis_Scale.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+
+        try: self.update_bx(self.proc.Vis_Scale.get_data())
+        except: pass
+
+    def update_bx(self, data):
+        """A method to write new value to text field"""
+
+        try: 
+            # only check checked state if it needs to be
+            check = bool(data[0] == 1)
+            if not check == self.isChecked(): self.setChecked(check)
+        except: pass
+
+class Sqrt_chk(QCheckBox):
+    """A checkbox to turn on/off square root scale"""
+
+    def __init__(self, *args, **kwargs):
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # make a one-off timer to setup widget
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup this widget"""
+
+        # get tracking camera process library
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.proc = self.p.proc
+
+        # connect self to use_minus_bias function
+        self.toggled.connect(self.proc.use_sqrt_scale)
+
+       # get shm fname    
+        if type(self.proc.Vis_Scale) is str:
+            nm = self.proc.Vis_Scale
+        else: nm = self.proc.Vis_Scale.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+        # if none exists yet, make a new one
+        except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+            
+        try: self.update_bx(self.proc.Vis_Scale.get_data())
+        except: pass
+
+    def update_bx(self, data):
+        """A method to write new value to text field"""
+
+        try: 
+            # only check checked state if it needs to be
+            check = bool(data[0] == 2)
+            if not check == self.isChecked(): self.setChecked(check)
+        except: pass
+
+class Scale_rng_input(QLineEdit):
+    """A QLineEdit that reverts text if focus is lost with intermediate input"""
+
+    def __init__(self, *args, refresh_rate:int = 500, **kwargs):
+
+        super().__init__(*args, **kwargs)
+
+        # field to hold last valid input
+        self.last_valid = ""
+        # field to hold refresh rate
         self.refresh_rate = refresh_rate
 
-        f_subt = self.parent().interfaces.findChild(QFrame, "subtraction_frame") 
-        self.bias_subt = f_subt.findChild(QCheckBox, "bias_sub")
-        self.bkgrd = [f_subt.findChild(QCheckBox, "bkgrd_sub"), 
-                      f_subt.findChild(QPushButton, "bkgrd_take"),
-                      f_subt.findChild(QPushButton, "bkgrd_load"),
-                      f_subt.findChild(QPushButton, "bkgrd_save")]
+    def setup(self, role:str):
+        """A method to setup the line edit
+        
+        Args:
+            role = 'min' or 'max' depending on which range box this is
+        """
 
-        self.medfilt = self.parent().interfaces.findChild(QFrame, "smooth_frame").findChild(QCheckBox, "med_filt")
+        self.imv = self.parent().parent().top_lv.image
 
-        self.proc = self.parent().proc
-
-        self.toggled.connect(self.act)
-
-        self.setChecked(self.proc.is_using_base())
-        if self.isChecked():
-            self.bias_subt.setEnabled(False)
+        self.role = role
+        if self.role == "min":
+            # a lambda function to check that value is less than max
+            self.check = lambda x : x <= self.imv.max 
+            # a lambda function to get current min value
+            self.val   = lambda : self.imv.min
+            # function to set a value (None to turn off)
+            self.set   = self.set_min 
+        elif self.role == "max":
+            # a lambda function to check that value is greater than max
+            self.check = lambda x : x >= self.imv.min
+            # a lambda function to get current max value
+            self.val   = lambda : self.imv.max
+            # function to set a value (None to turn off)
+            self.set   = self.set_max
         else:
-            self.bias_subt.setEnabled(True)
+            raise ValueError("Only 'min' and 'max' roles are valid")
+        try: self.last_valid = self.val()
+        except: self.last_valid = "---"
+        
+        self.setValidator(Scale_rng_input.rng_validator(le = self))
 
-        # make a repeating timeout
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(self.refresh_rate)
 
+    def set_max(self, val):
+        self.imv.max = val
+
+    def set_min(self, val):
+        self.imv.min = val
+
     def update(self):
-        """A method to update this check box to make sure that it stays up to date"""
+        """A method to update the current min and max value if a custom value
+            isn't requested"""
 
-        checked = self.proc.is_using_base()
+        # if we have focus, don't update
+        if self.hasFocus(): return
 
-        if not (checked == self.isChecked()):
-            self.toggle(checked)
-        # if using base processing, check if anything has changed
-        elif checked:
-            base_mf = self.proc.is_medfilt(vis = False)
+        try:
+            self.setText(str(self.val()))
+            self.last_valid = self.val()        
+        except:
+            self.setText("---")
 
-            # if base processing is already med filtering, but checkbox is enabled, disable
-            if base_mf and self.medfilt.isEnabled():
-                self.medfilt.setEnabled(False)
-            # if base processing isn't using med filtering, but checkbox is disabled, enable
-            elif not base_mf and not self.medfilt.isEnabled():
-                self.medfilt.setEnabled(True)
+    def focusOutEvent(self, QFocusEvent):
+        """Override to revert text if it is in 'Intermediate' state"""
 
-            # if base processing is subtracting calib image, disable bkgrd subtraction
-            calib_sub = self.proc.is_minus_calib()
+        _state, _, _ = self.validator().validate(self.text(), self.pos())
+        if _state == QValidator.Intermediate: self.setText(str(self.last_valid))
+        elif _state == QValidator.Acceptable: self.last_valid = self.text()
 
-            if calib_sub:
-                for widg in self.bkgrd:
-                    if widg.isEnabled(): widg.setEnabled(False)
-            else:
-                for widg in self.bkgrd:
-                    if not widg.isEnabled(): widg.setEnabled(True)
+        super().focusOutEvent(QFocusEvent)
 
-    def act(self, toggled):
-        """A method to act when this checkbox is toggled"""
+    class rng_validator(QValidator):
+        """A validator to validate the min value for the log scale"""
 
-        # base processing on so disable bias subtraction,
-        #   disable bkgrd subtraction if calib being used
-        if toggled:
-            self.proc.use_base(True)
-            if self.bias_subt.isEnabled(): self.bias_subt.setEnabled(False)
-            if self.bkgrd[0].isEnabled() and self.proc.is_minus_calib(): 
-                for widg in self.bkgrd:
-                    widg.setEnabled(False)
-        # enable anything that's disabled
+        def __init__(self, *args, le, **kwargs):
+            """Stores the QGroubBox this belongs to
+
+            Args:
+                le = the lineedit that this validator is to validate
+            """
+
+            super().__init__(*args, **kwargs)
+
+            self.p_le = le
+
+        def validate(self, text:str, pos:str):
+            """sets the min value in the log_scale parent of this validator"""
+
+            # blank text is not valid, but we want to allow users to clear text box
+            if text == "": return QValidator.Intermediate, text, pos
+
+            # default to invalid
+            _state = QValidator.Invalid
+            try: 
+                # check if text can be cast as an int
+                num = int(text)
+                # intermediate will be rejected on focus loss
+                #   we want intermediate for max so you can clear number and then input
+                #   we don't want it for min so you shouldn't be typing a number that's too large
+                if self.p_le.role == 'max': _state = QValidator.Intermediate
+            except: return _state, text, pos
+
+            if self.p_le.check(num):
+                _state = QValidator.Acceptable
+                if self.p_le.isEnabled(): self.p_le.set(num)
+                self.p_le.last_valid = num
+
+            return _state, text, pos
+
+class Scale_rng_chk_box(QCheckBox):
+    """A class to handle the min/max scale range checkboxes"""
+
+    def __init__(self, *args, **kwargs):
+        """Constructor for scale rng chk box component"""
+
+        # run super constructor
+        super().__init__(*args, **kwargs)
+
+    def setup(self, my_scale):
+        """A method to set up the scale checkboxes
+        
+        Args:
+            my_scale   = the method to turn the currect field on/off
+        """
+
+        self.my_scale = my_scale
+        self.toggled.connect(self.act)
+
+    def act(self, toggled:bool):
+        """A method that turns on/off the relevant scale and, if turning
+            on, turns off any other scales"""
+
+        try: self.my_scale(toggled)
+        except: pass
+
+class Gradient(QWidget):
+    """A class to make a selectable gradient"""
+
+    def __init__(self, *args, **kwargs):
+        """Constructor"""
+
+        # call super constructor
+        super().__init__(*args, **kwargs)
+
+        # start a timer to run setup after 10 ms
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.setup)
+        self.timer.start(10)
+
+    def setup(self):
+        """A method to setup the gradient"""
+
+        self.top_lv = self.parent().parent().parent().parent()
+
+        self.imv = self.top_lv.image
+
+        # load widget ui
+        uic.loadUi("{}/gradient_sel.ui".format(resource_path), self)
+
+        # setup checkboxes
+        self.min_chk.setup(self.min_lamb)
+        self.max_chk.setup(self.max_lamb)
+        try:
+            if self.top_lv.proc.PRng.get_data()[0]: self.min_chk.setChecked(True)
+            else: self.min_chk.setChecked(False)
+        except: self.min_chk.setChecked(False)
+        try:
+            if self.top_lv.proc.PRng.get_data()[2]: self.max_chk.setChecked(True)
+            else: self.max_chk.setChecked(False)
+        except: self.max_chk.setChecked(False)
+
+        # setup inputs
+        self.min_val.setup("min")
+        self.max_val.setup("max")
+
+        # gradient type will be in accessible description
+        grad = self.toolTip()
+
+        grad = Gradients[grad]
+
+        # format stylesheet of gradient (Gradient is upside down, so flip it)
+        bkgrd = "background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2: 1"
+        for tick in grad["ticks"]:
+            bkgrd += ", stop:{} rgba{}".format(1-tick[0], str(tick[1]))
+        bkgrd = bkgrd + ");"
+        bkgrd = """
+        QPushButton{{
+            {0}
+            border-style: none;
+        }}
+        QPushButton:checked {{
+            {0}
+            border-style: none;
+        }}""".format(bkgrd)
+        self.grad_btn.setStyleSheet(self.styleSheet()+bkgrd)
+
+        # format lookup table (flip colormaps so darker colors are 0)
+        self.lup = pg.ColorMap([c[0] for c in grad['ticks']],
+                           [c[1] for c in grad['ticks']],
+                            mode = grad['mode'])
+        self.lup = self.lup.getLookupTable()
+
+        # connect grad_btn to interact with other grad buttons and with image
+        self.grad_btn.toggled.connect(self.act)
+
+        self.grad_btn.setChecked(True)
+        if self.toolTip() == "grey":
+            # if this is greyscale, save it in the image widget
+            self.imv.no_lup = self
+            self.imv.grad_widg = self
+
+    def min_lamb(self, toggled): self.top_lv.image.automin = not toggled
+    def max_lamb(self, toggled): self.top_lv.image.automax = not toggled
+
+    def act(self, toggled_on:bool):
+        """
+        A method to act when a button is toggled
+
+        if button is toggled on, will deactivate any currently active gradient and switch
+            image's gradient to this one
+        if button is toggled off, will set image's gradient to no_gradient
+
+        Args:
+            toggled_on = True if toggled on, False if toggled off
+        """
+
+        if toggled_on:
+            # store old gradient
+            old_grad = self.imv.grad_widg
+            # set image's gradient widget to self
+            self.imv.grad_widg = self
+            # set new lookup table (colormap)
+            self.imv.img.setLookupTable(self.lup)
+
+            if old_grad is not self and old_grad is not None:
+                # disable current gradient
+                old_grad.grad_btn.setChecked(False)
+        elif not self.imv.grad_widg.grad_btn.isChecked():
+            self.grad_btn.setChecked(True)
+
+##############################
+
+######## Tracking Tab ########
+
+class Loc_Selection(QFrame):
+    """A class to represent the QFrame holding PSF location information in the KPIC GUI"""
+
+    def __init__(self, *args, **kwargs):
+
+        super().__init__(*args, **kwargs)
+
+        self.setup_timer = QTimer(self)
+        self.setup_timer.setSingleShot(True)
+        self.setup_timer.timeout.connect(self.setup)
+        self.setup_timer.start(10)
+
+    def setup(self):
+        # variable to store which index is the custom option
+        self.custom_idx = 5
+
+        # get all the parts we will be interacting with
+        self.drop = self.findChild(QComboBox, "psf_loc_dropdown")
+        self.x = self.findChild(QLineEdit, "psf_x_input")
+        self.y = self.findChild(QLineEdit, "psf_y_input")
+        self.submit = self.findChild(QPushButton, "psf_loc_btn")
+        self.input_frame = self.findChild(QFrame, "psf_input_frame")
+
+        if self.drop.currentIndex() != self.custom_idx:
+            self.input_frame.hide()
+
+        # connect method to monitor goal change
+        self.drop.currentIndexChanged.connect(self.sel_chng)
+        
+    def sel_chng(self):
+        """A method to handle when the goal selection drop down is changed"""
+
+        # if option selected is "custom", show input fields
+        if self.drop.currentIndex() == self.custom_idx:
+            self.input_frame.show()
+        # otherwise hide input fields
         else:
-            self.proc.use_base(False)
-            for widg in [self.bias_subt, self.medfilt]+self.bkgrd:
-                if not widg.isEnabled(): widg.setEnabled(True)
+            self.input_frame.hide()
+
+##############################
+
+########## Mode Tab ##########
+
+class View_Selection(QFrame):
+    """A class to represent the QFrame holding viewing mode information in the KPIC GUI"""
+    
+    def __init__(self, *args, **kwargs):
+
+        super().__init__(*args, **kwargs)
+
+        self.setup_timer = QTimer(self)
+        self.setup_timer.setSingleShot(True)
+        self.setup_timer.timeout.connect(self.setup)
+        self.setup_timer.start(10)
+
+    def setup(self):
+        # get top level widget of GUI
+        self.p = self.parent()
+        while self.p.parent() is not None:
+            self.p = self.p.parent()
+        self.mc = self.p.mc
+
+        # get shm fname    
+        if type(self.mc.Pos_D) is str:
+            nm = self.mc.Pos_D
+        else: nm = self.mc.Pos_D.fname
+        # try to connect to existing shm watcher
+        try: self.p.watch_widgs[nm].do_update.connect(self.update_pos)
+         if none exists yet, make a new one
+        #except KeyError:
+            self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
+            self.p.watch_widgs[nm].setup(nm)
+            self.p.watch_widgs[nm].do_update.connect(self.update_bx)
+
+        # variable to store which index is the custom option
+        self.custom_idx = 2
+
+        # get all the parts we will be interacting with
+        self.drop = self.findChild(QComboBox, "view_mode_dropdown")
+        self.val = self.findChild(QLineEdit, "custom_pos")
+        self.val.setValidator(QDoubleValidator(bottom=0.0, top=27.0))
+        self.submit = self.findChild(QPushButton, "view_mode_custom_btn")
+        self.input_frame = self.findChild(QFrame, "view_mode_custom_frame")
+
+        if self.drop.currentIndex() != self.custom_idx:
+            self.input_frame.hide()
+
+        # connect method to monitor goal change
+        self.drop.currentIndexChanged.connect(self.sel_chng)
+        
+    def sel_chng(self):
+        """A method to handle when the goal selection drop down is changed"""
+
+        # if option selected is "custom", show input fields
+        if self.drop.currentIndex() == self.custom_idx:
+            self.input_frame.show()
+        # otherwise hide input fields
+        else:
+            self.input_frame.hide()
+
+    def update_drop(self, data):
+        """A method to update dropdown selection when stage is moved"""
+
+        # get the current position by name
+        nm_pos = self.mc.get_named_pos()
+        if nm_pos.lower() == "pupil":
+            idx = 0
+        elif nm_pos.lower() == "focal":
+            idx = 1
+        # if not any of the above, it's in a custom position
+        else:
+            idx = self.custom_idx
+
+        # set new index if not the current one
+        if self.drop.currentIndex() != idx:
+            self.drop.setCurrentIndex(idx)
+
+##############################

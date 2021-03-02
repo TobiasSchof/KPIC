@@ -3,7 +3,7 @@
 # inherent python libraries
 from argparse import ArgumentParser
 from time import sleep
-import sys
+import sys, os
 
 # installs
 from PyQt5.QtWidgets import QApplication, QWidget
@@ -13,8 +13,52 @@ from PyQt5 import uic
 # nfiuserver libraries
 from Viewer_Widgets import *
 from Track_Cam_process import TC_process
+from Mode_Change_cmds import Mode_Change_cmds
 
-resource_path = "/home/nfiudev/dev/Viewer/resources"
+resource_path = os.path.dirname(__file__)+"/resources"
+
+class Shm_Watcher(QObject):
+    """A class to watch a Shm and emit a Qt signal when it's updated"""
+
+    do_update = pyqtSignal([np.ndarray])
+
+    def setup(self, shm_fname):
+        """A function to setup this widget
+        
+        Args:
+            shm_fname = the name of the shared memory to watch
+        """
+
+        # shms to update and read from
+        self.shm = Shm(shm_fname, sem = True)
+
+        # start thread with watcher
+        self.alive = True
+        self.watcher_thread = threading.Thread(target = self.watch)
+        self.watcher_thread.start()
+
+    def watch(self):
+        """A method that watches for a shm update and emits a signal with the updated value"""
+
+        while self.alive:
+            # wait for shm to be updated
+            try:
+                self.do_update.emit(self.shm.get_data(check = True))
+            except:
+                sleep(5)
+
+            # repeat loop
+
+    def clean_close(self):
+        """A method to perform a clean close of this widget"""
+
+        # set self to die
+        self.alive = False
+        # increment semaphore to continue
+        self.shm.sem.release()
+
+        # wait for thread to join
+        self.watcher_thread.join()
 
 class Stack(QWidget):
 
@@ -23,56 +67,28 @@ class Stack(QWidget):
 
         super().__init__()
 
-        # instantiate TC_process class
+        # list to store any widgets that need to be cleaned up
+        self.watch_widgs = {}
+
+        # instantiate cmds classes
         self.proc = TC_process()
+        self.mc = Mode_Change_cmds()
 
         # activate any inactive control scripts
         if not self.proc.tc.is_active():
             self.proc.tc.activate_control_script()
         if not self.proc.is_active():
             self.proc.activate_control_script()
+        if not self.mc.is_active():
+            self.mc.activate_control_script()
 
         uic.loadUi("{}/Viewer.ui".format(resource_path), self)
 
-        ######## setup widgets in Tracking tab ########
-        self.interfaces.findChild(Loc_Selection, "psf_loc_frame").setup()
-
         ######## setup widgets in Processing tab ########
-
-        # set up log/sqrt scale checkboxes
-        log_scl = self.interfaces.findChild(Scale_chk_box, "log_scl")
-        sqrt_scl = self.interfaces.findChild(Scale_chk_box, "sqrt_scl")
-
-        scls = [log_scl, sqrt_scl]
-        log_scl.setup(scls, self.proc.use_log_scale)
-        sqrt_scl.setup(scls, self.proc.use_sqrt_scale)
-
-        # set starting values for scale checkboxes
-        try:
-            if self.proc.is_log_scale(): log_scl.setChecked(True)
-            elif self.proc.is_sqrt_scale(): sqrt_scl.setChecked(True)
-        except: pass
 
         # setup minimize interface button
         self.minimize_btn.clicked.connect(self.btn_click)
 
-        # connect medfilt checkbox
-        self.med_filt.toggled.connect(self.proc.use_medfilt)
-        try:
-            self.med_filt.setChecked(self.proc.is_medfilt())
-        except: pass
-
-        # set subtraction checkboxes to proper positions
-        try:
-            self.bias_sub.setChecked(self.proc.is_minus_bias())
-            self.bkgrd_sub.setChecked(self.proc.is_minus_bkgrd())
-            self.ref_sub.setChecked(self.proc.is_minus_ref())
-        except: pass
-        # connect subtraction checkboxes
-        self.bias_sub.toggled.connect(self.proc.use_minus_bias)
-        self.bkgrd_sub.toggled.connect(self.proc.use_minus_bkgrd)
-        self.ref_sub.toggled.connect(self.proc.use_minus_ref)
-        # connect 'save dark' button
         save_bias = lambda : self.proc.tc.save_dark(num = min(self.proc.tc.get_fps() * 60, 50))
         self.bias_save.clicked.connect(save_bias)
         # connect 'take' buttons
@@ -138,6 +154,14 @@ class Stack(QWidget):
 
         app.processEvents()
         self.resize(width, self.geometry().height())
+
+    def closeEvent(self, e):
+        """Method to run when widget is closed"""
+
+        for fname in self.watch_widgs:
+            self.watch_widgs[fname].clean_close()
+
+        super().closeEvent(e)
 
 if __name__ == "__main__":
 
