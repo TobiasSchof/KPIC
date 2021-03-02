@@ -555,7 +555,7 @@ QTabBar::tab:only-one {
            </widget>
           </item>
           <item row="1" column="2">
-           <widget class="QPushButton" name="bkgrd_save">
+           <widget class="Bkgrd_save" name="bkgrd_save">
             <property name="styleSheet">
              <string notr="true"/>
             </property>
@@ -575,7 +575,7 @@ QTabBar::tab:only-one {
            </widget>
           </item>
           <item row="2" column="2">
-           <widget class="QPushButton" name="ref_save">
+           <widget class="Ref_save" name="ref_save">
             <property name="styleSheet">
              <string notr="true"/>
             </property>
@@ -585,7 +585,7 @@ QTabBar::tab:only-one {
            </widget>
           </item>
           <item row="1" column="3">
-           <widget class="QPushButton" name="bkgrd_load">
+           <widget class="Bkgrd_load" name="bkgrd_load">
             <property name="styleSheet">
              <string notr="true"/>
             </property>
@@ -2476,6 +2476,21 @@ QPushButton:pressed {
   <customwidget>
    <class>Med_filt_chk</class>
    <extends>QCheckBox</extends>
+   <header>Viewer_Widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Bkgrd_save</class>
+   <extends>QPushButton</extends>
+   <header>Viewer_Widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Ref_save</class>
+   <extends>QPushButton</extends>
+   <header>Viewer_Widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Bkgrd_load</class>
+   <extends>QPushButton</extends>
    <header>Viewer_Widgets.h</header>
   </customwidget>
  </customwidgets>

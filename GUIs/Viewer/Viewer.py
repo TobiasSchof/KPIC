@@ -3,11 +3,13 @@
 # inherent python libraries
 from argparse import ArgumentParser
 from time import sleep
+import threading
 import sys, os
 
 # installs
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QTransform
+from PyQt5.QtCore import pyqtSignal, QObject
 from PyQt5 import uic
 
 # nfiuserver libraries
