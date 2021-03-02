@@ -5,7 +5,7 @@ override VERNUM = 1.0
 
 override ENABLE_PYTHON2 = False
 
-RELLIB = dev_Exceptions.py KPIC_shmlib.py Conex.py Micronix.py Zaber.py
+RELLIB = dev_Exceptions.py KPIC_shmlib.py Conex.py Conex_No_Reply.py Micronix.py Zaber.py
 LIBSUB = python
 
 ################################################################################
