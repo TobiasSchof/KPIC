@@ -1,7 +1,0 @@
-# Service	Keyword	Value	MapType	TargetKeyword	TargetValue	Comment
-
-nsfiu	DISPSTA	Ready	KTLenumerated	None	0	# None
-nsfiu	DISPSTA	Initializing	KTLenumerated	None	1	# None
-nsfiu	DISPSTA	Shutting down	KTLenumerated	None	2	# None
-nsfiu	DISPSTOP	No	KTLboolean	None	0	# None
-nsfiu	DISPSTOP	Yes	KTLboolean	None	1	# None
