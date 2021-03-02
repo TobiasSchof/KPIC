@@ -231,15 +231,16 @@ class TC_cmds:
             else: return float(self.Temp_D.get_data()[3])
         except: raise ShmError("Temp D shm may be corrupted. Please kill control script, delete shm, and start again.")
 
-    def grab_n(self, n:int, path:str=None):
+    def grab_n(self, n:int, path:str=None, overwrite:bool=False):
         """Grabs a block of images.
 
         Puts camera parameters into the first and the last header of the cube
             as described in _get_header
 
         Args:
-            n    = the number of images to grab
-            path = if not None, the path to store the images
+            n         = the number of images to grab
+            path      = if not None, the path to store the images
+            overwrite = if True, will overwrite the file if it already exists
         Returns:
             fits.HDUList
         """
@@ -263,7 +264,7 @@ class TC_cmds:
                 block.append(fits.PrimaryHDU(im))
             block.append(fits.PrimaryHDU(images[-1], head_end))
 
-        if path is not None: block.writeto(path)
+        if path is not None: block.writeto(path, overwrite=overwrite)
 
         return block
 

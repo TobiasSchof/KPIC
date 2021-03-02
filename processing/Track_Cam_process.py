@@ -217,13 +217,14 @@ class TC_process:
         try: return self.Vis_Error.get_data()[0]
         except: raise ShmError("Error shm for visualizer processing script is missing.")
 
-    def grab_n(self, n:int, which:str, path:str=None, end_header:bool=True, header_per:int=0):
+    def grab_n(self, n:int, which:str, path:str=None, overwrite:bool=False, end_header:bool=True, header_per:int=0):
         """A mathod to grab a cube of frames and save them as a fits
 
         Args:
             n          = the number of frames to capture
             which      = what kind of images to pull (should be one of 'raw', 'vis', 'visualizer')
             path       = if not None, the filename to save the data at
+            overwrite  = if True, will overwrite the file if it already exists
             end_header = if True, puts a header on the last slice as well as the first,
                             if False, only puts a header on the first slice
             header_per = will put in a header every header_per frame. If header_per
@@ -261,7 +262,7 @@ class TC_process:
             if end_header or (header_per != 0 and n-1 % header_per == 0): block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True), self._get_header(which)))
             else: block.append(fits.PrimaryHDU(img_shm.get_data(True, reform=True)))
 
-        if path is not None: block.writeto(path)
+        if path is not None: block.writeto(path, overwrite=overwrite)
 
         return block
 
