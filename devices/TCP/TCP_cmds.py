@@ -62,7 +62,7 @@ class TCP_cmds:
 
         self._handleShms()
 
-    def is_Active(self) -> bool:
+    def is_active(self) -> bool:
         """Returns true if control script is active
 
         Returns:
@@ -76,7 +76,7 @@ class TCP_cmds:
         # if Stat_D is a still a string, it means there is not shm file
         except AttributeError: return False
 
-    def is_Connected(self) -> bool:
+    def is_connected(self) -> bool:
         """Returns true if device is connected
 
         Returns:
@@ -306,8 +306,8 @@ class TCP_cmds:
     def _checkAlive(self):
         """Raises a ScriptOff error if the control script is not alive"""
 
-        if not self.is_Active():
-            raise ScriptOff("Control script off. Please use activate_Control_Script() method.")
+        if not self.is_active():
+            raise ScriptOff("Control script off. Please use activate_control_script() method.")
 
         # if shms haven't been loaded, load them
         if type(self.Pos_P) is str: self._handleShms()
@@ -319,7 +319,7 @@ class TCP_cmds:
         self._checkAlive()
 
         # then check if device is on
-        if not self.is_Connected(): raise StageOff("Stage is off. Please use connect() method.")
+        if not self.is_connected(): raise StageOff("Stage is off. Please use connect() method.")
 
     def _handleShms(self):
         """Loads any shms that need to be loaded, closes any that need to be closed."""
@@ -347,7 +347,7 @@ class TCP_cmds:
                 raise ShmMissing(msg)
 
         #the following shared memories will only exist if control is active
-        if self.is_Active():
+        if self.is_active():
             if type(self.Pos_P) is str:
                 try: self.Pos_P = Shm(self.Pos_P)
                 except: 
