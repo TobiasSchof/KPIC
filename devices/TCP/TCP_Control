@@ -269,11 +269,14 @@ def close():
     try: ShmP.unlink()
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-    info("Closing tmux session")
     # unregister this method now that it's completed to avoid running it twice
     unregister(close)
-    os.system(config.get("Environment", "end_command"))
 
+    info("Closing tmux session.")
+    ses = config.read("Environment", "session")
+    win = config.read("Environment", "window")
+    Popen(["tmux", "kill-window", "-t", "{}:{}".format(ses, win)])
+    
 def signal_handler(signum, stack):
     """A method to gracefully end script when a signal is passed"""
     global alive

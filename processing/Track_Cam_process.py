@@ -490,11 +490,15 @@ class TC_process:
         else:
             self.Vis_Ref.set_data(self.Vis_Proc.get_data())
 
-    def activate_control_script(self):
-        """A method to start the control script for Tracking Camera processing"""
+    def activate_control_script(self, append=None):
+        """Starts control script
+        
+        Args:
+            append = any tags to be appended to the start command
+        """
 
         if self.is_active():
-            raise ScriptAlreadyActive("Visualizer Processing script already active.")
+            raise ScriptAlreadyActive("Control script already active.")
 
         # check if sessions already exists
         out = Popen(["tmux", "ls", "-F", "'#S'"], stdout=PIPE, stderr=PIPE).communicate()
@@ -516,6 +520,11 @@ class TC_process:
             if out[1] != b'':
                 msg = "TMUX error: {}".format(str(out[1]))
                 raise TMUXError(msg)
+
+        # add any flags to start command
+        s_cmd = self.tmux_ctrl
+        if not append is None:
+            s_cmd = s_cmd.strip() + " " + append.strip()
 
         # Start Control script
         out = Popen(["tmux", "send-keys", "-t", "{}:{}".format(self.tmux_ses, self.tmux_win),

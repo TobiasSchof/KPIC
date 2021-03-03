@@ -83,9 +83,10 @@ class TC_cmds:
         self.b_fname = "bias_{fps:04d}_{tint:0.5f}_{ndr:02d}_{temp:0.5f}_"\
             +"{lb:03d}_{rb:03d}_{ub:03d}_{bb:03d}.fits"
 
-        # get start and stop commands
-        self.start_cmd = config.get("Environment", "start_command").split("|")
-        self.end_cmd = config.get("Environment", "end_command").split("|")
+        # load tmux info
+        self.tmux_ses  = config.get("Environment", "session")
+        self.tmux_win  = config.get("Environment", "window")
+        self.tmux_ctrl = config.get("Environment", "ctrl_s")
         
     def is_active(self):
         """Method to tell if control script is active or not
@@ -637,26 +638,49 @@ class TC_cmds:
             cnt += 1
             sleep(1)
 
-    def activate_control_script(self=None):
-        """A method to start the control script for the Tracking Camera"""
+    def activate_control_script(self, append=None):
+        """Starts control script
+        
+        Args:
+            append = any tags to be appended to the start command
+        """
 
         if self.is_active():
-            raise ScriptAlreadyActive("Tracking camera control script already alive.")
+            raise ScriptAlreadyActive("Control script already active.")
 
-        command = self.start_cmd
-        for cmd in command:
-            # an array to hold the processed command
-            proc_cmd = []
-            # split by " to get command to send
-            tmp = cmd.split('"')
-            for idx, word in enumerate(tmp):
-                # if index is 1 mod 2, this was in quotes
-                if idx % 2 == 1: proc_cmd += [word]
-                else: proc_cmd += word.split(" ")
+        # check if sessions already exists
+        out = Popen(["tmux", "ls", "-F", "'#S'"], stdout=PIPE, stderr=PIPE).communicate()
+        # if not, make it
+        if str(out[0]).find("'{}'".format(self.tmux_ses)) == -1:
+            out = Popen(["tmux", "new", "-d", "-s", self.tmux_ses, "-n", self.tmux_win],
+                stdout=PIPE, stderr=PIPE).communicate()
+            if out[1] != b'':
+                msg = "TMUX error: {}".format(str(out[1]))
+                raise TMUXError(msg)
 
-            Popen(proc_cmd)
-            # add a sleep to give tmux time to initialize after new commands
-            sleep(.1)
+        # check if window already exists
+        out = Popen(["tmux", "lsw", "-t", self.tmux_ses, "-F", "'#W'"], stdout=PIPE,
+            stderr=PIPE).communicate()
+        # if not, make it
+        if str(out[0]).find("'{}'".format(self.tmux_win)) == -1:
+            out = Popen(["tmux", "new-window", "-t", self.tmux_ses, "-n", self.tmux_win],
+                stdout=PIPE, stderr=PIPE).communicate()
+            if out[1] != b'':
+                msg = "TMUX error: {}".format(str(out[1]))
+                raise TMUXError(msg)
+
+        # add any flags to start command
+        s_cmd = self.tmux_ctrl
+        if not append is None:
+            s_cmd = s_cmd.strip() + " " + append.strip()
+
+        # Start Control script
+        out = Popen(["tmux", "send-keys", "-t", "{}:{}".format(self.tmux_ses, self.tmux_win),
+            "'{}'".format(self.tmux_ctrl), "Enter"], stdout=PIPE, stderr=PIPE).communicate()
+        # check if there was an error
+        if out[1] != b'':
+            msg = "TMUX error: {}".format(str(out[1]))
+            raise TMUXError(msg)
 
     def _check_alive(self):
         """A method to throw an exception if control script is not alive"""

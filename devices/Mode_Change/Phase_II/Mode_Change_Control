@@ -251,9 +251,10 @@ def close():
     try: unregister(close)
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
-    # Close tmux session
-    info("Closing tmux session")
-    os.system(config.get("Environment", "end_command"))
+    info("Closing tmux session.")
+    ses = config.read("Environment", "session")
+    win = config.read("Environment", "window")
+    Popen(["tmux", "kill-window", "-t", "{}:{}".format(ses, win)])
 
 def signal_handler(signum, stack):
     """A method to close gracefully when a signal is received"""

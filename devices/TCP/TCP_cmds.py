@@ -17,9 +17,9 @@ class TCP_cmds:
 
     method list:
     Queries:
-        is_Active
-        is_Connected
-        is_Homed
+        is_active
+        is_connected
+        is_homed
         get_error
         get_pos
         get_target
@@ -29,7 +29,7 @@ class TCP_cmds:
         home
         open_loop
         set_pos
-        activate_Control_Script
+        activate_control_script
         load_presets
     Internal methods:
         _checkAlive
@@ -54,6 +54,11 @@ class TCP_cmds:
         self.presets = {}
         # load preset positions.
         self.load_presets()
+
+        # load tmux info
+        self.tmux_ses  = config.get("Environment", "session")
+        self.tmux_win  = config.get("Environment", "window")
+        self.tmux_ctrl = config.get("Environment", "ctrl_s")
 
         self._handleShms()
 
@@ -242,44 +247,49 @@ class TCP_cmds:
             msg = "Error {}.".format(err)
             raise ShmError(msg)
 
-    def activate_Control_Script(self, append = None):
-        """Activates the control script if it's not already active."""
+    def activate_control_script(self, append=None):
+        """Starts control script
+        
+        Args:
+            append = any tags to be appended to the start command
+        """
 
-        if self.is_Active(): 
-            msg = "Cannot have two control scripts running at once."
-            raise ScriptAlreadActive(msg)
+        if self.is_active():
+            raise ScriptAlreadyActive("Control script already active.")
 
-        config = ConfigParser()
-        config.read(RELDIR+"/data/TCP.ini")
+        # check if sessions already exists
+        out = Popen(["tmux", "ls", "-F", "'#S'"], stdout=PIPE, stderr=PIPE).communicate()
+        # if not, make it
+        if str(out[0]).find("'{}'".format(self.tmux_ses)) == -1:
+            out = Popen(["tmux", "new", "-d", "-s", self.tmux_ses, "-n", self.tmux_win],
+                stdout=PIPE, stderr=PIPE).communicate()
+            if out[1] != b'':
+                msg = "TMUX error: {}".format(str(out[1]))
+                raise TMUXError(msg)
 
-        #in config file, tmux creation command is separated from kpython3
-        #   command via a '|' character so first split by that
-        command = config.get("Environment", "start_command").split("|")
+        # check if window already exists
+        out = Popen(["tmux", "lsw", "-t", self.tmux_ses, "-F", "'#W'"], stdout=PIPE,
+            stderr=PIPE).communicate()
+        # if not, make it
+        if str(out[0]).find("'{}'".format(self.tmux_win)) == -1:
+            out = Popen(["tmux", "new-window", "-t", self.tmux_ses, "-n", self.tmux_win],
+                stdout=PIPE, stderr=PIPE).communicate()
+            if out[1] != b'':
+                msg = "TMUX error: {}".format(str(out[1]))
+                raise TMUXError(msg)
 
-        # add append to end of start command
+        # add any flags to start command
+        s_cmd = self.tmux_ctrl
         if not append is None:
-            append = " " + append.strip()
-            # the command to start the control script will be the last set of quotes
-            idx = command[-1].rfind("\"")
-            if idx == -1: raise Exception("Cannot find where to append")
-            command[-1] = command[-1][:idx] + append + command[-1][idx:]
+            s_cmd = s_cmd.strip() + " " + append.strip()
 
-        #the tmux command should be split up by spaces
-        for cmd in command: 
-            to_send = []
-            # parse anything inside quotes as one element
-            tmp = cmd.split("\"")
-            # odd indexes will be elements between quotes
-            for idx, word in enumerate(tmp):
-                if idx % 2 == 0:
-                    to_send += word.split(" ")
-                else:
-                    to_send.append(word)
-
-            Popen(to_send)
-            # we add a slight sleep so that if there are no tmux sessions,
-            #    the server has time to initialize
-            sleep(.1)
+        # Start Control script
+        out = Popen(["tmux", "send-keys", "-t", "{}:{}".format(self.tmux_ses, self.tmux_win),
+            "'{}'".format(self.tmux_ctrl), "Enter"], stdout=PIPE, stderr=PIPE).communicate()
+        # check if there was an error
+        if out[1] != b'':
+            msg = "TMUX error: {}".format(str(out[1]))
+            raise TMUXError(msg)
 
     def load_presets(self):
         """Loads the preset positions from the config file

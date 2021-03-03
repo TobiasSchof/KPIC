@@ -165,7 +165,11 @@ class Mode_Change_cmds:
             self.presets[name.lower()] = config.getfloat("Presets", name) 
 
     def activate_control_script(self, append=None):
-        """Starts control script"""
+        """Starts control script
+        
+        Args:
+            append = any tags to be appended to the start command
+        """
 
         if self.is_active():
             raise ScriptAlreadyActive("Visualizer Processing script already active.")
