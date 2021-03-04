@@ -1,6 +1,6 @@
 # standard library
 from configparser import ConfigParser
-from subprocess import Popen
+from subprocess import Popen, PIPE
 from time import sleep
 from numpy import array
 from time import gmtime

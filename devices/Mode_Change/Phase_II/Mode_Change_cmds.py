@@ -1,7 +1,7 @@
 # inherent python libraries
 from time import sleep
 from configparser import ConfigParser
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import os
 
 # nfiuserver libraries
