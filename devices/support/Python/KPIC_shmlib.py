@@ -23,22 +23,17 @@ SEM_DIR = "/dev/shm"
 # ------------------------------------------------------
 #          list of available data types
 # ------------------------------------------------------
-all_dtypes = [np.uint8,     np.int8,    np.uint16,    np.int16, 
-              np.uint32,    np.int32,   np.uint64,    np.int64,
-              np.float32,   np.float64, np.complex64, np.complex128]
-
 # Dictionaries to translate between metadata type and numpy type
 atod = { 1 : np.dtype("uint8"), 2 : np.dtype("int8"), 3 : np.dtype("uint16"), 
          4 : np.dtype("int16"), 5 : np.dtype("uint32"), 6 : np.dtype("int32"),
          7 : np.dtype("uint64"), 8 : np.dtype("int64"), 9 : np.dtype("float32"),
          10 : np.dtype("float64"), 11 : np.dtype("complex64"), 
-         12 : np.dtype("complex128") }  
-
+         12 : np.dtype("complex128"), 13 : np.dtype("<U1")}  
 dtoa = { value : key for (key, value) in atod.items() } 
 
 # the size of each of the data types
 asize = { 1 : 1, 2 : 1, 3 : 2, 4 : 2, 5 : 4, 6 : 4, 7 : 8, 8 : 8, 9 : 8, 
-          10 : 16, 11 : 16, 12 : 32 } 
+          10 : 16, 11 : 16, 12 : 32, 13 : 4} 
 
 # ------------------------------------------------------
 # list of metadata keys for the shm structure (global)
@@ -79,6 +74,23 @@ class Shm:
         If data is provided, but a file with the given name already exists,
            the data will be ignored and the existing file will be used.
         -------------------------------------------------------------- '''
+
+        # if a string as passed in, convert it to a numpy array
+        if type(data) is str:
+            data = np.array([char for char in data], np.dtype("<U1"))
+            croppable = True
+        elif str(data.dtype) == "<U1": croppable = True
+        elif str(data.dtype).find("<U") == 0:
+            # in this case, we have a string but it's not broken into chars
+            # so reform array into string
+            nel = 1
+            for dim in data.shape:
+                if dim != 0: nel *= dim
+            data.reshape((nel,))
+            data = ("{}"*nel).format(*data) 
+            # and then put back in an array
+            data = np.array([char for char in data], np.dtype("<U1")) 
+            croppable = True
 
         self.fname = fname
         self.mmap = None
@@ -430,6 +442,7 @@ class Shm:
         ----------
         - check: integer (last index) if not False, waits image update
         - reform: boolean, if True, reshapes the array in a 2-3D format
+                    or into a string if dypte is <U1
         -------------------------------------------------------------- '''
 
         #wait for new data
@@ -470,11 +483,14 @@ class Shm:
 
         # if requested, reshape data
         if reform:
-            rsz = self.mtdata['size'][:self.mtdata['naxis']]
-            # if there's an x and y axis, flip them (row, column vs width, height)
-            if self.mtdata['naxis'] >= 2:
-                rsz = (rsz[1], rsz[0], *rsz[2:len(rsz)]) 
-            data = np.reshape(data, rsz)
+            if self.npdtype == "<U1":
+                data = ("{}"*self.mtdata["nel"]).format(*data)
+            else:
+                rsz = self.mtdata['size'][:self.mtdata['naxis']]
+                # if there's an x and y axis, flip them (row, column vs width, height)
+                if self.mtdata['naxis'] >= 2:
+                    rsz = (rsz[1], rsz[0], *rsz[2:len(rsz)]) 
+                data = np.reshape(data, rsz)
 
         return data
 
@@ -489,6 +505,22 @@ class Shm:
         Note:
         ----
         -------------------------------------------------------------- '''
+
+        # if a string as passed in, convert it to a numpy array
+        if type(data) is str:
+            data = np.array([char for char in data], np.dtype("<U1"))
+        # if array of strings, break into array of chars
+        elif str(data.dtype).find("<U") == 0 and str(data.dtype) != "<U1":
+            # in this case, we have a string but it's not broken into chars
+            # so reform array into string
+            nel = 1
+            for dim in data.shape:
+                if dim != 0: nel *= dim
+            data.reshape((nel,))
+            data = ("{}"*nel).format(*data) 
+            # and then put back in an array
+            data = np.array([char for char in data], np.dtype("<U1")) 
+       
         #We want to keep acquired time current so get time if none was provided
         if atime is None: atime = time()
         #get the seconds part of the time
