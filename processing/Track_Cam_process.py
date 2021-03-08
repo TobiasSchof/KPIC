@@ -31,6 +31,7 @@ class TC_process:
         is_minus_calib
         get_error
     Command:
+        save_darks
         grab_n
         set_processing
         set_range
@@ -83,6 +84,9 @@ class TC_process:
         self.tmux_ctrl = config.get("Environment", "ctrl_s")
 
         self._handle_shms()
+        self.tc._handle_shms()
+
+        self.save_darks = self.tc.save_darks
 
     def is_active(self):
         """Method to tell if control script is active or not
@@ -145,7 +149,6 @@ class TC_process:
         self._check_alive_and_processing()
 
         return bool(self.Vis_Stat.get_data()[0] & 4)
-
 
     def get_avg_cnt(self):
         """Return the number of frames being averaged
@@ -414,29 +417,23 @@ class TC_process:
 
         self.Vis_Stat.set_data(_)
 
-    def load_bkgrd(self, fname:str=None):
+    def load_bkgrd(self, fname:str):
         """Loads the background at the destination into the shm
 
         Args:
             fname = the path to a fits file. The first frame will be loaded as
                 the background
-                (if None, the current frame of proc img will be taken as the background)
         """
 
-        if fname is not None:
-            # check that file exists
-            if not os.path.isfile(fname):
-                raise FileNotFoundError()
-            with fits.open(fname) as f:
-                # confirm that fps, temp, tint, ndr, and crop match
-                if not self._check_header(f[0].header):
-                    self.Vis_Error.set_data(np.array([2], self.Vis_Error.npdtype))
-                    raise BkgrdParams("Loaded background parameters don't match current settings.")
+        self._check_alive_and_processing()
+        
+        try:
+            assert type(fname) is str
+            assert os.path.isfile(fname)
+        except AssertionError:
+            raise ValueError("'fname' must be the path to an existing fits file")
 
-                # load bias into shm
-                self.Vis_Bkgrd.set_data(np.array(f[0].data, self.Vis_Bkgrd.npdtype))
-        else:
-            self.Vis_Bkgrd.set_data(self.tc.Img.get_data(reform = True))
+        self.Vis_Bkgrd.set_data(fname)
 
     def use_minus_ref(self, use:bool=True, fname:str=None):
         """Turns reference image subtraction on/off
@@ -467,28 +464,23 @@ class TC_process:
 
         self.Vis_Stat.set_data(_)
 
-    def load_ref(self, fname:str=None):
+    def load_ref(self, fname:str):
         """Loads the reference image at the destination into the shm
 
         Args:
             fname = the path to a fits file. The first frame will be loaded as
                 the reference image
-                (if None, the current frame of proc img will be taken as the reference)
         """
 
-        if fname is not None:
-            # check that file exists
-            if not os.path.isfile(fname):
-                raise FileNotFoundError()
-            with fits.open(fname) as f:
-                # confirm that fps, temp, tint, ndr, and crop match
-                if not self._check_header(f[0].header):
-                    self.Vis_Error.set_data(np.array([3], self.Vis_Error.npdtype))
-                    raise RefParams("Loaded reference image parameters don't match current settings.")
-                # load bias into shm
-                self.Vis_Ref.set_data(np.array(f[0].data, self.Vis_Ref.npdtype))
-        else:
-            self.Vis_Ref.set_data(self.Vis_Proc.get_data())
+        self._check_alive_and_processing()
+        
+        try:
+            assert type(fname) is str
+            assert os.path.isfile(fname)
+        except AssertionError:
+            raise ValueError("'fname' must be the path to an existing fits file")
+
+        self.Vis_Ref.set_data(fname)
 
     def activate_control_script(self, append=None):
         """Starts control script
@@ -628,7 +620,6 @@ class TC_process:
             "visavg":visavg, "scale":scl})
 
         return self.tc._get_header() + proc_info
-
 
     def _check_header(self, header:fits.Header):
         """A method to check that the values in the header match current camera parameters
