@@ -252,8 +252,8 @@ def close():
     except Exception as ouch: info("Exception on close: {}".format(ouch))
 
     info("Closing tmux session.")
-    ses = config.read("Environment", "session")
-    win = config.read("Environment", "window")
+    ses = config.get("Environment", "session")
+    win = config.get("Environment", "window")
     Popen(["tmux", "kill-window", "-t", "{}:{}".format(ses, win)])
 
 def signal_handler(signum, stack):
