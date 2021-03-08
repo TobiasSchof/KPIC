@@ -357,6 +357,19 @@ class Save_block(QPushButton):
         settings = Save_block.Save_block_popup()
         values = settings.getResults()
 
+        try:
+            img = self.proc.grab_n(values[2], values[0], end_header = values[1] == 0,
+                header_per = values[1])
+        except:
+            dlg = QMessageBox()
+            dlg.setWindowTitle("Uh oh!")
+            if values[0] == "raw":
+                dlg.setText("No image found. Please check that the camera is on.")
+            else:
+                dlg.setText("No image found. Please check that the camera is on and that the processing script is processing.")
+            dlg.exec_()
+            return 
+
         # if settings didn't return None, continue to save location
         if values is not None:
             try:
@@ -371,19 +384,6 @@ class Save_block(QPushButton):
                 filedialog.setNameFilters(["FITS (*.fits)"])
                 # if window was accepted
                 if (filedialog.exec()):
-                    try:
-                        img = self.proc.grab_n(values[2], values[0], end_header = values[1] == 0,
-                            header_per = values[1])
-                    except:
-                        dlg = QMessageBox()
-                        dlg.setWindowTitle("Uh oh!")
-                        if values[0] == "raw":
-                            dlg.setText("No image found. Please check that the camera is on.")
-                        else:
-                            dlg.setText("No image found. Please check that the camera is on and that the processing script is processing.")
-                        dlg.exec_()
-                        return 
-
                     # pull filename
                     filename = filedialog.selectedFiles()[0]
                     # save file 
@@ -837,41 +837,31 @@ class Bkgrd_save(QPushButton):
     def on_click(self):
         """A method to run when this button is clicked"""
 
-        # try to get an image
-        try:
-            img = self.proc.Vis_Bkgrd.get_data(reform = True)
-        except:
-            dlg = QMessageBox()
-            dlg.setWindowTitle("Uh oh!")
-            dlg.setText("No image found. Please check that the camera is on and that the processing script is processing.")
-            dlg.exec_()
-            return
+        # we use topmost widget as parent to avoid inherited stylesheet
+        filedialog = QFileDialog(self.p)
+        # set to select save file
+        filedialog.setAcceptMode(QFileDialog.AcceptSave)
+        # set default suffix to .fits
+        filedialog.setDefaultSuffix("fits")
+        # start dialog in /nfiudata directory
+        filedialog.setDirectory("/nfiudata")
+        # show that we're using .fits in filetype selection
+        filedialog.setNameFilters(["FITS (*.fits)"])
+        # if window was accepted
+        if (filedialog.exec()):
+            # pull filename
+            filename = filedialog.selectedFiles()[0]
+            try:
+                img = self.proc.grab_n(1, which="raw", path=filename, overwrite=True)
+            except:
+                dlg = QMessageBox()
+                dlg.setWindowTitle("Uh oh!")
+                dlg.setText("There was a problem saving the image.")
+                dlg.exec_()
+                return
 
-        try:
-            # we use topmost widget as parent to avoid inherited stylesheet
-            filedialog = QFileDialog(self.p)
-            # set to select save file
-            filedialog.setAcceptMode(QFileDialog.AcceptSave)
-            # set default suffix to .fits
-            filedialog.setDefaultSuffix("npy")
-            # start dialog in /nfiudata directory
-            filedialog.setDirectory("/nfiudata")
-            # show that we're using .fits in filetype selection
-            filedialog.setNameFilters(["NUMPY (*.npy)"])
-            # if window was accepted
-            if (filedialog.exec()):
-                # pull filename
-                filename = filedialog.selectedFiles()[0]
-                # if filename already exists, delete it (QFileDialog prompts for overwrite)
-                if os.path.exists(filename): os.remove(filename)
-                # save file 
-                np.save(filename, img)
-        except:
-            dlg = QMessageBox()
-            dlg.setWindowTitle("Uh oh!")
-            dlg.setText("There was a problem saving the image.")
-            dlg.exec_()
-            return
+            # load new frame as reference
+            self.proc.load_bkgrd(filename)
 
 class Bkgrd_load(QPushButton):
     """A class to load a background from from a .npy file"""
@@ -906,18 +896,18 @@ class Bkgrd_load(QPushButton):
         # set to select save file
         filedialog.setAcceptMode(QFileDialog.AcceptOpen)
         # set default suffix to .fits
-        filedialog.setDefaultSuffix("npy")
+        filedialog.setDefaultSuffix("fits")
         # start dialog in /nfiudata directory
         filedialog.setDirectory("/nfiudata")
         # show that we're using .fits in filetype selection
-        filedialog.setNameFilters(["NUMPY (*.npy)"])
+        filedialog.setNameFilters(["FITS (*.fits)"])
         # if window was accepted
         if (filedialog.exec()):
             # pull filename
             filename = filedialog.selectedFiles()[0]
             # load file into background shm
             try:
-                self.proc.Vis_Bkgrd.set_data(np.load(filename))
+                self.proc.Vis_Bkgrd.set_data(filename)
             except:
                dlg = QMessageBox()
                dlg.setWindowTitle("Uh oh!")
@@ -1002,41 +992,31 @@ class Ref_save(QPushButton):
     def on_click(self):
         """A method to run when this button is clicked"""
 
-        # try to get an image
-        try:
-            img = self.proc.Vis_Ref.get_data(reform = True)
-        except:
-            dlg = QMessageBox()
-            dlg.setWindowTitle("Uh oh!")
-            dlg.setText("No image found. Please check that the camera is on and that the processing script is processing.")
-            dlg.exec_()
-            return
+        # we use topmost widget as parent to avoid inherited stylesheet
+        filedialog = QFileDialog(self.p)
+        # set to select save file
+        filedialog.setAcceptMode(QFileDialog.AcceptSave)
+        # set default suffix to .fits
+        filedialog.setDefaultSuffix("fits")
+        # start dialog in /nfiudata directory
+        filedialog.setDirectory("/nfiudata")
+        # show that we're using .fits in filetype selection
+        filedialog.setNameFilters(["FITS (*.fits)"])
+        # if window was accepted
+        if (filedialog.exec()):
+            # pull filename
+            filename = filedialog.selectedFiles()[0]
+            try:
+                img = self.proc.grab_n(1, which="raw", path=filename, overwrite=True)
+            except:
+                dlg = QMessageBox()
+                dlg.setWindowTitle("Uh oh!")
+                dlg.setText("There was a problem saving the image.")
+                dlg.exec_()
+                return
 
-        try:
-            # we use topmost widget as parent to avoid inherited stylesheet
-            filedialog = QFileDialog(self.p)
-            # set to select save file
-            filedialog.setAcceptMode(QFileDialog.AcceptSave)
-            # set default suffix to .fits
-            filedialog.setDefaultSuffix("npy")
-            # start dialog in /nfiudata directory
-            filedialog.setDirectory("/nfiudata")
-            # show that we're using .fits in filetype selection
-            filedialog.setNameFilters(["NUMPY (*.npy)"])
-            # if window was accepted
-            if (filedialog.exec()):
-                # pull filename
-                filename = filedialog.selectedFiles()[0]
-                # if filename already exists, delete it (QFileDialog prompts for overwrite)
-                if os.path.exists(filename): os.remove(filename)
-                # save file 
-                np.save(filename, img)
-        except:
-            dlg = QMessageBox()
-            dlg.setWindowTitle("Uh oh!")
-            dlg.setText("There was a problem saving the image.")
-            dlg.exec_()
-            return
+            # load new frame as reference
+            self.proc.load_ref(filename)
 
 class Ref_load(QPushButton):
     """A class to load a background from from a .npy file"""
@@ -1071,18 +1051,18 @@ class Ref_load(QPushButton):
         # set to select save file
         filedialog.setAcceptMode(QFileDialog.AcceptOpen)
         # set default suffix to .fits
-        filedialog.setDefaultSuffix("npy")
+        filedialog.setDefaultSuffix("fits")
         # start dialog in /nfiudata directory
         filedialog.setDirectory("/nfiudata")
         # show that we're using .fits in filetype selection
-        filedialog.setNameFilters(["NUMPY (*.npy)"])
+        filedialog.setNameFilters(["FITS (*.fits)"])
         # if window was accepted
         if (filedialog.exec()):
             # pull filename
             filename = filedialog.selectedFiles()[0]
             # load file into background shm
             try:
-                self.proc.Vis_Ref.set_data(np.load(filename))
+                self.proc.Vis_Ref.set_data(filename)
             except:
                dlg = QMessageBox()
                dlg.setWindowTitle("Uh oh!")

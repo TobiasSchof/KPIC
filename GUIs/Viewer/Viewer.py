@@ -93,11 +93,6 @@ class Stack(QWidget):
 
         save_bias = lambda : self.proc.tc.save_dark(num = min(self.proc.tc.get_fps() * 60, 50))
         self.bias_save.clicked.connect(save_bias)
-        # connect 'take' buttons
-        take_bkgrd = lambda : self.proc.Vis_Bkgrd.set_data(self.proc.tc.Img.get_data(reform = True))
-        self.bkgrd_take.clicked.connect(take_bkgrd)
-        take_ref = lambda : self.proc.Vis_Ref.set_data(self.proc.tc.Img.get_data(reform = True))
-        self.ref_take.clicked.connect(take_ref)
 
         # hide config settings if not in lab
         if not is_lab:

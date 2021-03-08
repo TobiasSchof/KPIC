@@ -31,7 +31,7 @@ class TC_process:
         is_minus_calib
         get_error
     Command:
-        save_darks
+        save_dark
         grab_n
         set_processing
         set_range
@@ -86,7 +86,7 @@ class TC_process:
         self._handle_shms()
         self.tc._handle_shms()
 
-        self.save_darks = self.tc.save_darks
+        self.save_dark = self.tc.save_dark
 
     def is_active(self):
         """Method to tell if control script is active or not
