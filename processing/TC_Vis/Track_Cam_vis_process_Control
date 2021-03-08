@@ -155,7 +155,7 @@ def main():
                 except:
                     try:
                         if _ref[0].header["CROP_UB"] == 0 and _ref[0].header["CROP_LB"] < 4:
-                            _ref[0].data[:int(4-_ref[0].header["CROP_LB"])] = _ref[0].data[int(4-_ref[0].header["CROP_LB"])]
+                            _ref[0].data[0,:int(4-_ref[0].header["CROP_LB"])] = _ref[0].data[0,int(4-_ref[0].header["CROP_LB"])]
                     except:
                         # set error
                         Error.set_data(np.array([4], Error.npdtype))
@@ -379,44 +379,6 @@ def load_track_shms():
         try: Track_img = Shm(Track_img)
         except: pass
 
-def load_bias(header):
-    """Method to load a bias file and compute the badpixelmap
-
-    Args:
-        header = a fits header formatted like TC_cmds._get_header
-    Returns:
-        None
-    """
-
-    global _bias, _bpm
-
-    # format bias file name based on camera parameters from header
-    fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
-        ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
-        ub = header["crop_UB"], bb = header["crop_BB"])
-
-    crop = False
-    # if bias file doesn't exist, check for bias file with full crop
-    if not os.path.isfile(fname):
-        fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
-            ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
-            ub = 0, bb = 0) 
-        crop = True
-        # if bias file still doesn't exist, throw an error
-        if not os.path.isfile(fname): raise BiasError("No bias file found")
-    
-    # load bias from file
-    with fits.open(fname) as f:
-        _bias = f[0].data
-
-    # crop bias if we changed cropping
-    if crop:
-        _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
-
-    # if first 4 image bits are in bias, copy over them in case of tags
-    if header["crop_UB"] == 0 and header["crop_LB"] < 4:
-        _bias[0][:4] = _bias[0][4]
-
 def roll_avg(avg:np.array, raw:list):
     """A method that refreshes the average
 
@@ -475,17 +437,13 @@ def close(*args, **kwargs):
     ses = config.get("Environment", "session")
     win = config.get("Environment", "window")
 
-    Popen(["tmux", "kill-window", "-t" "{}:{}".format(ses, win)])
+    os.system("tmux kill-window -t {}:{}".format(ses, win))
 
 def signal_handler(*args, **kwargs):
     """A method to end execution when a signal is recieved"""
 
     global alive
     alive = False
-
-    # try to wake up main if it's waiting for processing to start
-    try: Stat.sem.release()
-    except: pass
 
 # get RELDIR location which has all kroot made files
 RELDIR = os.environ.get("RELDIR")
@@ -585,4 +543,4 @@ head = None
 alive = True
 
 # start main method
-while alive: main()
+while alive and os.getppid() != 1: main()

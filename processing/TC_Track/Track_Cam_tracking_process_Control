@@ -192,7 +192,7 @@ def close(*args, **kwargs):
     ses = config.get("Environment", "session")
     win = config.get("Environment", "window")
 
-    Popen(["tmux", "kill-window", "-t" "{}:{}".format(ses, win)])
+    os.system("tmux kill-window -t {}:{}".format(ses, win))
 
 def signal_handler(*args, **kwargs):
     """A method to end execution when a signal is recieved"""
