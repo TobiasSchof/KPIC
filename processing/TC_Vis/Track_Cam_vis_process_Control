@@ -16,6 +16,7 @@ from astropy.io import fits
 # nfiuserver libraries
 from KPIC_shmlib import Shm
 from Track_Cam_cmds import TC_cmds
+from dev_Exceptions import *
 
 # coefficient for bad pixel filter
 BPM_FILT = 3.5
@@ -26,18 +27,8 @@ def main():
     # get the current counter for error so we know if we've set one
     err_cnt = Error.get_counter()
 
+    # get stat
     stat = Stat.get_data()[0]
-    if stat & 2:
-        # get status of tracking processing script
-        try: b_stat = Track_stat.get_data()[0]
-        except:
-            try:
-                load_track_shms()
-                b_stat = Track_stat.get_data()[0]
-            except:
-                Error.set_data(np.array([4], Error.npdtype))
-                sleep(.1)
-                return 
 
     # if processing isn't set, wait for update
     if not stat & 1:
@@ -48,124 +39,309 @@ def main():
     #   process image
     global avg, raw
     if stat & 2:
-        # try to pull image (try because we may not be connected
-        #   to the shm yet)
-        try: im = Track_img.get_data(reform = True)
-        except: 
+        # get status of tracking processing script
+        # and try to pull image in tracking shm
+        try: 
+            b_stat = Track_stat.get_data()[0]
+            im = Track_img.get_data(reform = True)
+        except:
             try:
-                Track_img = Shm(Track_img)
+                load_track_shms()
+                b_stat = Track_stat.get_data()[0]
                 im = Track_img.get_data(reform = True)
             except:
-                Error.set_data(np.array([4], Error.npdtype))
-
-                # try to continue without track processing
-                if not tc.is_connected(): return
-
-                avg, raw = roll_avg(avg, raw)
-
-                im = avg.copy()
+                Error.set_data(np.array([2], Error.npdtype))
+                sleep(.1)
+                return 
     else:
+        # if tracking camera isn't connected
         if not tc.is_connected():
-            Error.set_data(np.array([6], Error.npdtype))
+            # set error
+            Error.set_data(np.array([1], Error.npdtype))
+            # sleep
+            sleep(.1)
+            # retry
+            return
 
         avg, raw = roll_avg(avg, raw)
 
+        # work on a copy of avg so that we have the rolling avg
+        #   to work with next time
         im = avg.copy()
+
+    # store which frame (if any) to subtract
+    im_subtract = None
+
+    # get the bad pixel map (may need to modify it)
     global _bpm    
-    # do frame subtraction, respecting larger bits first
+
+    # if camera parameters have changed since the last bias
+    #   load, try to load a new bias (we do this to calculate
+    #   new bad pixel map on parameter change)
+    global _bias
+    cur_head = tc._get_header()
+    if type(_bias) is not fits.HDUList or _bias[0].header != cur_head:
+
+        # format bias file name based on camera parameters from header
+        fname = tc.b_dir + tc.b_fname.format(fps = cur_head["fps"], tint = cur_head["tint"],
+            ndr = cur_head["ndr"], temp = cur_head["t_setp"], lb = cur_head["crop_LB"], 
+            rb = cur_head["crop_RB"], ub = cur_head["crop_UB"], bb = cur_head["crop_BB"])
+
+        crop = False
+        # if bias file doesn't exist, check for bias file with full crop
+        if not os.path.isfile(fname):
+            fname = tc.b_dir + tc.b_fname.format(fps = cur_head["fps"], tint = cur_head["tint"],
+                ndr = cur_head["ndr"], temp = cur_head["t_setp"], lb = 0, rb = 0, ub = 0, bb = 0) 
+            crop = True
+            # if bias file still doesn't exist, post error
+            if not os.path.isfile(fname):
+                Error.set_data(np.array([9], Error.npdtype))
+
+        if os.path.isfile(fname):
+            # load bias from file
+            with fits.open(fname) as f:
+                _bias = fits.HDUList([f[0].copy()])
+
+            # if bias is raw and contains first
+            #   four pixels, copy over them (tags)
+            try:
+                check = _bias[6].header["medfilt"]
+                # warning for bias not being raw
+                Error.set_data(np.array([5], Error.npdtype))
+            # if the header doesn't have the "medfilt" tag,
+            #   it's a raw image
+            except:
+                try:
+                    if _bias[0].header["CROP_UB"] == 0 and _bias[0].header["CROP_LB"] < 4:
+                        _bias[0].data[0,:int(4-_bias[0].header["CROP_LB"])] = _bias[0].data[0,int(4-_bias[0].header["CROP_LB"])]
+                except:
+                    # set error
+                    Error.set_data(np.array([4], Error.npdtype))
+                    # sleep
+                    sleep(.1)
+                    # retry
+                    return
+
+                # calculate bad pixel map
+                bpm = np.ones_like(_bias[0].data)
+                std = np.std(_bias[0].data)
+                mu = np.median(_bias[0].data)
+                bpm[_bias[0].data > mu + BPM_FILT*std] = 0
+                bpm[_bias[0].data < mu - BPM_FILT*std] = 0
+
+                #also save bpm as second frame in _bias
+                _bias.append(fits.PrimaryHDU(bpm))
+                _bpm = _bias
+
+    # get frame to subtract, respecting larger bits first
+    # check reference
     if stat & 32:
         # if reference frame has been updated recently, load it
         if Ref.mtdata["cnt0"] != Ref.get_counter():
-            global _ref
-            _ref = Ref.get_data(reform = True)
-            # copy first four pixels (tags)
-            _ref[0][:4] = _ref[0][4]
+            fpath = Ref.get_data(reform = True)
+            # load reference image
+            if os.path.isfile(fpath):
+                with fits.open(fpath) as f:
+                    global _ref
+                    # pull out first fits image
+                    _ref = fits.HDUList([f[0].copy()])
 
-        # if using track proc and medfilt is on, medfilt ref
-        #   before subtracting it
-        if _ref is None:
-            _ref = np.zeros_like(im)
-        if stat & 2 and b_stat & 4:
-            im -= medfilt(_bpm * _ref).astype(im.dtype)
-        else:
-            im -= _ref.astype(im.dtype)
+                # if reference image is raw and contains first
+                #   four pixels, copy over them (tags)
+                try:
+                    check = _ref.header["medfilt"]
+                # if the header doesn't have the "medfilt" tag,
+                #   it's a raw image
+                except:
+                    try:
+                        if _ref[0].header["CROP_UB"] == 0 and _ref[0].header["CROP_LB"] < 4:
+                            _ref[0].data[:int(4-_ref[0].header["CROP_LB"])] = _ref[0].data[int(4-_ref[0].header["CROP_LB"])]
+                    except:
+                        # set error
+                        Error.set_data(np.array([4], Error.npdtype))
+                        # sleep
+                        sleep(.1)
+                        # retry
+                        return
+            else:
+                # set error
+                Error.set_data(np.array([3], Error.npdtype))
+                # sleep
+                sleep(.1)
+                # retry
+                return
+
+        im_subtract = _ref        
+    # check background
     elif stat & 16 and not (stat & 2 and b_stat & 2):
         # if background frame has been updated recently, load it
         if Bkgrd.mtdata["cnt0"] != Bkgrd.get_counter():
-            global _bkgrd
-            _bkgrd = Bkgrd.get_data(reform = True)
-            # copy over first four pixels (tags)
-            _bkgrd[0][:4] = _bkgrd[0][4]
+            fpath = Bkgrd.get_data(reform = True)
+            # load background image
+            if os.path.isfile(fpath):
+                with fits.open(fpath) as f:
+                    global _bkgrd
+                    # pull out first fits image
+                    _bkgrd = fits.HDUList([f[0].copy()])
 
-            # calculate bad pixel map 
-            _bpm = np.ones_like(_bkgrd)
-            std = np.std(_bkgrd)
-            mu = np.median(_bkgrd)
-            _bpm[_bkgrd > mu + BPM_FILT*std] = 0
-            _bpm[_bkgrd < mu - BPM_FILT*std] = 0
+                # if background image is raw and contains first
+                #   four pixels, copy over them (tags)
+                try:
+                    check = _bkgrd.header["medfilt"]
+                    # warning for background not being raw
+                    Error.set_data(np.array([5], Error.npdtype))
+                # if the header doesn't have the "medfilt" tag,
+                #   it's a raw image
+                except:
+                    try:
+                        if _bkgrd[0].header["CROP_UB"] == 0 and _bkgrd[0].header["CROP_LB"] < 4:
+                            _bkgrd[0].data[0,:int(4-_bkgrd[0].header["CROP_LB"])] = _bkgrd[0].data[0,int(4-_bkgrd[0].header["CROP_LB"])]
+                    except:
+                        # set error
+                        Error.set_data(np.array([4], Error.npdtype))
+                        # sleep
+                        sleep(.1)
+                        # retry
+                        return
 
-        # if using track proc and medfilt is on, medfilt bkgrd
-        #   before subtracting it
-        if _bkgrd is None:
-            _bkgrd = np.zeros_like(im)
-        if stat & 2 and b_stat & 4:
-            im -= medfilt(_bkgrd).astype(im.dtype)
-        else:
-            im -= _bkgrd.astype(im.dtype)
+                    # calculate bad pixel map
+                    #   (only makes sense to do if image is raw)
+                    bpm = np.ones_like(_bkgrd[0].data)
+                    std = np.std(_bkgrd[0].data)
+                    mu = np.median(_bkgrd[0].data)
+                    bpm[_bkgrd[0].data > mu + BPM_FILT*std] = 0
+                    bpm[_bkgrd[0].data < mu - BPM_FILT*std] = 0
+
+                    # also save bpm as second frame in _bkgrd
+                    _bkgrd.append(fits.PrimaryHDU(bpm))
+                    _bpm = _bkgrd
+            else:
+                # set error
+                Error.set_data(np.array([3], Error.npdtype))
+                # sleep
+                sleep(.1)
+                # retry
+                return
+
+        im_subtract = _bkgrd
+    # check bias
     elif stat & 8 and not stat & 2:
-        # if camera parameters have changed since the last bias
-        #   load, try to load a new bias
-        global head, _bias
-        if head != tc._get_header() or _bias is None or _bias.max() == 0:
-            header = tc._get_header()
+        # bias should already be loaded
+        im_subtract = _bias
 
-            # format bias file name based on camera parameters from header
-            fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
-                ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
-                ub = header["crop_UB"], bb = header["crop_BB"])
+    # get cropping to check bpm and subtraction frame
+    cam_crop = tc.get_crop()
 
-            crop = False
-            # if bias file doesn't exist, check for bias file with full crop
-            if not os.path.isfile(fname):
-                fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
-                    ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
-                    ub = 0, bb = 0) 
-                crop = True
-                # if bias file still doesn't exist, post error
-                if not os.path.isfile(fname): Error.set_data(np.array([1], Error.npdtype))
-
-            if os.path.isfile(fname):
-                # load bias from file
-                with fits.open(fname) as f:
-                    _bias = f[0].data
-
-                # crop bias if we changed cropping
-                if crop:
-                    _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
-
-                # if first 4 image bits are in bias, copy over them in case of tags
-                if header["crop_UB"] == 0 and header["crop_LB"] < 4:
-                    _bias[0][:4] = _bias[0][4] 
-
-                # calculate bad pixel map
-                _bpm = np.ones_like(_bias)
-                std = np.std(_bias)
-                mu = np.median(_bias)
-                _bpm[_bias > mu + BPM_FILT*std] = 0
-                _bpm[_bias < mu - BPM_FILT*std] = 0
-
-                head = header
-
-        if _bias is None:
-            _bias = np.zeros_like(im)
+    # check if we need to crop the bad pixel map
+    try:
+        bpm_crop = [_bpm[0].header["CROP_LB"], _bpm[0].header["CROP_RB"],
+                    _bpm[0].header["CROP_UB"], _bpm[0].header["CROP_BB"]]
+        # cropping doesn't match, so see if we can crop subtraction frame
+        assert bpm_crop[0] <= cam_crop[0]
+        assert (bpm_crop[1] == 0 or bpm_crop[1] >= cam_crop[1])
+        assert bpm_crop[2] <= cam_crop[2]
+        assert (bpm_crop[3] == 0 or bpm_crop[3] >= cam_crop[3])
+        # calculate what cropping we need on the image
+        if not (bpm_crop == cam_crop):
+            do_crop = [bpm_crop[0] - cam_crop[0],
+                        cam_crop[1] if cam_crop[1] != 0 else 511,
+                        bpm_crop[2] - cam_crop[2],
+                        cam_crop[3] if cam_crop[3] != 0 else 639]
+            bpm = _bpm[1].data[do_crop[2]:do_crop[3]+1, do_crop[0]:do_crop[1]+1].copy()
+        else:
+            bpm = _bpm[1].data.copy()
+        # check other parameters for bpm
         try:
-            im -= _bias.astype(im.dtype)
+            assert tc.get_tint() == _bpm[0].header["TINT"]
+            assert tc.get_fps() == _bpm[0].header["FPS"]
+            assert tc.get_ndr() == _bpm[0].header["NDR"]
+            # check temperature setpoint
+            assert tc.Temp_P.get_data()[0] == _bpm[0].header["T_SETP"]
+        except AssertionError:
+            # set warning
+            Error.set_data(np.array([11], Error.npdtype))
         except:
-            Error.set_data(np.array([1], Error.npdtype))
+            # set warning
+            Error.set_data(np.array([12], Error.npdtype))
+    except AssertionError:
+        bpm = None
+        Error.set_data(np.array([10], Error.npdtype))
+    except:
+        bpm = None
+        # set warning
+        Error.set_data(np.array([12], Error.npdtype))
+
+    # do image subtraction
+    if im_subtract is not None:
+        im_sub = None
+        # check camera parameters
+        # first check that cropping fits
+        try:
+            im_crop = [im_subtract[0].header["CROP_LB"], im_subtract[0].header["CROP_RB"],
+                        im_subtract[0].header["CROP_UB"], im_subtract[0].header["CROP_BB"]]
+            # cropping doesn't match, so see if we can crop subtraction frame
+            assert im_crop[0] <= cam_crop[0]
+            assert (im_crop[1] == 0 or im_crop[1] >= cam_crop[1])
+            assert im_crop[2] <= cam_crop[2]
+            assert (im_crop[3] == 0 or im_crop[3] >= cam_crop[3])
+            # calculate what cropping we need on the image
+            if not (im_crop == cam_crop):
+                do_crop = [cam_crop[0] - im_crop[0],
+                           cam_crop[1] if cam_crop[1] != 0 else 511,
+                           cam_crop[2] - im_crop[2],
+                           cam_crop[3] if cam_crop[3] != 0 else 639]
+                im_sub = im_subtract[0].data[do_crop[2]:do_crop[3]+1, do_crop[0]:do_crop[1]+1].copy()
+            else:
+                im_sub = im_subtract[0].data.copy()
+        except AssertionError:
+            Error.set_data(np.array([7], Error.npdtype))
+            sleep(.1)
+            return
+        except:
+            # set error
+            Error.set_data(np.array([4], Error.npdtype))
+            # try again after delay
+            sleep(.1)
+            return
+        # then check big 4 parameters
+        try:
+            assert tc.get_tint() == im_subtract[0].header["TINT"]
+            assert tc.get_fps() == im_subtract[0].header["FPS"]
+            assert tc.get_ndr() == im_subtract[0].header["NDR"]
+            # check temperature setpoint
+            assert tc.Temp_P.get_data()[0] == im_subtract[0].header["T_SETP"]
+        except AssertionError:
+            # set warning
+            Error.set_data(np.array([8], Error.npdtype))
+        except:
+            # set error
+            Error.set_data(np.array([4], Error.npdtype))
+            # try again after delay
+            sleep(.1)
+            return
+
+        # check if we need to process subtraction frame
+        if stat & 2:
+            try:
+                b_stat = Track_stat.get_data()[0]
+            except:
+                Error.set_data(np.array([2], Error.npdtype))
+                sleep(.1)
+                return
+
+            # apply median filter to subtraction frame if necessary
+            if b_stat & 4:
+                im_sub = medfilt(im_sub)
+
+        try:
+            im -= im_sub
+        except:
+            Error.set_data(np.array([13], Error.npdtype))
 
     # multiply by bad pixel map
-    try: im *= _bpm
-    except: Error.set_data(np.array([5], Error.npdtype))
+    if bpm is not None:
+        try: im *= bpm
+        except: Error.set_data(np.array([14], Error.npdtype))
 
     # medfilt if requested
     if stat & 4 and not stat & 2:
@@ -296,8 +472,8 @@ def close(*args, **kwargs):
     unregister(close)
 
     # kill tmux session
-    ses = config.read("Environment", "session")
-    win = config.read("Environment", "window")
+    ses = config.get("Environment", "session")
+    win = config.get("Environment", "window")
 
     Popen(["tmux", "kill-window", "-t" "{}:{}".format(ses, win)])
 
@@ -327,7 +503,7 @@ type_ = {"int8":np.int8, "int16":np.int16, "int32":np.int32, "int64":np.int64,
     "uint8":np.uint8, "uint16":np.uint16, "uint32":np.uint32,
     "uint64":np.uint64, "intp":np.intp, "uintp":np.uintp, "float16":np.float16,
     "float32":np.float32, "float64":np.float64, "complex64":np.complex64,
-    "complex128":np.complex128}
+    "complex128":np.complex128, "U":np.dtype("<U1")}
 
 # check if there's another control script running by checking
 #   for the existence of some shms that get deleted when control
@@ -337,7 +513,7 @@ Stat = config.get("Shm Info", "Stat").split(",")
 if os.path.isfile(Stat[0]):
     print("Active control script exists.")
     msg = "Stat shm exists, meaning another control script is running."
-    raise AlreadyAlive(msg)
+    raise ScriptAlreadyActive(msg)
 else:
     Stat = Shm(Stat[0], data=np.array([1], dtype=type_[Stat[1]]),
         mmap = (Stat[2] == "1"))
@@ -362,12 +538,10 @@ else: Proc = Shm(Proc[0], data = np.zeros([640, 512], dtype = type_[Proc[1]]),
         mmap = (Proc[2] == "1"), croppable = True)
 
 if os.path.isfile(Ref[0]): Ref = Shm(Ref[0])
-else: Ref = Shm(Ref[0], data = np.zeros([640, 512], dtype = type_[Ref[1]]),
-        mmap = (Ref[2] == "1"), croppable = True)
+else: Ref = Shm(Ref[0], data = "/nfiudata/reference")
 
 if os.path.isfile(Bkgrd[0]): Bkgrd = Shm(Bkgrd[0])
-else: Bkgrd = Shm(Bkgrd[0], data = np.zeros([640, 512], dtype = type_[Bkgrd[1]]),
-        mmap = (Bkgrd[2] == "1"), croppable = True)
+else: Bkgrd = Shm(Bkgrd[0], data = "/nfiudata/background")
 
 if os.path.isfile(Error[0]): Error = Shm(Error[0])
 else: Error = Shm(Error[0], data = np.array([0], dtype = type_[Error[1]]),
@@ -409,45 +583,6 @@ head = None
 
 # variable to store whether control script is running
 alive = True
-
-# try to find bias to set bpm
-header = tc._get_header()
-
-# format bias file name based on camera parameters from header
-fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
-    ndr = header["ndr"], temp = header["t_setp"], lb = header["crop_LB"], rb = header["crop_RB"],
-    ub = header["crop_UB"], bb = header["crop_BB"])
-
-crop = False
-# if bias file doesn't exist, check for bias file with full crop
-if not os.path.isfile(fname):
-    fname = tc.b_dir + tc.b_fname.format(fps = header["fps"], tint = header["tint"],
-        ndr = header["ndr"], temp = header["t_setp"], lb = 0, rb = 0,
-        ub = 0, bb = 0) 
-    crop = True
-
-# if bias doesn't exist, can't do anthing
-if os.path.isfile(fname):
-    # load bias from file
-    with fits.open(fname) as f:
-        _bias = f[0].data
-
-    # crop bias if we changed cropping
-    if crop:
-        _bias = _bias[header["crop_UB"]:header["crop_LB"], header["crop_RB"]:header["crop_LB"]]
-
-    # if first 4 image bits are in bias, copy over them in case of tags
-    if header["crop_UB"] == 0 and header["crop_LB"] < 4:
-        _bias[0][:4] = _bias[0][4] 
-
-    # calculate bad pixel map
-    _bpm = np.ones_like(_bias)
-    std = np.std(_bias)
-    mu = np.median(_bias)
-    _bpm[_bias > mu + BPM_FILT*std] = 0
-    _bpm[_bias < mu - BPM_FILT*std] = 0
-
-    head = header
 
 # start main method
 while alive: main()

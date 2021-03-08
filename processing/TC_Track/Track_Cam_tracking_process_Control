@@ -189,8 +189,8 @@ def close(*args, **kwargs):
     unregister(close)
 
     # kill tmux session
-    ses = config.read("Environment", "session")
-    win = config.read("Environment", "window")
+    ses = config.get("Environment", "session")
+    win = config.get("Environment", "window")
 
     Popen(["tmux", "kill-window", "-t" "{}:{}".format(ses, win)])
 
