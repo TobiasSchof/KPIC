@@ -14,7 +14,6 @@ from glob import glob
 # installs
 import posix_ipc as ipc
 import numpy as np
-import astropy.io.fits as pf
 
 #The directory where semaphores are stored (set by system, this variable is 
 #   used for checking, not for creation.
@@ -79,8 +78,8 @@ class Shm:
         if type(data) is str:
             data = np.array([char for char in data], np.dtype("<U1"))
             croppable = True
-        elif str(data.dtype) == "<U1": croppable = True
-        elif str(data.dtype).find("<U") == 0:
+        elif data is not None and str(data.dtype) == "<U1": croppable = True
+        elif data is not None and str(data.dtype).find("<U") == 0:
             # in this case, we have a string but it's not broken into chars
             # so reform array into string
             nel = 1
@@ -604,17 +603,6 @@ class Shm:
         self.post_sems()
 
         return
-
-    def save_as_fits(self, fitsname):
-        ''' --------------------------------------------------------------
-        Convenient sometimes, to be able to export the data as a fits file.
-        
-        Parameters:
-        ----------
-        - fitsname: a filename (clobber=True)
-        -------------------------------------------------------------- '''
-        pf.writeto(fitsname, self.get_data(), clobber=True)
-        return(0)
 
 # =================================================================
 # =================================================================
