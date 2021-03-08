@@ -284,7 +284,7 @@ class TC_cmds:
             avg           = the means to combine reference images, will appear in header of combined file
         """
 
-        if avg.lower() not in ["mean", "media"]:
+        if avg.lower() not in ["mean", "median"]:
             raise ValueError("Unexpected value of 'avg'. Choices are 'mean' or 'median'.")
 
         gmt = gmtime()
@@ -299,11 +299,11 @@ class TC_cmds:
 
         crop = self.get_crop()
         # format black name based of saved bias filename format
-        block_fname = self.b_fname.split("_")
+        block_fname = self.b_fname[:-5].split("_")
         # add time acquired
         block_fname.insert(1, "{time}")
         # append block
-        block_fname[-1] = "block.fits"
+        block_fname.append("block.fits")
         block_fname = "_".join(block_fname)
         block_path = "/nfiudata/{date}/TCReferences/" + block_fname
         block_path = block_path.format(date=date, time=time, fps = self.get_fps(), tint = self.get_tint(), 
@@ -315,11 +315,9 @@ class TC_cmds:
         # grab a header to pull just the relevant areas of first and last header
         tmp_h = self._get_header()
         # store number of images and avg method
-        c_header = {"num":num, "avg":avg}
+        c_header = {"num":num, "avg":avg, "bias":True}
         # append header data from start frame
-        c_header.update({"s{}".format(field):block[0].header[field] for field in tmp_h})
-        # append header data from end frame
-        c_header.update({"e{}".format(field):block[-1].header[field] for field in tmp_h})
+        c_header.update({field:block[0].header[field] for field in tmp_h})
 
         if avg.lower() == "mean":
             combined = fits.PrimaryHDU(np.mean([im.data for im in block], 0), fits.Header(c_header))
