@@ -612,7 +612,7 @@ QTabBar::tab:only-one {
            </widget>
           </item>
           <item row="2" column="2">
-           <widget class="QPushButton" name="ref_load">
+           <widget class="Ref_load" name="ref_load">
             <property name="minimumSize">
              <size>
               <width>50</width>
@@ -2500,6 +2500,11 @@ QPushButton:pressed {
   </customwidget>
   <customwidget>
    <class>Bkgrd_load</class>
+   <extends>QPushButton</extends>
+   <header>Viewer_Widgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Ref_load</class>
    <extends>QPushButton</extends>
    <header>Viewer_Widgets.h</header>
   </customwidget>

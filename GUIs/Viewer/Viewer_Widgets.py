@@ -3,7 +3,7 @@ from time import time, sleep
 import os
 
 # installs
-from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton, QFileDialog, QDialog, QMessageBox
+from PyQt5.QtWidgets import QLineEdit, QFrame, QComboBox, QCheckBox, QWidget, QPushButton, QFileDialog, QDialog, QMessageBox, QInputDialog
 from PyQt5.QtCore import Qt, QTimer, QSize, QTemporaryDir, QFile, QRectF
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QValidator, QIntValidator, QDoubleValidator, QFont
 from PyQt5 import uic
@@ -836,32 +836,40 @@ class Bkgrd_save(QPushButton):
 
     def on_click(self):
         """A method to run when this button is clicked"""
+        
+        # get how many images to average
+        i, cont = QInputDialog.getInt(self.p, "Save Background","Images to average:", min=1)
 
-        # we use topmost widget as parent to avoid inherited stylesheet
-        filedialog = QFileDialog(self.p)
-        # set to select save file
-        filedialog.setAcceptMode(QFileDialog.AcceptSave)
-        # set default suffix to .fits
-        filedialog.setDefaultSuffix("fits")
-        # start dialog in /nfiudata directory
-        filedialog.setDirectory("/nfiudata")
-        # show that we're using .fits in filetype selection
-        filedialog.setNameFilters(["FITS (*.fits)"])
-        # if window was accepted
-        if (filedialog.exec()):
-            # pull filename
-            filename = filedialog.selectedFiles()[0]
-            try:
-                img = self.proc.grab_n(1, which="raw", path=filename, overwrite=True)
-            except:
-                dlg = QMessageBox()
-                dlg.setWindowTitle("Uh oh!")
-                dlg.setText("There was a problem saving the image.")
-                dlg.exec_()
-                return
+        # if dialog wasn't canceled,
+        if cont:
+            # get images and average
+            block = self.proc.grab_n(i, which="raw")
+            img = np.mean([im.data for im in block], 0)
+            # we use topmost widget as parent to avoid inherited stylesheet
+            filedialog = QFileDialog(self.p)
+            # set to select save file
+            filedialog.setAcceptMode(QFileDialog.AcceptSave)
+            # set default suffix to .fits
+            filedialog.setDefaultSuffix("fits")
+            # start dialog in /nfiudata directory
+            filedialog.setDirectory("/nfiudata")
+            # show that we're using .fits in filetype selection
+            filedialog.setNameFilters(["FITS (*.fits)"])
+            # if window was accepted
+            if (filedialog.exec()):
+                # pull filename
+                filename = filedialog.selectedFiles()[0]
+                try:
+                    fits.PrimaryHDU(data=img, header=block[0].header).writeto(filename, overwrite=True)
+                except:
+                    dlg = QMessageBox()
+                    dlg.setWindowTitle("Uh oh!")
+                    dlg.setText("There was a problem saving the image.")
+                    dlg.exec_()
+                    return
 
-            # load new frame as reference
-            self.proc.load_bkgrd(filename)
+                # load new frame as reference
+                self.proc.load_bkgrd(filename)
 
 class Bkgrd_load(QPushButton):
     """A class to load a background from from a .npy file"""
@@ -907,7 +915,7 @@ class Bkgrd_load(QPushButton):
             filename = filedialog.selectedFiles()[0]
             # load file into background shm
             try:
-                self.proc.Vis_Bkgrd.set_data(filename)
+                self.proc.load_bkgrd(filename)
             except:
                dlg = QMessageBox()
                dlg.setWindowTitle("Uh oh!")
@@ -992,31 +1000,39 @@ class Ref_save(QPushButton):
     def on_click(self):
         """A method to run when this button is clicked"""
 
-        # we use topmost widget as parent to avoid inherited stylesheet
-        filedialog = QFileDialog(self.p)
-        # set to select save file
-        filedialog.setAcceptMode(QFileDialog.AcceptSave)
-        # set default suffix to .fits
-        filedialog.setDefaultSuffix("fits")
-        # start dialog in /nfiudata directory
-        filedialog.setDirectory("/nfiudata")
-        # show that we're using .fits in filetype selection
-        filedialog.setNameFilters(["FITS (*.fits)"])
-        # if window was accepted
-        if (filedialog.exec()):
-            # pull filename
-            filename = filedialog.selectedFiles()[0]
-            try:
-                img = self.proc.grab_n(1, which="raw", path=filename, overwrite=True)
-            except:
-                dlg = QMessageBox()
-                dlg.setWindowTitle("Uh oh!")
-                dlg.setText("There was a problem saving the image.")
-                dlg.exec_()
-                return
+        # get how many images to average
+        i, cont = QInputDialog.getInt(self.p, "Save Reference","Images to average:", min=1)
 
-            # load new frame as reference
-            self.proc.load_ref(filename)
+        # if dialog wasn't canceled,
+        if cont:
+            # get images and average
+            block = self.proc.grab_n(i, which="raw")
+            img = np.mean([im.data for im in block], 0)
+            # we use topmost widget as parent to avoid inherited stylesheet
+            filedialog = QFileDialog(self.p)
+            # set to select save file
+            filedialog.setAcceptMode(QFileDialog.AcceptSave)
+            # set default suffix to .fits
+            filedialog.setDefaultSuffix("fits")
+            # start dialog in /nfiudata directory
+            filedialog.setDirectory("/nfiudata")
+            # show that we're using .fits in filetype selection
+            filedialog.setNameFilters(["FITS (*.fits)"])
+            # if window was accepted
+            if (filedialog.exec()):
+                # pull filename
+                filename = filedialog.selectedFiles()[0]
+                try:
+                    fits.PrimaryHDU(data=img, header=block[0].header).writeto(filename, overwrite=True)
+                except:
+                    dlg = QMessageBox()
+                    dlg.setWindowTitle("Uh oh!")
+                    dlg.setText("There was a problem saving the image.")
+                    dlg.exec_()
+                    return
+
+                # load new frame as reference
+                self.proc.load_ref(filename)
 
 class Ref_load(QPushButton):
     """A class to load a background from from a .npy file"""
@@ -1062,7 +1078,7 @@ class Ref_load(QPushButton):
             filename = filedialog.selectedFiles()[0]
             # load file into background shm
             try:
-                self.proc.Vis_Ref.set_data(filename)
+                self.proc.load_ref(filename)
             except:
                dlg = QMessageBox()
                dlg.setWindowTitle("Uh oh!")
