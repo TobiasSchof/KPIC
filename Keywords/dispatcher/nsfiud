@@ -29,8 +29,8 @@ import time
 from configparser import ConfigParser
 
 # nsfiu libraries
-from FIU_TTM_cmds import FIU_TTM_cmds
-from Mode_Change_cmds import Mode_Change_cmds
+#from FIU_TTM_cmds import FIU_TTM_cmds
+#from Mode_Change_cmds import Mode_Change_cmds
 from dev_Exceptions import *
 
 class ScriptOff(Exception):
@@ -118,14 +118,14 @@ def setupKeywords(service):
     mc = Mode_Change_cmds()
 
     # set up keywords for FIU TTM
-    FIU_TTM_POS_KTL("x", "TTMPOSX", service)
-    FIU_TTM_POS_KTL("y", "TTMPOSY", service)
-    FIU_ERROR_KTL(ttm, "TTMERR", service)
+    #FIU_TTM_POS_KTL("x", "TTMPOSX", service)
+    #FIU_TTM_POS_KTL("y", "TTMPOSY", service)
+    #FIU_ERROR_KTL(ttm, "TTMERR", service)
     #FIU_STAT_KTL(ttm, "TTMSTAT", service)
 
     # set up keywords for Mode Change stage
-    FIU_MC_POS_KTL("MCPOS", service)
-    FIU_ERROR_KTL(mc, "MCERR", service)
+    #FIU_MC_POS_KTL("MCPOS", service)
+    #FIU_ERROR_KTL(mc, "MCERR", service)
 
     # set up keywords not associated with any shms
     DFW.Keyword.Double("BDRIFTX", service)
