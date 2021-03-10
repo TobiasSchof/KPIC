@@ -163,12 +163,12 @@ class TC_cmds:
         """Method to return the current frames per second
 
         Returns:
-            int = the FPS setting
+            float = the FPS setting
         """
 
         self._check_alive_and_connected()
 
-        try: return int(self.FPS_D.get_data()[0])
+        try: return float(self.FPS_D.get_data()[0])
         except: raise ShmError("FPS D shm may be corrupted. Please kill control script, delete shm, and start again.")
 
     def get_ndr(self):
@@ -429,7 +429,7 @@ class TC_cmds:
             if err == 0: return
             elif err == 2: raise ShmError("Tint invalid.")
 
-    def set_fps(self, fps:int):
+    def set_fps(self, fps:float):
         """Method to set the FPS of the camera
 
         Args:
@@ -441,7 +441,7 @@ class TC_cmds:
         self._check_alive_and_connected()
 
         # validate input
-        try: fps = int(fps)
+        try: fps = float(fps)
         except ValueError: raise ValueError("fps must be an int")
 
         # update error counter to check for updates later

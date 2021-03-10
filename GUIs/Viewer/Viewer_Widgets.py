@@ -539,7 +539,7 @@ class FPS(QLineEdit):
         self.tc = self.p.proc.tc
 
         # set text validator
-        self.setValidator(QIntValidator())
+        self.setValidator(QDoubleValidator())
 
         # get shm fname    
         if type(self.tc.FPS_D) is str:
@@ -552,7 +552,6 @@ class FPS(QLineEdit):
             self.p.watch_widgs[nm]=Shm_Watcher(parent = self.p)
             self.p.watch_widgs[nm].setup(nm)
             self.p.watch_widgs[nm].do_update.connect(self.update_txt)
-
         try: self.update_txt(self.tc.FPS_D.get_data())
         except: pass
 
